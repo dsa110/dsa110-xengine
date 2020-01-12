@@ -5,5 +5,9 @@ This repo contains code used for the DSA X-engine. The requirements are to:
  - run the xgpu kernel to correlate all inputs present
  - accumulate the visibilities to produce a data stream for calibration
  - beamform from the visibilities to produce search-data streams
- 
-Each branch pertains to a different SNAP firmware version. A whole-number increment in the version number implies a tested release with capabilities as advertised. 
+
+### v0.1
+
+This is a first go version at capture, xgpu, and accumulation. Logging is simply to stdout and stderr, and M&C is accomplished with a single socket connection and logging.
+
+
