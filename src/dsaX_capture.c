@@ -25,6 +25,7 @@ control_thread: deals with control commands
 #include <sys/socket.h>
 #include <syslog.h>
 
+
 #include "sock.h"
 #include "tmutil.h"
 #include "dada_client.h"
@@ -34,13 +35,15 @@ control_thread: deals with control commands
 #include "ipcbuf.h"
 #include "dada_affinity.h"
 #include "ascii_header.h"
-#include "dsaX_correlator_udpdb_thread.h"
+#include "dsaX_capture.h"
+#include "dsaX_def.h"
+//#include "multilog.h"
 
 /* global variables */
 int quit_threads = 0;
 char STATE[20];
 uint64_t UTC_START = 0;
-uint64_t UTC_STOP = 1000000;
+uint64_t UTC_STOP = 2000000000;
 int MONITOR = 0;
 char iP[100];
 int DEBUG = 0;
@@ -84,7 +87,7 @@ dsaX_sock_t * dsaX_init_sock ()
 
   b->bufsz = sizeof(char) * UDP_PAYLOAD;
 
-	b->buf = (char *) malloc (b->bufsz);
+  b->buf = (char *) malloc (b->bufsz);
   assert(b->buf != NULL);
 
   b->have_packet = 0;
@@ -146,6 +149,7 @@ int dsaX_udpdb_prepare (udpdb_t * ctx)
     return -1;
   }
 
+  
   // set the socket size to 256 MB
   int sock_buf_size = 256*1024*1024;
   syslog(LOG_INFO, "prepare: setting buffer size to %d", sock_buf_size);
@@ -163,13 +167,6 @@ int dsaX_udpdb_prepare (udpdb_t * ctx)
   ctx->last_seq = 0;
   ctx->last_byte = 0;
   ctx->n_sleeps = 0;
-
-  // lock as writer on the HDU
-  if (dada_hdu_lock_write (ctx->hdu) < 0)
-  {
-    syslog (LOG_ERR, "open_hdu: could not lock write");
-    return -1;
-  }
 
   return 0;
 }
@@ -196,7 +193,7 @@ void dsaX_udpdb_reset_receiver (udpdb_t * ctx)
 int dsaX_udpdb_open_buffer (udpdb_t * ctx)
 {
 
-  syslog (LOG_INFO, "dsaX_udpdb_open_buffer()");
+  if (DEBUG) syslog (LOG_DEBUG, "dsaX_udpdb_open_buffer()");
 
   if (ctx->block_open)
   {
@@ -204,7 +201,7 @@ int dsaX_udpdb_open_buffer (udpdb_t * ctx)
     return -1;
   }
 
-  syslog (LOG_INFO, "open_buffer: ipcio_open_block_write");
+  if (DEBUG) syslog (LOG_DEBUG, "open_buffer: ipcio_open_block_write");
 
   uint64_t block_id = 0;
 
@@ -227,7 +224,7 @@ int dsaX_udpdb_open_buffer (udpdb_t * ctx)
 int dsaX_udpdb_close_buffer (udpdb_t * ctx, uint64_t bytes_written, unsigned eod)
 {
 
-  syslog (LOG_INFO, "dsaX_udpdb_close_buffer(%"PRIu64", %d)", bytes_written, eod);
+  if (DEBUG) syslog (LOG_DEBUG, "dsaX_udpdb_close_buffer(%"PRIu64", %d)", bytes_written, eod);
 
   if (!ctx->block_open)
   { 
@@ -270,7 +267,7 @@ int dsaX_udpdb_close_buffer (udpdb_t * ctx, uint64_t bytes_written, unsigned eod
 int dsaX_udpdb_new_buffer (udpdb_t * ctx)
 {
 
-  syslog (LOG_INFO, "dsaX_udpdb_new_buffer()");
+  if (DEBUG) syslog (LOG_DEBUG, "dsaX_udpdb_new_buffer()");
 
   if (dsaX_udpdb_close_buffer (ctx, ctx->hdu_bufsz, 0) < 0)
   {
@@ -291,7 +288,7 @@ int dsaX_udpdb_new_buffer (udpdb_t * ctx)
   // set block to 0
   //memset(ctx->block,0,ctx->block_end_byte-ctx->block_start_byte);
   
-  syslog(LOG_INFO, "new_buffer: buffer_bytes [%"PRIu64" - %"PRIu64"]", 
+  if (DEBUG) syslog(LOG_DEBUG, "new_buffer: buffer_bytes [%"PRIu64" - %"PRIu64"]", 
              ctx->block_start_byte, ctx->block_end_byte);
 
   return 0;
@@ -314,12 +311,11 @@ int dsaX_udpdb_destroy_receiver (udpdb_t * ctx)
 
 int udpdb_stop_function (udpdb_t* ctx)
 {
-  multilog_t * log = ctx->log;
 
-  syslog(log, LOG_INFO, "stop: dada_hdu_unlock_write()");
+  syslog(LOG_INFO, "stop: dada_hdu_unlock_write()");
   if (dada_hdu_unlock_write (ctx->hdu) < 0)
   {
-    multilog (LOG_ERR, "stop: could not unlock write on");
+    syslog (LOG_ERR, "stop: could not unlock write on");
     return -1;
   }
 
@@ -335,7 +331,6 @@ int udpdb_stop_function (udpdb_t* ctx)
              ctx->bytes->dropped, ctx->last_byte, percent);
   }
 
-  recording = 0;
   return 0;
 }
 
@@ -376,7 +371,7 @@ void stats_thread(void * arg) {
     b_rcv_curr = ctx->bytes->received;
     b_drp_curr = ctx->bytes->dropped;
     s_rcv_curr = ctx->n_sleeps;
-
+    
     /* calc the values for the last second */
     b_rcv_1sec = b_rcv_curr - b_rcv_total;
     b_drp_1sec = b_drp_curr - b_drp_total;
@@ -393,9 +388,9 @@ void stats_thread(void * arg) {
     gb_rcv_ps /= 1000000000;
 
     /* determine how much memory is free in the receivers */
-    syslog (LOG_NOTICE,"R=%6.3f [Gb/s], D=%4.1f [MB/s], D=%"PRIu64" pkts, s_s=%"PRIu64"", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, s_rcv_1sec);
+    syslog (LOG_NOTICE,"UTC_START=%"PRIu64", R=%6.3f [Gb/s], D=%4.1f [MB/s], D=%"PRIu64" pkts, s_s=%"PRIu64"", UTC_START, gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, s_rcv_1sec);
 
-    sleep(2);
+    sleep(1);
   }
 
 }
@@ -456,8 +451,19 @@ void control_thread (void * arg) {
 
     // INTERPRET BUFFER STRING
     // receive either UTC_START, UTC_STOP, MONITOR
-    // TODO
-    
+
+    // interpret buffer string
+    char * rest = buffer;
+    char *cmd, *val;
+    cmd = strtok_r(rest, "-", &rest);
+    val = strtok_r(rest, "-", &rest);
+    syslog(LOG_INFO, "control_thread: split into COMMAND %s, VALUE %s",cmd,val);
+
+    if (strcmp(cmd,"UTC_START")==0)
+      UTC_START = strtoull(val,&endptr,0);
+
+    if (strcmp(cmd,"UTC_STOP")==0)
+      UTC_STOP = strtoull(val,&endptr,0);    
     
     close(fd);
     
@@ -553,6 +559,7 @@ int main (int argc, char *argv[]) {
 	case 'd':
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
+	  break;
 	case 'h':
 	  usage();
 	  return EXIT_SUCCESS;
@@ -567,6 +574,8 @@ int main (int argc, char *argv[]) {
   // start control thread
   int rval = 0;
   pthread_t control_thread_id, stats_thread_id;
+  if (DEBUG)
+    syslog (LOG_DEBUG, "Creating threads");
   rval = pthread_create (&control_thread_id, 0, (void *) control_thread, (void *) &udpdb);
   if (rval != 0) {
     syslog(LOG_ERR, "Error creating control_thread: %s", strerror(rval));
@@ -590,15 +599,28 @@ int main (int argc, char *argv[]) {
 	syslog(LOG_ERR,"failed to bind to core %d", core);
       syslog(LOG_NOTICE,"bound to core %d", core);
     }
+
+  // initialize the data structure
+  syslog (LOG_INFO, "main: dsaX_udpdb_init_receiver()");
+  if (dsaX_udpdb_init_receiver (&udpdb) < 0)
+  {
+    syslog (LOG_ERR, "could not initialize receiver");
+    return EXIT_FAILURE;
+  }
+  
   
   // OPEN CONNECTION TO DADA DB FOR WRITING
 
-  hdu_out  = dada_hdu_create (log);
-  dada_hdu_set_key (hdu_out, out_key);
+  if (DEBUG) syslog(LOG_DEBUG,"Creating HDU");
+  
+  hdu_out  = dada_hdu_create ();
+  if (DEBUG) syslog(DEBUG,"Created hdu");
+  dada_hdu_set_key (hdu_out, CAPTURE_BLOCK_KEY);
   if (dada_hdu_connect (hdu_out) < 0) {
     syslog(LOG_ERR,"could not connect to output dada buffer");
     return EXIT_FAILURE;
   }
+  if (DEBUG) syslog(LOG_DEBUG,"Connected HDU");
   if (dada_hdu_lock_write(hdu_out) < 0) {
     dsaX_dbgpu_cleanup (hdu_out);
     syslog(LOG_ERR,"could not lock to output dada buffer");
@@ -608,15 +630,21 @@ int main (int argc, char *argv[]) {
   syslog(LOG_INFO,"opened connection to output DB");
 
   // DEAL WITH DADA HEADER
-  FILE *fp;
-  if (!fopen(dada_fnam,"rb")) {
-    syslog(LOG_ERR,"could not open file with dada header");
-    return EXIT_FAILURE;
-  }
-  char *header_out;
+  char *hout;
   hout = (char *)malloc(sizeof(char)*4096);
-  fread(hout,4096,1,fp);
-  fclose(fp);
+  if (DEBUG) syslog(DEBUG,"read header2");
+
+  if (fileread (dada_fnam, hout, 4096) < 0)
+    {
+      free (hout);
+      syslog (LOG_ERR, "could not read ASCII header from %s", dada_fnam);
+      return (EXIT_FAILURE);
+    }
+
+  
+  if (DEBUG) syslog(DEBUG,"read header3");
+
+  
   
   char * header_out = ipcbuf_get_next_write (hdu_out->header_block);
   if (!header_out)
@@ -626,11 +654,13 @@ int main (int argc, char *argv[]) {
       return EXIT_FAILURE;
     }
 
+
+  
   // copy the in header to the out header
   memcpy (header_out, hout, 4096);
 
   // mark the output header buffer as filled
-  if (ipcbuf_mark_filled (hdu_out->header_block, header_size) < 0)
+  if (ipcbuf_mark_filled (hdu_out->header_block, 4096) < 0)
     {
       syslog(LOG_ERR, "could not mark header block filled [output]");
       dsaX_dbgpu_cleanup (hdu_out);
@@ -646,13 +676,6 @@ int main (int argc, char *argv[]) {
      data are captured on iface:CAPTURE_PORT 
   */
 
-  // initialize the data structure
-  syslog (LOG_INFO, "main: dsaX_udpdb_init_receiver()");
-  if (dsaX_udpdb_init_receiver (&udpdb) < 0)
-  {
-    syslog (LOG_ERR, "could not initialize socket");
-    return EXIT_FAILURE;
-  }
   
   // put information in udpdb struct
   udpdb.hdu = hdu_out;
@@ -682,9 +705,9 @@ int main (int argc, char *argv[]) {
   dsaX_udpdb_reset_receiver (&udpdb);
 
   // open a block of the data block, ready for writing
-  if (dsaX_udpdb_open_buffer (ctx) < 0)
+  if (dsaX_udpdb_open_buffer (&udpdb) < 0)
   {
-    multilog (ctx->log, LOG_ERR, "start: dsaX_udpdb_open_buffer failed\n");
+    syslog (LOG_ERR, "start: dsaX_udpdb_open_buffer failed");
     return -1;
   }
   
@@ -696,7 +719,7 @@ int main (int argc, char *argv[]) {
   uint64_t seq_no = 0;
   uint64_t ch_id = 0;
   uint64_t ant_id = 0;
-  unsigned char * b = (unsigned char *) ctx->sock->buf;
+  unsigned char * b = (unsigned char *) udpdb.sock->buf;
   size_t got = 0; // data received from a recv_from call
   int errsv; // determine the sequence number boundaries for curr and next buffers
   int64_t byte_offset = 0; // offset of current packet in bytes from start of block
@@ -717,26 +740,26 @@ int main (int argc, char *argv[]) {
   while (1)
     {
 
-      udpdb->sock->have_packet = 0; 
+      udpdb.sock->have_packet = 0; 
 
       // incredibly tight loop to try and get a packet
-      while (!udpdb->sock->have_packet)
+      while (!udpdb.sock->have_packet)
 	{
 	 
 	  // receive 1 packet into the socket buffer
-	  got = recvfrom ( udpdb->sock->fd, udpdb->sock->buf, UDP_PAYLOAD, 0, NULL, NULL );
+	  got = recvfrom ( udpdb.sock->fd, udpdb.sock->buf, UDP_PAYLOAD, 0, NULL, NULL );
 
 	  if (got == UDP_PAYLOAD) 
 	    {
-	      udpdb->sock->have_packet = 1;
+	      udpdb.sock->have_packet = 1;
 	    } 
 	  else if (got == -1) 
 	    {
 	      errsv = errno;
 	      if (errsv == EAGAIN) 
 		{
-		  udpdb->n_sleeps++;
-		  if (udpdb->capture_started)
+		  udpdb.n_sleeps++;
+		  if (udpdb.capture_started)
 		    timeouts++;
 		  if (timeouts > timeout_max)
 		    syslog(LOG_INFO, "timeouts[%"PRIu64"] > timeout_max[%"PRIu64"]\n",timeouts, timeout_max);		  
@@ -755,56 +778,69 @@ int main (int argc, char *argv[]) {
       timeouts = 0;
 
       // we have a valid packet within the timeout
-      if (udpdb->sock->have_packet) 
+      if (udpdb.sock->have_packet) 
 	{
 
 	  // decode packet header (64 bits)
 	  // 35 bits seq_no (for first spectrum in packet); 13 bits ch_id (for first channel in packet); 16 bits ant ID (for first antenna in packet)
-	  // TODO
+	  seq_no =  UINT64_C (0);
+	  seq_no |= (unsigned char) (udpdb.sock->buf[4] & 224) >> 5;
+	  seq_no |= (unsigned char) (udpdb.sock->buf[3]) << 3;
+	  seq_no |= (unsigned char) (udpdb.sock->buf[2]) << 11;
+	  seq_no |= (unsigned char) (udpdb.sock->buf[1]) << 19;
+	  seq_no |= (unsigned char) (udpdb.sock->buf[0]) << 27;
+	  
+	  ch_id = 0;
+	  ch_id |= (udpdb.sock->buf[4] & 31) << 8;
+	  ch_id |= udpdb.sock->buf[5];
 
-	  act_seq_no = seq_no*NCHANG*NSNAPS + ant_id*NCHANG + ch_id; // actual seq no
+	  ant_id = 0;
+	  ant_id |= udpdb.sock->buf[6] << 8;
+	  ant_id |= udpdb.sock->buf[7];
+	  
+	  act_seq_no = seq_no*NCHANG*NSNAPS/2 + ant_id*NCHANG/3 + (ch_id-CHOFF)/384; // actual seq no
 
 	  // check for starting or stopping condition, using continue
+	  if (DEBUG) printf("%"PRIu64"\n",seq_no);//syslog(LOG_DEBUG, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
 	  if (seq_no == UTC_START) canWrite=1;
 	  if (canWrite == 0) continue;
 	  if (seq_no == UTC_STOP) canWrite=0;
 
 	  
 	  // if first packet
-	  if (!udpdb->capture_started)
+	  if (!udpdb.capture_started)
 	    {
-	      udpdb->block_start_byte = act_seq_no * UDP_DATA;
-	      udpdb->block_end_byte   = (udpdb->block_start_byte + udpdb->hdu_bufsz) - UDP_DATA;
-	      udpdb->capture_started = 1;
+	      udpdb.block_start_byte = act_seq_no * UDP_DATA;
+	      udpdb.block_end_byte   = (udpdb.block_start_byte + udpdb.hdu_bufsz) - UDP_DATA;
+	      udpdb.capture_started = 1;
 
-	      syslog (LOG_INFO, "receive_obs: START [%"PRIu64" - %"PRIu64"]", udpdb->block_start_byte, udpdb->block_end_byte);
+	      syslog (LOG_INFO, "receive_obs: START [%"PRIu64" - %"PRIu64"]", udpdb.block_start_byte, udpdb.block_end_byte);
 	    }
 
 	  // if capture running
-	  if (udpdb->capture_started)
+	  if (udpdb.capture_started)
 	    {
-	      seq_byte = (act_seq_no * UDP_DATA);
-	      syslog(LOG_DEBUG, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%d, UDP_DATA=%d",seq_byte,udpdb->num_inputs,seq_no,ant_id, UDP_DATA);
+	      seq_byte = (act_seq_no * UDP_DATA);	      
 
-	      udpdb->last_byte = seq_byte;
+	      udpdb.last_byte = seq_byte;
 	      
 	      // if packet arrived too late, ignore
-	      if (seq_byte < udpdb->block_start_byte)
+	      if (seq_byte < udpdb.block_start_byte)
 		{
 		  syslog (LOG_INFO, "receive_obs: seq_byte < block_start_byte");
-		  udpdb->packets->dropped++;
-		  udpdb->bytes->dropped += UDP_DATA;
+		  udpdb.packets->dropped++;
+		  udpdb.bytes->dropped += UDP_DATA;
 		}
 	      else
 		{
 		  // packet belongs in this block
-		  if (seq_byte <= udpdb->block_end_byte)
+		  if (seq_byte <= udpdb.block_end_byte)
 		    {
-		      byte_offset = seq_byte - udpdb->block_start_byte;
-		      memcpy (udpdb->block + byte_offset, udpdb->sock->buf + UDP_HEADER, UDP_DATA);
-		      udpdb->packets->received++;
-		      udpdb->bytes->received += UDP_DATA;
-		      udpdb->block_count++;
+		      byte_offset = seq_byte - udpdb.block_start_byte;
+		      memcpy (udpdb.block + byte_offset, udpdb.sock->buf + UDP_HEADER, UDP_DATA);
+		      udpdb.packets->received++;
+		      udpdb.bytes->received += UDP_DATA;
+		      udpdb.block_count++;
 		    }
 		  // packet belongs in subsequent block
 		  else
@@ -814,59 +850,59 @@ int main (int argc, char *argv[]) {
 		      if (temp_idx < temp_max)
 			{
 			  // save packet to temp buffer
-			  memcpy (temp_buffers[temp_idx], udpdb->sock->buf + UDP_HEADER, UDP_DATA);
+			  memcpy (temp_buffers[temp_idx], udpdb.sock->buf + UDP_HEADER, UDP_DATA);
 			  temp_seq_byte[temp_idx] = seq_byte;
 			  temp_idx++;
 			}
 		      else
 			{
-			  udpdb->packets->dropped++;
-			  udpdb->bytes->dropped += UDP_DATA;
+			  udpdb.packets->dropped++;
+			  udpdb.bytes->dropped += UDP_DATA;
 			}
 		    }
 		}
 	    }
 
 	  // now check for a full buffer or full temp queue
-	  if ((udpdb->block_count >= udpdb->packets_per_buffer) || (temp_idx >= temp_max))
+	  if ((udpdb.block_count >= udpdb.packets_per_buffer) || (temp_idx >= temp_max))
 	    {
-	      syslog (LOG_INFO, "BLOCK COMPLETE seq_no=%"PRIu64", "
+	      if (DEBUG) syslog (LOG_DEBUG, "BLOCK COMPLETE seq_no=%"PRIu64", "
 		      "ant_id=%"PRIu16", block_count=%"PRIu64", "
-		      "temp_idx=%d\n", seq_no, ant_id,  udpdb->block_count, 
+		      "temp_idx=%d\n", seq_no, ant_id,  udpdb.block_count, 
 		      temp_idx);
 	      
-	      uint64_t dropped = udpdb->packets_per_buffer - udpdb->block_count;
+	      uint64_t dropped = udpdb.packets_per_buffer - udpdb.block_count;
 	      if (dropped)
 		{
-		  udpdb->packets->dropped += dropped;
-		  udpdb->bytes->dropped += (dropped * UDP_DATA);
+		  udpdb.packets->dropped += dropped;
+		  udpdb.bytes->dropped += (dropped * UDP_DATA);
 		}
 
 	      // get a new buffer and write any temp packets saved 
-	      if (dsaX_udpdb_new_buffer (udpdb) < 0)
+	      if (dsaX_udpdb_new_buffer (&udpdb) < 0)
 		{
 		  syslog(LOG_ERR, "receive_obs: dsaX_udpdb_new_buffer failed");
 		  return EXIT_FAILURE;
 		}
 
-	      syslog(LOG_INFO, "block bytes: %"PRIu64" - %"PRIu64"\n", udpdb->block_start_byte, udpdb->block_end_byte);
+	      if (DEBUG) syslog(LOG_DEBUG, "block bytes: %"PRIu64" - %"PRIu64"\n", udpdb.block_start_byte, udpdb.block_end_byte);
   
 	      // include any futuristic packets we saved
 	      for (i=0; i < temp_idx; i++)
 		{
 		  seq_byte = temp_seq_byte[i];
-		  byte_offset = seq_byte - udpdb->block_start_byte;
-		  if (byte_offset < udpdb->hdu_bufsz)
+		  byte_offset = seq_byte - udpdb.block_start_byte;
+		  if (byte_offset < udpdb.hdu_bufsz)
 		    {
-		      memcpy (udpdb->block + byte_offset, temp_buffers[i], UDP_DATA);
-		      udpdb->block_count++;
-		      udpdb->packets->received++;
-		      udpdb->bytes->received += UDP_DATA;
+		      memcpy (udpdb.block + byte_offset, temp_buffers[i], UDP_DATA);
+		      udpdb.block_count++;
+		      udpdb.packets->received++;
+		      udpdb.bytes->received += UDP_DATA;
 		    }
 		  else
 		    {
-		      udpdb->packets->dropped++;
-		      udpdb->bytes->dropped += UDP_DATA;
+		      udpdb.packets->dropped++;
+		      udpdb.bytes->dropped += UDP_DATA;
 		    }
 		}
 	      temp_idx = 0;
@@ -874,7 +910,7 @@ int main (int argc, char *argv[]) {
 	}
 
       // packet has been inserted or saved by this point
-      udpdb->sock->have_packet = 0;
+      udpdb.sock->have_packet = 0;
 
     }
 

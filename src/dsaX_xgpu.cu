@@ -17,13 +17,13 @@ using std::endl;
 #include <netinet/in.h>
 #include <time.h>
 #include <syslog.h>
-#include <pthread.h>
 
 #include <thrust/fill.h>
 #include <thrust/device_vector.h>
 #include <thrust/sequence.h>
 #include <thrust/functional.h>
 #include <thrust/transform.h>
+#include <thrust/scatter.h>
 
 #include "dada_cuda.h"
 #include "dada_client.h"
@@ -42,7 +42,6 @@ using std::endl;
 int quit_threads = 0;
 char STATE[20];
 int DEBUG = 0;
-char iP[100];
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out);
 int dada_bind_thread_to_core (int core);
@@ -65,12 +64,75 @@ void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out)
 
 }
 
+/* functor to make map */
+struct map_functor
+{
+
+  int n;
+  map_functor(int _n) : n(_n) {}
+  
+  __device__
+  int operator()(const int x) const {
+    
+    int i = (int)(x/(NSNAPS*12));
+    return x+i*n;
+    
+  }
+}; 
+
+/* KERNEL */
+
+// input is [Time, Ant (NSNAPS snaps), Chan (NCHANG groups), ant (3 per snap), chan (384 per group), time (2 per packet), pol (2), R/I]
+// output is [time, frequency, ANT, pol, ri]
+// here, ANT=16, frequency=1536
+// strictly expect NNATINTS*NCORRINTS time samples per call. Use NNATINTS/2 blocks and NCORRINTS threads
+__global__
+void massage(char *inpt, char *output) {
+
+  int idx = blockIdx.x*blockDim.x + threadIdx.x; // global index - runs over Time
+
+  int NBYTES_PER_THREAD = NSNAPS*NCHANG*3*384*2*2; // number of bytes per thread
+  int inpt_sidx = NBYTES_PER_THREAD*idx; // start idx for input
+  int output_sidx = 2*NCHAN*NSNAPS*3*2*2*idx; // start idx for output
+  int inpt_idx,output_idx;
+
+  __shared__ char toutp[2*NCHAN*NSNAPS*3*2*2];
+  
+  for (int i1=0;i1<NSNAPS;i1++) { // Ant
+    for (int i2=0;i2<NCHANG;i2++) { // Chan
+      for (int i3=0;i3<3;i3++) { // ant
+	for (int i4=0;i4<384;i4++) { // chan
+	  for (int i5=0;i5<2;i5++) { // time
+
+	    inpt_idx = inpt_sidx + 2 * (i1*NCHANG*3*384*2 + i2*3*384*2 + i3*384*2 + i4*2 + i5);
+	    
+	    output_idx = i5*NCHAN*NSNAPS*3*2*2 + (i2*384+i4)*NSNAPS*3*2*2 + (i1*3+i3)*2*2;
+
+            // real parts
+	    toutp[output_idx] = ((char)(((unsigned char)(inpt[inpt_idx]) & (unsigned char)(15)) << 4))/16;
+	    toutp[output_idx+2] = ((char)(((unsigned char)(inpt[inpt_idx+1]) & (unsigned char)(15)) << 4))/16;
+	    // imaginary parts
+	    toutp[output_idx+1] = ((char)((unsigned char)(inpt[inpt_idx]) & (unsigned char)(240)))/16;
+	    toutp[output_idx+3] = ((char)((unsigned char)(inpt[inpt_idx+1]) & (unsigned char)(240)))/16;	    	    
+
+	  }
+	}
+      }
+    }
+  }
+
+  __syncthreads();
+
+  for (int i=0;i<2*NCHAN*NSNAPS*3*2*2;i++) {
+    output[output_sidx+i] = toutp[i];
+  }
+}
+
 void usage()
 {
 fprintf (stdout,
 	   "dsaX_xgpu [options]\n"
 	   " -c core   bind process to CPU core [no default]\n"
-	   " -i IP to listen on for control commands [no default]\n"
 	   " -d send debug messages to syslog\n"
 	   " -h print usage\n");
 }
@@ -98,78 +160,11 @@ void simple_extract(float *matr, float *mati, float *output) {
 }
 
 
-/* THREADS */
-
-// CONTROL THREAD
-
-void control_thread () {
-
-  syslog(LOG_INFO, "control_thread: starting");
-
-  // port on which to listen for control commands
-  int port = XGPU_CONTROL_PORT;
-  char sport[10];
-  sprintf(sport,"%d",port);
-
-  // buffer for incoming command strings, and setup of socket
-  int bufsize = 1024;
-  char* buffer = (char *) malloc (sizeof(char) * bufsize);
-  memset(buffer, '\0', bufsize);
-  const char* whitespace = " ";
-  char * command = 0;
-  char * args = 0;
-
-  struct addrinfo hints;
-  struct addrinfo* res=0;
-  memset(&hints,0,sizeof(hints));
-  struct sockaddr_storage src_addr;
-  socklen_t src_addr_len=sizeof(src_addr);
-  hints.ai_family=AF_INET;
-  hints.ai_socktype=SOCK_DGRAM;
-  getaddrinfo(iP,sport,&hints,&res);
-  int fd;
-  ssize_t ct;
-  char tmpstr;
-  char cmpstr = 'p';
-  char *endptr;
-  uint64_t tmps;
-  char * token;
-  
-  syslog(LOG_INFO, "control_thread: created socket on port %d", port);
-  
-  while (!quit_threads) {
-    
-    fd = socket(res->ai_family,res->ai_socktype,res->ai_protocol);
-    bind(fd,res->ai_addr,res->ai_addrlen);
-    memset(buffer,'\0',sizeof(buffer));
-    syslog(LOG_INFO, "control_thread: waiting for packet");
-    ct = recvfrom(fd,buffer,1024,0,(struct sockaddr*)&src_addr,&src_addr_len);
-    
-    syslog(LOG_INFO, "control_thread: received buffer string %s",buffer);
-
-    // INTERPRET BUFFER STRING
-    // NOTHING TO RECEIVE AT THE MOMENT
-    // TODO
-    
-    
-    close(fd);
-    
-  }
-
-  free (buffer);
-
-  syslog(LOG_INFO, "control_thread: exiting");
-
-  /* return 0 */
-  int thread_result = 0;
-  pthread_exit((void *) &thread_result);
-
-}
-
+// MAIN
 
 int main (int argc, char *argv[]) {
 
-  // startup syslog message
+// startup syslog message
   // using LOG_LOCAL0
   openlog ("dsaX_xgpu", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
   syslog (LOG_NOTICE, "Program started by User %d", getuid ());
@@ -179,14 +174,14 @@ int main (int argc, char *argv[]) {
   dada_hdu_t* hdu_out = 0;
 
   // data block HDU keys
-  key_t in_key = REORDER_BLOCK_KEY;
+  key_t in_key = CAPTURE_BLOCK_KEY;
   key_t out_key = XGPU_BLOCK_KEY;
   
   // command line arguments
   int core = -1;
   int arg = 0;
   
-  while ((arg=getopt(argc,argv,"c:d:i:h")) != -1)
+  while ((arg=getopt(argc,argv,"c:dh")) != -1)
     {
       switch (arg)
 	{
@@ -205,18 +200,7 @@ int main (int argc, char *argv[]) {
 	case 'd':
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
-	case 'i':
-	  if (optarg)
-	    {	      
-	      strcpy(iP,optarg);
-	      break;
-	    }
-	  else
-	    {
-	      syslog(LOG_ERR,"-i flag requires argument");
-	      usage();
-	      return EXIT_FAILURE;
-	    }
+	  break;
 	case 'h':
 	  usage();
 	  return EXIT_SUCCESS;
@@ -226,32 +210,27 @@ int main (int argc, char *argv[]) {
   // record STATE info
   sprintf(STATE,"NOBUFFER");
 
-  // START THREADS
-  
-  // start control thread
-  int rval = 0;
-  pthread_t control_thread_id, stats_thread_id;
-  rval = pthread_create (&control_thread_id, 0, (void *) control_thread);
-  if (rval != 0) {
-    syslog(LOG_ERR, "Error creating control_thread: %s", strerror(rval));
-    return -1;
-  }
-  syslog(LOG_NOTICE, "Created control thread, listening on %s:%d",iP,REORDER_CONTROL_PORT);
-
   // Bind to cpu core
   if (core >= 0)
     {
       if (dada_bind_thread_to_core(core) < 0)
 	syslog(LOG_ERR,"failed to bind to core %d", core);
       syslog(LOG_NOTICE,"bound to core %d", core);
-    }
-
+    }  
+  
+  // for scatter operation
+  syslog(LOG_INFO, "preparing map");
+  uint64_t block_feed = NREORDERS*NNATINTS*NCORRINTS*NCHAN*NSNAPS*3*2*2;
+  thrust::device_vector<int> map(block_feed/NREORDERS);
+  thrust::sequence(map.begin(),map.end(),(int)0,(int)1);
+  int nnn = NANT*2*2-NSNAPS*3*2*2;
+  thrust::transform(map.begin(),map.end(),map.begin(),map_functor(nnn));  
   
   // DADA stuff
   
   syslog (LOG_INFO, "creating in and out hdus");
-
-  hdu_in  = dada_hdu_create (log);
+  
+  hdu_in  = dada_hdu_create ();
   dada_hdu_set_key (hdu_in, in_key);
   if (dada_hdu_connect (hdu_in) < 0) {
     syslog (LOG_ERR,"could not connect to dada buffer in");
@@ -262,7 +241,7 @@ int main (int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  hdu_out  = dada_hdu_create (log);
+  hdu_out  = dada_hdu_create ();
   dada_hdu_set_key (hdu_out, out_key);
   if (dada_hdu_connect (hdu_out) < 0) {
     syslog (LOG_ERR,"could not connect to output  buffer");
@@ -314,8 +293,8 @@ int main (int argc, char *argv[]) {
   uint64_t block_out = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
   syslog(LOG_INFO, "main: have input and output block sizes %d %d\n",block_size,block_out);
   // check that these are correct
-  // one time sample is NCHAN*NANT*NPOL bytes. Expect NNATINTS*NCORRINTS times per block.
-  if (block_size != NNATINTS*NCORRINTS*NCHAN*NANT*NPOL) {
+  // one time sample is NCHAN*NANT*NPOL bytes. Expect NREORDERS*NNATINTS*NCORRINTS times per block.
+  if (block_size != NREORDERS*NNATINTS*NCORRINTS*NCHANG*NSNAPS*4608/2) {
     syslog(LOG_ERR,"wrong block_size %"PRIu64" in input",block_size);
     return EXIT_FAILURE;
   }
@@ -357,13 +336,29 @@ int main (int argc, char *argv[]) {
   float *output_vis = (float *)malloc(sizeof(float)*XGPU_SIZE);
   memset((char *)array_h,0,2*context.array_len);
 
+  // set up reorder
+  //char * ob, * ob_all;  
+  //ob = (char *)malloc(sizeof(char)*block_feed);
+  //ob_all = (char *)malloc(sizeof(char)*NNATINTS*NCORRINTS*NCHAN*32*2*2);
+  //memset(ob_all,0,NNATINTS*NCORRINTS*NCHAN*32*2*2);
+  thrust::device_vector<char> d_array(NNATINTS*NCORRINTS*NCHAN*NANT*2*2);
+  thrust::fill(d_array.begin(),d_array.end(),0);
+  thrust::device_vector<char> d_input(block_size);
+  thrust::device_vector<char> d_output(block_feed);
+  char *dinput = thrust::raw_pointer_cast(d_input.data());
+  char *doutput = thrust::raw_pointer_cast(d_output.data());
+  
   // get things started
   bool observation_complete=0;
   bool started = 0;
   syslog(LOG_INFO, "starting observation");
+  int blocks = 0;
 
+  
   while (!observation_complete) {
 
+    if (DEBUG) syslog(LOG_DEBUG,"reading block");    
+    
     // open block
     block = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
 
@@ -371,21 +366,32 @@ int main (int argc, char *argv[]) {
       sprintf(STATE,"RUN");
       syslog(LOG_INFO,"now in RUN state");
       started=1;
-    }
+    }    
+
+    if (DEBUG) syslog(LOG_DEBUG,"reordering");    
     
     // DO STUFF
 
+    // reorder block
+    thrust::copy(block,block+block_size,d_input.begin());
+    thrust::fill(d_output.begin(),d_output.end(),0);
+    massage<<<512, 32>>>(dinput,doutput);
+    cudaDeviceSynchronize();
+    //thrust::copy(d_output.begin(),d_output.end(),ob);    
+    
     // zero matr and mati
-    for (int i=0;i<XGPU_SIZE;i++) {
+    /*for (int i=0;i<XGPU_SIZE;i++) {
       matr[i] = 0.;
       mati[i] = 0.;
-    }
+      } */   
+
+    if (DEBUG) syslog(LOG_DEBUG,"looping over accums");    
     
     // loop over accumulations
-    for (int accum=0;accum<NCORRINTS;accum++) {
+    /*for (int accum=0;accum<NCORRINTS;accum++) {
 
       // get data
-      thrust::copy(block + accum*NNATINTS*NCHAN*NANT*NPOL, block + (accum+1)*NNATINTS*NCHAN*NANT*NPOL,(char *)array_h);
+      thrust::copy(ob + accum*NNATINTS*NCHAN*NANT*NPOL, ob + (accum+1)*NNATINTS*NCHAN*NANT*NPOL,(char *)array_h);
     
       // run xGPU
       xgpu_error = xgpuCudaXengine(&context, syncOp);
@@ -398,25 +404,58 @@ int main (int argc, char *argv[]) {
       for (int i=0;i<XGPU_SIZE;i++) {
 	matr[i] += cuda_matrix_h[i].real;
 	mati[i] += cuda_matrix_h[i].imag;
-      }
-	
-    }
+	}
+      
+    }*/
 
-    // simple extract
-    simple_extract(matr,mati,output_buffer);
+    // NREORDERS*NNATINTS*NCORRINTS*NCHAN*NSNAPS*3*2*2;
+
+    // loop over reorders, writing each time
     
-    // write to output
-    written = ipcio_write (hdu_out->data_block, (char *)output_buffer, block_out);
-    if (written < block_out)
-      {
-	syslog(LOG_ERR, "main: failed to write all data to datablock [output]");
-	dsaX_dbgpu_cleanup (hdu_in, hdu_out);
-	return EXIT_FAILURE;
+    for (int reo=0;reo<NREORDERS;reo++) {
+
+      // get data from d_output into array_h via scatter operation
+      thrust::scatter(d_output.begin()+reo*NNATINTS*NCORRINTS*NCHAN*NSNAPS*3*2*2,d_output.begin()+(reo+1)*NNATINTS*NCORRINTS*NCHAN*NSNAPS*3*2*2,map.begin(),d_array.begin());     
+
+      if (DEBUG) syslog(LOG_DEBUG,"running xGPU");
+      
+      // put it in array_h
+      thrust::copy(d_array.begin(), d_array.end(), (char *)array_h);
+
+      // run xGPU
+      xgpu_error = xgpuCudaXengine(&context, syncOp);                                               
+      if(xgpu_error) {
+	syslog(LOG_ERR, "xGPU error %d\n", xgpu_error);                                               
+	return EXIT_FAILURE;                                                                          
+      }
+    
+      // accumulate
+      for (int i=0;i<XGPU_SIZE;i++) {
+	matr[i] = cuda_matrix_h[i].real;
+	mati[i] = cuda_matrix_h[i].imag;
+      }
+    
+      if (DEBUG) syslog(LOG_DEBUG,"extracting");    
+    
+      // simple extract
+      simple_extract(matr,mati,output_buffer);
+    
+      // write to output
+      written = ipcio_write (hdu_out->data_block, (char *)output_buffer, block_out);
+      if (written < block_out)
+	{
+	  syslog(LOG_ERR, "main: failed to write all data to datablock [output]");
+	  dsaX_dbgpu_cleanup (hdu_in, hdu_out);
+	  return EXIT_FAILURE;
+	}
+
+      if (DEBUG) {
+	syslog(LOG_DEBUG, "written block %d",blocks);
+	blocks++;
       }
 
-    if (DEBUG) 
-      syslog(LOG_DEBUG, "written block");
-
+    }
+      
     if (bytes_read < block_size)
       observation_complete = 1;
 
@@ -424,15 +463,12 @@ int main (int argc, char *argv[]) {
 
   }
 
-  // close threads
-  syslog(LOG_INFO, "joining control_thread and stats_thread");
-  quit_threads = 1;
-  void* result=0;
-  pthread_join (control_thread_id, &result);
 
   free(output_buffer);
   free(matr);
   free(mati);
+  //free(ob);
+  //free(ob_all);
   dada_cuda_dbunregister(hdu_in);
   dsaX_dbgpu_cleanup (hdu_in, hdu_out);
   

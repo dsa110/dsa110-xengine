@@ -1,0 +1,5 @@
+import sys, os
+
+# sends message to capture script only
+#os.system('echo -n '+sys.argv[1]+'-'+sys.argv[2]+' | nc -4u -w1 192.168.3.29 11223')
+os.system('echo -n '+sys.argv[1]+'-'+sys.argv[2]+'- | nc -4u -w1 192.168.3.29 11226 &')

@@ -1,6 +1,8 @@
 // -*- c++ -*-
 
-/* will reorder raw data for input to xgpu */
+/* will generate test vector mimicking raw data input */
+/* test vector is all real and has ramp in amplitude */
+/* different antennas are added by 1, and pols go opposite ways */
 
 #include <iostream>
 #include <algorithm>
@@ -40,6 +42,22 @@ int quit_threads = 0;
 char STATE[20];
 int DEBUG = 0;
 
+#define NSUM 25
+
+double gaussrand()
+{
+  double x = 0;
+  int i;
+  for(i = 0; i < NSUM; i++)
+    x += (double)rand() / RAND_MAX;
+
+  x -= NSUM / 2.0;
+  x /= sqrt(NSUM / 12.0);
+
+  return x;
+}
+
+
 void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out);
 int dada_bind_thread_to_core (int core);
 
@@ -63,50 +81,10 @@ void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out)
 void usage()
 {
   fprintf (stdout,
-	   "dsaX_reorder_raw [options]\n"
+	   "dsaX_testVec [options]\n"
 	   " -c core   bind process to CPU core [no default]\n"
 	   " -d send debug messages to syslog\n"
 	   " -h print usage\n");
-}
-
-/* KERNEL */
-
-// input is [Time, Ant (NSNAPS snaps), Chan (NCHANG groups), ant (3 per snap), chan (384 per group), time (2 per packet), pol (2), R/I]
-// output is [time, frequency, ANT, pol, ri]
-// here, ANT=32, frequency=1536
-// strictly expect NNATINTS*NCORRINTS time samples per call. Use NNATINTS/2 blocks and NCORRINTS threads
-__global__
-void massage(char *inpt, char *output) {
-
-  int idx = blockIdx.x*blockDim.x + threadIdx.x; // global index - runs over Time
-  int NBYTES_PER_THREAD = NSNAPS*NCHANG*3*384*2*2; // number of bytes per thread 
-  int inpt_sidx = NBYTES_PER_THREAD*idx; // start idx for input
-  int output_sidx = 1536*32*2*2*idx*2; // start idx for output
-  int inpt_idx,output_idx;
-  
-  for (int i1=0;i1<NSNAPS;i1++) { // Ant
-    for (int i2=0;i2<NCHANG;i2++) { // Chan
-      for (int i3=0;i3<3;i3++) { // ant
-	for (int i4=0;i4<384;i4++) { // chan
-	  for (int i5=0;i5<2;i5++) { // time
-
-	    inpt_idx = inpt_sidx + 2 * (i1*NCHANG*3*384*2 + i2*3*384*2 + i3*384*2 + i4*2 + i5);
-	    output_idx = output_sidx + i5*1536*32*2*2 + (i2*384+i4)*32*2*2 + (i1*3+i3)*2*2;
-
-	    // real parts
-	    output[output_idx] = ((char)(((unsigned char)(inpt[inpt_idx]) & (unsigned char)(15)) << 4))/16;
-	    output[output_idx+2] = ((char)(((unsigned char)(inpt[inpt_idx+1]) & (unsigned char)(15)) << 4))/16;
-	    // imaginary parts
-	    output[output_idx+1] = ((char)((unsigned char)(inpt[inpt_idx]) & (unsigned char)(240)))/16;
-	    output[output_idx+3] = ((char)((unsigned char)(inpt[inpt_idx+1]) & (unsigned char)(240)))/16;
-	    
-
-	  }
-	}
-      }
-    }
-  }
-	    
 }
 
 // MAIN
@@ -115,7 +93,7 @@ int main (int argc, char *argv[]) {
 
   // startup syslog message
   // using LOG_LOCAL0
-  openlog ("dsaX_reorder_raw", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
+  openlog ("dsaX_testVec", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
   syslog (LOG_NOTICE, "Program started by User %d", getuid ());
 
   // set CUDA device
@@ -126,8 +104,8 @@ int main (int argc, char *argv[]) {
   dada_hdu_t* hdu_out = 0;
 
   // data block HDU keys
-  key_t in_key = CAPTURE_BLOCK_KEY;
-  key_t out_key = REORDER_BLOCK_KEY;
+  key_t out_key = CAPTURE_BLOCK_KEY;
+  key_t in_key = TEST_BLOCK_KEY;
   
   // command line arguments
   int core = -1;
@@ -238,13 +216,12 @@ int main (int argc, char *argv[]) {
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
   uint64_t block_out = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
   syslog(LOG_INFO, "main: have input and output block sizes %d %d\n",block_size,block_out);
-  /*if (block_out != block_size) {
+  if (block_out != block_size) {
     syslog(LOG_ERR,"input and output block sizes not the same");
     return EXIT_FAILURE;
-    }*/
+  }
   uint64_t  bytes_read = 0;
-  char * block, * output_buffer;
-  output_buffer = (char *)malloc(sizeof(char)*block_out);
+  char * block;
   uint64_t written, block_id;
   thrust::device_vector<char> d_input(block_size);
   thrust::device_vector<char> d_output(block_out);
@@ -254,10 +231,55 @@ int main (int argc, char *argv[]) {
   // register input hdu with gpu
   //dada_cuda_dbregister(hdu_in);
 
+  // fill test vector
+  //  [Time, ANT (NSNAPS), Chan (NCHANG), Ant (3), chan (384), time (2 per packet), pol (2), R/I]
+  // all 4 bit
+  syslog(LOG_INFO, "generating test vector");
+  char * tvec, cvr;
+  float tvr;
+  uint64_t NVEC;
+  NVEC = block_size / (NSNAPS*NCHANG*3*384*2*2);
+  float nois[NVEC];
+  for (int i=0;i<NVEC;i++) nois[i] = gaussrand();
+  tvec = (char *)malloc(sizeof(char)*block_size);
+  int antenna, channel, idx=0;
+  for (int tt=0;tt<NVEC;tt++) {
+    for (int snap=0;snap<NSNAPS;snap++) {
+      for (int chang=0;chang<NCHANG;chang++) {
+	for (int aant=0;aant<3;aant++) {
+	  for (int chan=0;chan<384;chan++) {
+	    for (int tim=0;tim<2;tim++) {
+	      for (int pol=0;pol<2;pol++) {
+
+		antenna = snap*3+aant;
+		channel = chan*384+chan;
+
+		if (pol==0) 
+		  tvr = 2*(antenna*1./(3.*NSNAPS)+channel*1./NCHAN)*nois[tt];
+		else
+		  tvr = 2*(antenna*1./(3.*NSNAPS)+(NCHAN-1.-channel*1.)/NCHAN)*nois[tt];
+		
+		cvr = ((char)(tvr)) * 16;
+		tvec[idx] = (char)(((unsigned char)(cvr)) & ((unsigned char)(240)));		
+		
+		idx += 1;
+		
+	      }
+	    }
+	  }
+	}
+      }
+    }
+  }
+
+  
+  
+  
   // set up
 
   bool observation_complete=0;
   int blocks = 0;
+  int ct = 0;
   bool started = 0;
   syslog(LOG_INFO, "starting observation");
 
@@ -272,16 +294,10 @@ int main (int argc, char *argv[]) {
       started=1;
     }
     
-    // DO STUFF
-    //thrust::copy(block,block+block_size,d_input.begin());
-    //thrust::fill(d_output.begin(),d_output.end(),0);
-    //massage<<<NCORRINTS/2, NNATINTS>>>(dinput,doutput);
-    //cudaDeviceSynchronize();
-     
-    
+    // DO STUFF    
+
     // write to output
-    //thrust::copy(d_output.begin(),d_output.end(),output_buffer);
-    written = ipcio_write (hdu_out->data_block, output_buffer, block_out);
+    written = ipcio_write (hdu_out->data_block, tvec, block_out);
     if (written < block_out)
       {
 	syslog(LOG_ERR, "main: failed to write all data to datablock [output]");
@@ -301,7 +317,7 @@ int main (int argc, char *argv[]) {
 
   }
 
-  free(output_buffer);
+  free(tvec);
   dsaX_dbgpu_cleanup (hdu_in, hdu_out);
   
 }
