@@ -1,0 +1,676 @@
+// -*- c++ -*-       
+/* will implement the 64-input beamformer 
+
+does N beams of 256
+
+order is (taking time as 8x 8.192e-6) 
+[2048 time, 63 antennas, 768 channels, 2 pol, r/i]
+Load in 16 times at a time, so that we have (in units of what needs to be added)
+[16 time, 63 antennas, 96 channels, 8 chunnels, 2 pol, r/i]
+
+This should be reordered on the cpu to 
+[16 time, 96 channels, 63 antennas, 8 chunnels, 2 pol, r/i]
+
+The first kernel, launched with 1536 blocks of 64 threads, needs to
+ - promote each measurement and store in shared mem, parallelizing over ants. need only 8 kB. 
+ - each thread processes 4 beams, adding everything. for each beam,
+  + for each chunnel and pol, calculate weights using cal weights and ant positions, 
+  + add everything into output array
+Output array has order [beam, 96 frequency, 16 time]
+
+Shared mem requirement: 8 kB for promoted data, 512b for positions, nch*1024b for weights
+
+Initialy we start with 4-bit numbers. these are first rotated using 17-bit weights, yielding 22-bit numbers. 
+these are then added: (64 ant)^2 * (2 complex) * (32 chan) * (2 pol) * (16 time). 
+after adding by 64 ants, we have 28-bit numbers. Need to bit shift right by 19 after adding 64 ants. This will yield 29-bit numbers. Need to bit shift right by 21 to pick off lowest 8 bits. 
+
+Do everything in floating point until second kernel. 
+
+Second kernel will simply add times and adjacent channels and pick leading 8 bits
+Then copy back to specific locations in host to form final [beam, time, frequency] array, to be sent to corner turn.
+
+ */
+#include <iostream>
+#include <algorithm>
+using std::cout;
+using std::cerr;
+using std::endl;
+#include <stdio.h>
+#include <stdlib.h>
+#include <cmath>
+#include <string.h>
+#include <unistd.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <time.h>
+#include <syslog.h>
+#include <pthread.h>
+
+#include "dada_cuda.h"
+#include "dada_client.h"
+#include "dada_def.h"
+#include "dada_hdu.h"
+#include "multilog.h"
+#include "ipcio.h"
+#include "ipcbuf.h"
+#include "dada_affinity.h"
+#include "ascii_header.h"
+#include "dsaX_def.h"
+#include "cube/cube.h"
+#include "xgpu.h"
+
+// global variables
+int DEBUG = 0;
+
+
+// kernel for summing and requantizing
+// input array has order [beam, 96 frequency, 16 time]
+// need to output to [beam, 48 frequency]
+// bp is 48-channel bandpass for each beam 
+// run with 256*24=6144 blocks and 32 threads
+__global__
+void adder(float *input, unsigned char *output, float *bp) {
+
+  // get block and thread ids
+  int bidx = blockIdx.x; // assume 256*24=6144
+  int tidx = threadIdx.x; // assume 32
+  //int fidx = 2*(bidx % 24);
+  int beamidx = (int)(bidx / 24);
+  
+  // declare shared mem
+  __shared__ float data[64]; // data block to be summed  
+
+  // transfer from input to shared mem
+  data[2*tidx] = input[bidx*64+tidx*2];
+  data[2*tidx+1] = input[bidx*64+tidx*2+1];
+
+  // sync
+  __syncthreads();
+  
+  // do sum into data[0] and data[32]
+  if (tidx<16) {
+    data[tidx] += data[tidx+16];
+    data[tidx] += data[tidx+8];
+    data[tidx] += data[tidx+4];
+    data[tidx] += data[tidx+2];
+    data[tidx] += data[tidx+1];
+  }
+  if (tidx>=16) {
+    data[tidx+16] += data[tidx+32];
+    data[tidx+16] += data[tidx+24];
+    data[tidx+16] += data[tidx+20];
+    data[tidx+16] += data[tidx+18];
+    data[tidx+16] += data[tidx+17];
+  }
+  
+  // store
+  if (tidx == 0) {
+    //output[bidx*2] = (unsigned char)(__float2int_rn(3.6));
+    //output[bidx*2+1] = (unsigned char)(__float2int_rn(12.5));    
+    output[bidx*2] = (unsigned char)(__float2int_rn(data[0]*bp[beamidx])/2);
+    output[bidx*2+1] = (unsigned char)(__float2int_rn(data[32]*bp[beamidx])/2);
+    //if (beamidx==BEAM_OUT) printf("%hu %hu\n",output[bidx*2],output[bidx*2+1]);
+  }
+      
+}
+
+// kernel for beamforming
+/*
+
+Assumes that up to NANT antennas (nominally 63) are populated. 
+
+Input is [16 time, 96 channels, 63 antennas, 8 chunnels, 2 pol, r/i]
+1536 blocks of 64 threads.
+First, load in antpos and weights and freqs to shared mem. 
+Then promote data and store in shared mem. parallelize over ants. 
+Synchronize each thread block. 
+
+Now move to beams:
+ - each thread processes 4 beams, adding everything. for each beam,
+  + for each chunnel and pol, calculate weights using cal weights and ant positions, 
+  + -- apply weights
+  + -- add everything into output array
+
+Arithmetic... for rotation, d2r = wr*dr-wi*di; d2i = wi*dr+wr*di
+
+Conventions for beamforming. beam 0 is furthest East, beam 127 is at meridian. antpos (D) is easting. 
+for bf weight calculation, where theta = s(127-n), ang = 2*pi*nu*theta*D/c; wr = cos(ang), wi = -sin(ang)
+use __float2int_rn, cosf, sinf intrinsics. 
+
+Output array has order [beam, 96 frequency, 16 time]
+*/
+__global__
+void beamformer(char *input, float *antpos, float *weights, float * freqs, float *output) {
+
+  // get block and thread ids
+  int bidx = blockIdx.x; // assume 1536
+  int tidx = threadIdx.x; // assume 64
+  int idx; // convenience
+  int tim_idx = (int)(bidx/96);
+  int f_idx = (int)(bidx % 96);
+  int oidx = f_idx*16 + tim_idx;
+  
+  // declare shared memory
+  __shared__ float s_antpos[64]; // easting in m
+  __shared__ float s_weights[64][2][2]; // ant, pol, r/i - 96 weights. 
+  __shared__ float data[NANT][8][2][2]; // ant, chunnel, pol, r/i
+  __shared__ float s_freqs[4]; // for four local freqs
+  
+  // load antpos and weights and freqs
+  s_antpos[tidx] = antpos[tidx];
+  s_weights[tidx][0][0] = weights[tidx*4*NW + f_idx*4];
+  s_weights[tidx][0][1] = weights[tidx*4*NW + f_idx*4 + 1];
+  s_weights[tidx][1][0] = weights[tidx*4*NW + f_idx*4 + 2];
+  s_weights[tidx][1][1] = weights[tidx*4*NW + f_idx*4 + 3];
+  idx = f_idx*4;
+  s_freqs[0] = freqs[idx];
+  s_freqs[1] = freqs[idx+1];
+  s_freqs[2] = freqs[idx+2];
+  s_freqs[3] = freqs[idx+3];
+
+  // promote data to "data" array
+  if (tidx < NANT) {
+    for (int i=0;i<8;i++) {
+
+      idx = bidx*NANT*16+tidx*16+i*2;
+      data[tidx][i][0][0] = (float)(((char)((input[idx] & 15) << 4)) >> 4);
+      data[tidx][i][0][1] = (float)(((char)((input[idx] & 240))) >> 4);
+      idx += 1;
+      data[tidx][i][1][0] = (float)(((char)((input[idx] & 15) << 4)) >> 4);
+      data[tidx][i][1][1] = (float)(((char)((input[idx] & 240))) >> 4);
+      
+    }
+  }
+
+  // block
+  __syncthreads();
+
+  // now loop over beams
+
+  float breg, twr, twi, wr, wi, dr1, di1, dr2, di2; 
+  float theta, afac;
+  
+  for (int beam = tidx*4; beam < tidx*4+4; beam++) {
+
+    breg = 0.; // to add beam
+
+    theta = sep*(127.-beam*1.)*PI/10800.; // radians
+    
+    // loop over frequencies
+    for (int f = 0; f < 4; f++) {
+
+      afac = 2.*PI*s_freqs[f]*theta/CVAC; // factor for rotate
+      // loop over pol
+      for (int pol=0;pol<2;pol++) {
+
+	// to add real and imag parts
+	dr1 = 0.;
+	di1 = 0.;
+	dr2 = 0.;
+	di2 = 0.;
+	
+	for (int ant=0;ant<NANT;ant++) {
+	  
+	  twr = cosf(afac*s_antpos[ant]);
+	  twi = sinf(afac*s_antpos[ant]);
+	  wr = twr*s_weights[ant][pol][0] - twi*s_weights[ant][pol][1];
+	  wi = twi*s_weights[ant][pol][0] + twr*s_weights[ant][pol][1];
+
+	  // add into dr1 and 2 for timmys
+	  dr1 += data[ant][f*2][pol][0]*wr - data[ant][f*2][pol][1]*wi;
+	  di1 += data[ant][f*2][pol][1]*wr + data[ant][f*2][pol][0]*wi; 
+	  dr2 += data[ant][f*2+1][pol][0]*wr - data[ant][f*2+1][pol][1]*wi;
+	  di2 += data[ant][f*2+1][pol][1]*wr + data[ant][f*2+1][pol][0]*wi; 
+	  
+	}
+
+	// now add into breg
+	breg += dr1*dr1 + di1*di1 + dr2*dr2 + di2*di2;	
+	
+      }
+	  
+    }
+
+    // at this stage, breg is the beam power. need to write into output
+    output[beam*1536 + oidx] = breg;
+
+  }
+  
+}
+
+// function prototypes
+void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out);
+int dada_bind_thread_to_core (int core);
+int init_weights(char *fnam, float *antpos, float *weights);
+void reorder_block(char *block);
+void calc_bp(float *data, float *bp, int pr);
+
+
+// performs massive summation to calculate bp
+// input array has order [beam, 96 frequency, 16 time]
+// bp has size 48 - no way to avoid strided memory access
+// returns factor to correct data
+void calc_bp(float *data, float *bp, int pr) {
+
+  int i=0;
+  
+  for (int b=0;b<256;b++) {
+    for (int f=0;f<48;f++) {
+      for (int a=0;a<32;a++) {
+	bp[b] += data[i];
+	i++;
+      }
+    }
+  }
+
+}
+
+// performs cpu reorder of block to be loaded to GPU
+void reorder_block(char * block) {
+
+  // from [16 time, NANT antennas, 96 channels, 8 chunnels, 2 pol, r/i]
+  // to [16 time, 96 channels, NANT antennas, 8 chunnels, 2 pol, r/i]
+  // 24576*NANT in total. 1536*NANT per time
+  
+  char * output = (char *)malloc(sizeof(char)*24576*NANT);
+  
+  for (int i=0;i<16;i++) { // over time
+    for (int j=0;j<NANT;j++) { // over ants
+      for (int k=0;k<96;k++) { // over channels
+
+	// copy 16 bytes
+	memcpy(output + i*1536*NANT + k*NANT*16 + j*16, block + i*1536*NANT + j*1536 + k*16, 16); 
+	
+      }
+    }
+  }
+
+  memcpy(block,output,24576*NANT);
+  free(output);
+
+}
+
+
+// loads in weights
+int init_weights(char * fnam, float *antpos, float *weights) {
+
+  // assumes 64 antennas
+  // antpos: takes only easting
+  // weights: takes [ant, NW==96] 
+
+  FILE *fin;
+  
+  if (!(fin=fopen(fnam,"rb"))) {
+    syslog(LOG_ERR,"Couldn't open weights file %s",fnam);
+    return 1;
+  }
+
+  fread(antpos,64*sizeof(float),1,fin);
+  fread(weights,64*NW*2*2*sizeof(float),1,fin);
+  
+  fclose(fin);
+  syslog(LOG_INFO,"Loaded antenna positions and weights");
+  return 0;
+
+}
+
+
+void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out)
+{
+
+  if (dada_hdu_unlock_read (in) < 0)
+    {
+      syslog(LOG_ERR, "could not unlock read on hdu_in");
+    }
+  dada_hdu_destroy (in);
+
+  if (dada_hdu_unlock_write (out) < 0)
+    {
+      syslog(LOG_ERR, "could not unlock write on hdu_out");
+    }
+  dada_hdu_destroy (out);
+  
+}
+
+void usage()
+{
+  fprintf (stdout,
+	   "dsaX_beamformer [options]\n"
+	   " -c core   bind process to CPU core [no default]\n"
+	   " -d send debug messages to syslog\n"
+	   " -o freq of first chan [default 1530.0 MHz]\n"
+	   " -f filename for antenna stuff [no default]\n" 
+	   " -h print usage\n");
+}
+
+// MAIN
+
+int main (int argc, char *argv[]) {
+
+  // startup syslog message
+  // using LOG_LOCAL0
+  openlog ("dsaX_beamformer", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
+  syslog (LOG_NOTICE, "Program started by User %d", getuid ());
+  
+  /* DADA Header plus Data Unit */
+  dada_hdu_t* hdu_in = 0;
+  dada_hdu_t* hdu_out = 0;
+
+  // data block HDU keys
+  key_t in_key = COPY_BLOCK_KEY;
+  key_t out_key = BF_BLOCK_KEY;
+  
+  // command line arguments
+  int core = -1;
+  int arg = 0;
+  float fch1 = 1530.0;
+  char * fnam;
+  fnam=(char *)malloc(sizeof(char)*100);
+  sprintf(fnam,"nofile");  
+
+  while ((arg=getopt(argc,argv,"c:f:dh")) != -1)
+    {
+      switch (arg)
+	{
+	case 'c':
+	  if (optarg)
+	    {
+	      core = atoi(optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-c flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'f':
+	  if (optarg)
+	    {
+	      strcpy(fnam,optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-f flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }	  
+	case 'o':
+	  if (optarg)
+	    {
+	      fch1 = atof(optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-o flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }	  
+	case 'd':
+	  DEBUG=1;
+	  syslog (LOG_DEBUG, "Will excrete all debug messages");
+	  break;
+	case 'h':
+	  usage();
+	  return EXIT_SUCCESS;
+	}
+    }
+
+  // print stuff
+  syslog(LOG_INFO,"Forming 256 beams with sep %g arcmin, fch1 %g",sep,fch1);
+  syslog(LOG_INFO,"Using calibrations file %s",fnam);
+
+  // load in weights and antpos
+  float * antpos = (float *)malloc(sizeof(float)*64); // easting
+  float * weights = (float *)malloc(sizeof(float)*64*NW*2*2); // complex weights [ant, NW, pol, r/i]
+  float * freqs = (float *)malloc(sizeof(float)*384); // freq
+  for (int i=0;i<384;i++) freqs[i] = (fch1 - i*250./8192.)*1e6;
+  init_weights(fnam,antpos,weights);
+  
+  // Bind to cpu core
+  if (core >= 0)
+    {
+      if (dada_bind_thread_to_core(core) < 0)
+	syslog(LOG_ERR,"failed to bind to core %d", core);
+      syslog(LOG_NOTICE,"bound to core %d", core);
+    }
+  
+  // DADA stuff
+  
+  syslog (LOG_INFO, "creating in and out hdus");
+  
+  hdu_in  = dada_hdu_create ();
+  dada_hdu_set_key (hdu_in, in_key);
+  if (dada_hdu_connect (hdu_in) < 0) {
+    syslog (LOG_ERR,"could not connect to dada buffer in");
+    return EXIT_FAILURE;
+  }
+  if (dada_hdu_lock_read (hdu_in) < 0) {
+    syslog (LOG_ERR,"could not lock to dada buffer in");
+    return EXIT_FAILURE;
+  }
+
+  hdu_out  = dada_hdu_create ();
+  dada_hdu_set_key (hdu_out, out_key);
+  if (dada_hdu_connect (hdu_out) < 0) {
+    syslog (LOG_ERR,"could not connect to output  buffer");
+    return EXIT_FAILURE;
+  }
+  if (dada_hdu_lock_write(hdu_out) < 0) {
+    syslog (LOG_ERR, "could not lock to output buffer");
+    return EXIT_FAILURE;
+  }
+  
+  uint64_t header_size = 0;
+
+  // deal with headers
+  char * header_in = ipcbuf_get_next_read (hdu_in->header_block, &header_size);
+  if (!header_in)
+    {
+      syslog(LOG_ERR, "could not read next header");
+      dsaX_dbgpu_cleanup (hdu_in, hdu_out);
+      return EXIT_FAILURE;
+    }
+  if (ipcbuf_mark_cleared (hdu_in->header_block) < 0)
+    {
+      syslog (LOG_ERR, "could not mark header block cleared");
+      dsaX_dbgpu_cleanup (hdu_in, hdu_out);
+      return EXIT_FAILURE;
+    }
+
+  char * header_out = ipcbuf_get_next_write (hdu_out->header_block);
+  if (!header_out)
+    {
+      syslog(LOG_ERR, "could not get next header block [output]");
+      dsaX_dbgpu_cleanup (hdu_in, hdu_out);
+      return EXIT_FAILURE;
+    }
+  memcpy (header_out, header_in, header_size);
+  if (ipcbuf_mark_filled (hdu_out->header_block, header_size) < 0)
+    {
+      syslog (LOG_ERR, "could not mark header block filled [output]");
+      dsaX_dbgpu_cleanup (hdu_in, hdu_out);
+      return EXIT_FAILURE;
+    }
+  
+  // record STATE info
+  syslog(LOG_INFO,"dealt with dada stuff - now in LISTEN state");
+  
+  // get block sizes and allocate memory
+  uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
+  uint64_t block_out = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
+  syslog(LOG_INFO, "main: have input and output block sizes %llu %llu\n",block_size,block_out);
+  uint64_t  bytes_read = 0;
+  int nints = NPACKETS / 16;
+  uint64_t nbytes_per_int = block_size / nints;
+  uint64_t nbytes_per_out = block_out / nints;
+  char * block;
+  unsigned char * output_buffer;
+  output_buffer = (unsigned char *)malloc(sizeof(unsigned char)*block_out);
+  memset(output_buffer,0,block_out);
+  uint64_t written, block_id;
+  
+  // allocate host and device memory for calculations
+  char *d_indata;
+  unsigned char *d_outdata;
+  float *d_antpos, *d_weights, *d_freqs, *d_transfer, *d_bp;
+  cudaMalloc((void **)&d_indata, 16*96*NANT*8*2*sizeof(char)); // data input to bf kernel
+  cudaMalloc((void **)&d_outdata, 256*48*sizeof(unsigned char)); // data output from adder
+  cudaMalloc((void **)&d_antpos, 64*sizeof(float)); // ant positions
+  cudaMalloc((void **)&d_weights, 64*NW*2*2*sizeof(float)); // weights
+  cudaMalloc((void **)&d_freqs, 384*sizeof(float)); // freqs
+  cudaMalloc((void **)&d_transfer, 256*96*16*sizeof(float)); // output from beamformer
+  cudaMalloc((void **)&d_bp, 256*sizeof(float)); // bandpass
+  cudaMemcpy(d_antpos, antpos, 64*sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_weights, weights, 64*NW*2*2*sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_freqs, freqs, 384*sizeof(float), cudaMemcpyHostToDevice);
+  
+  float *h_transfer = (float *)malloc(sizeof(float)*256*96*16);
+  char *h_indata = (char *)malloc(sizeof(char)*16*NANT*96*8*2);
+  float *bp = (float *)malloc(sizeof(float)*256);
+  unsigned char *tmp_buf = (unsigned char *)malloc(sizeof(unsigned char)*256*48);
+  
+  // set up
+
+  int observation_complete=0;
+  int blocks = 0, started = 0;
+  
+  syslog(LOG_INFO, "starting observation");
+
+  while (!observation_complete) {
+
+    // open block
+    block = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
+
+    // DO STUFF
+
+    if (started==1) {
+
+      // loop over ints
+      for (int i=0;i<nints;i++) {
+
+	// copy to h_indata
+	memcpy(h_indata,block+i*nbytes_per_int,nbytes_per_int);
+
+	// rotate h_indata in place
+	reorder_block(h_indata);
+
+	// copy to device
+	cudaMemcpy(d_indata, h_indata, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice);
+
+	// run beamformer kernel
+	beamformer<<<1536, 64>>>(d_indata, d_antpos, d_weights, d_freqs, d_transfer);
+
+	// run adder kernel
+	adder<<<6144, 32>>>(d_transfer, d_outdata, d_bp);
+
+	// copy to host
+	cudaMemcpy(tmp_buf, d_outdata, 256*48*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+	for (int j=0;j<48;j++)
+	  output_buffer[i*48+j] = tmp_buf[BEAM_OUT*48+j];
+
+	if (DEBUG && i==10) {
+	  for (int j=0;j<48;j++) syslog(LOG_DEBUG,"%hu",output_buffer[i*48+j]);
+	}      
+	
+      }
+
+
+    }
+    
+    if (started==0) {
+      syslog(LOG_INFO,"now in RUN state");
+      started=1;
+
+      // calculate bandpass
+
+      for (int i=0;i<256;i++) bp[i] = 0.;
+      
+      // do standard bf but calculate bandpass
+
+      // loop over ints
+      for (int i=0;i<nints;i++) {
+
+	// copy to h_indata
+	memcpy(h_indata,block+i*nbytes_per_int,nbytes_per_int);
+
+	// rotate h_indata in place
+	reorder_block(h_indata);
+
+	// copy to device
+	cudaMemcpy(d_indata, h_indata, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice);
+
+	// run beamformer kernel
+	beamformer<<<1536, 64>>>(d_indata, d_antpos, d_weights, d_freqs, d_transfer);
+
+	// copy back to host
+	cudaMemcpy(h_transfer, d_transfer, sizeof(float)*393216, cudaMemcpyDeviceToHost);	
+
+	// calculate bandpass
+	calc_bp(h_transfer,bp,0);
+
+      }
+
+      // adjust bandpass
+      syslog(LOG_INFO,"Final BP...");
+      for (int i=0;i<256;i++) {
+	syslog(LOG_INFO,"coeff %d %g",i,bp[i]);
+	bp[i] /= 48.*nints; 
+	bp[i] = 128./bp[i];	
+      }
+      cudaMemcpy(d_bp, bp, sizeof(float)*256, cudaMemcpyHostToDevice);
+      
+      // junk into output
+      memset(output_buffer,0,block_out);
+      
+    }
+
+    // write output for debug
+    
+    // write to output
+    written = ipcio_write (hdu_out->data_block, (char *)(output_buffer), block_out);
+    if (written < block_out)
+      {
+	syslog(LOG_ERR, "main: failed to write all data to datablock [output]");
+	dsaX_dbgpu_cleanup (hdu_in, hdu_out);
+	return EXIT_FAILURE;
+      }
+
+    if (DEBUG) {
+      syslog(LOG_DEBUG, "written block %d",blocks);      
+    }
+    blocks++;
+    
+
+    if (bytes_read < block_size)
+      observation_complete = 1;
+
+    ipcio_close_block_read (hdu_in->data_block, bytes_read);
+
+  }
+
+  free(fnam);
+  free(h_indata);
+  free(output_buffer);
+  free(antpos);
+  free(weights);
+  free(freqs);
+  free(bp);
+  free(h_transfer);
+  free(tmp_buf);
+  cudaFree(d_indata);
+  cudaFree(d_outdata);
+  cudaFree(d_antpos);
+  cudaFree(d_weights);
+  cudaFree(d_freqs);
+  cudaFree(d_transfer);
+  cudaFree(d_bp);
+  dsaX_dbgpu_cleanup (hdu_in, hdu_out);
+  
+}
+
+
