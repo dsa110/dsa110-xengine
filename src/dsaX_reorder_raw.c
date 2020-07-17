@@ -348,7 +348,7 @@ int main (int argc, char *argv[]) {
   dada_hdu_t* hdu_out2 = 0;
 
   // data block HDU keys
-  key_t in_key = CAPTURE_BLOCK_KEY;
+  key_t in_key = CAPTURED_BLOCK_KEY;
   key_t out_key = REORDER_BLOCK_KEY;
   key_t out_key2 = REORDER_BLOCK_KEY2;
   

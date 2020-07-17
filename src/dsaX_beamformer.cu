@@ -443,7 +443,7 @@ int main (int argc, char *argv[]) {
   dada_hdu_t* hdu_out = 0;
 
   // data block HDU keys
-  key_t in_key = COPY_BLOCK_KEY;
+  key_t in_key = REORDER_BLOCK_KEY2;
   key_t out_key = BF_BLOCK_KEY;
   
   // command line arguments
