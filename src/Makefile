@@ -1,12 +1,12 @@
 BINDIR=/usr/local/dsaX/bin
 
 CC=gcc
-CFLAGS1 = -g -O3 -Wall -pthread -march=native -I/usr/local/psrdada/src -I/usr/local/xGPU/src -I/usr/local/include -I/usr/local/sigproc
+CFLAGS1 = -g -O3 -Wall -pthread -march=native -I/usr/local/include -I/usr/local/include/src -I/usr/local/cfitsio-3.47/include/
 CDEPS1=dsaX_def.h dsaX_capture.h
-LIBS = -L/usr/local/lib -lpsrdada -L/usr/lib/gcc/x86_64-linux-gnu/5 -lgfortran  -L/usr/local/cuda/lib -lcudart -lm -lxgpu -lcfitsio -L/usr/local/sigproc/src -lsigproc
+LIBS = -L/usr/local/lib -lpsrdada -L/usr/lib/gcc/x86_64-linux-gnu/5 -lgfortran -L/usr/local/cuda-11.0/targets/x86_64-linux/lib -lcudart -lm -lxgpu -L/usr/local/cfitsio-3.47/lib -lcfitsio -lsigproc
 
 CCU=/usr/local/cuda/bin/nvcc -D CUDA -ccbin=g++
-CFLAGS2 = -I/home/dsa/dsa110-xengine/src -I/usr/local/xGPU/src -I/usr/local/thrust/thrust -I/usr/local/psrdada/src -I/usr/local/include -arch=sm_75 -O3 -Xcompiler="-pthread" -DMATRIX_ORDER_TRIANGULAR
+CFLAGS2 = -I/home/dsa/dsa110-xengine/src -I/usr/local/include -I/usr/local/include/src -I/usr/local/cfitsio-3.47/include -arch=sm_75 -O3 -Xcompiler="-pthread" -DMATRIX_ORDER_TRIANGULAR
 #CFLAGS2 = -I/home/dsa/dsa110-xengine/src -I/usr/local/psrdada/src -I/usr/local/include -arch=sm_75 -O3
 
 .DEFAULT_GOAL := all
