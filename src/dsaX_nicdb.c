@@ -202,6 +202,7 @@ void usage()
 	   " -c core   bind process to CPU core [no default]\n"
 	   " -f header file [no default]\n"
 	   " -d send debug messages to syslog\n"
+	   " -o out_key [default BEAMCAPTURE_BLOCK_KEY]\n"
 	   " -h print usage\n");
 }
 
@@ -234,7 +235,7 @@ int main(int argc, char ** argv)
   int arg = 0;
   char fnam[200];
   
-  while ((arg=getopt(argc,argv,"c:f:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:o:dh")) != -1)
     {
       switch (arg)
 	{
@@ -247,6 +248,21 @@ int main(int argc, char ** argv)
 	  else
 	    {
 	      syslog(LOG_ERR,"-c flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'o':
+	  if (optarg)
+	    {
+	      if (sscanf (optarg, "%x", &out_key) != 1) {
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-o flag requires argument");
 	      usage();
 	      return EXIT_FAILURE;
 	    }

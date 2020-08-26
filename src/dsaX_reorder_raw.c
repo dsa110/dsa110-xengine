@@ -89,6 +89,8 @@ void usage()
 	   " -d send debug messages to syslog\n"
 	   " -t number of threads [default 4]\n"
 	   " -b connect to bf hdu\n"
+	   " -i input key [default CAPTURED_BLOCK_KEY]\n"
+	   " -o output key [default REORDER_BLOCK_KEY]\n"
 	   " -q quitting after testing\n"
 	   " -h print usage\n");
 }
@@ -358,10 +360,40 @@ int main (int argc, char *argv[]) {
   int bf = 0;
   int arg = 0;
   
-  while ((arg=getopt(argc,argv,"c:t:dbqh")) != -1)
+  while ((arg=getopt(argc,argv,"c:t:i:o:dbqh")) != -1)
     {
       switch (arg)
 	{
+	case 'i':
+	  if (optarg)
+	    {
+	      if (sscanf (optarg, "%x", &in_key) != 1) {
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-i flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'o':
+	  if (optarg)
+	    {
+	      if (sscanf (optarg, "%x", &out_key) != 1) {
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-o flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }	  
 	case 'c':
 	  if (optarg)
 	    {

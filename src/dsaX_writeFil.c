@@ -103,6 +103,7 @@ void usage()
 	   "dsaX_image [options]\n"
 	   " -c core   bind process to CPU core\n"
 	   " -f filename base [default test.fil]\n"
+	   " -k in_key [BF_BLOCK_KEY]\n"
 	   " -i IP to listen to [no default]\n"
 	   " -h        print usage\n");
 }
@@ -219,7 +220,7 @@ int main (int argc, char *argv[]) {
   char fnam[300], foutnam[400];
   sprintf(fnam,"/home/dsa/alltest");
   
-  while ((arg=getopt(argc,argv,"c:f:o:i:h")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:o:i:k:h")) != -1)
     {
       switch (arg)
 	{
@@ -232,6 +233,21 @@ int main (int argc, char *argv[]) {
 	  else
 	    {
 	      printf ("ERROR: -c flag requires argument\n");
+	      return EXIT_FAILURE;
+	    }
+	case 'k':
+	  if (optarg)
+	    {
+	      if (sscanf (optarg, "%x", &in_key) != 1) {
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-k flag requires argument");
+	      usage();
 	      return EXIT_FAILURE;
 	    }
 	case 'f':

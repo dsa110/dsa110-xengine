@@ -42,9 +42,9 @@ int dada_bind_thread_to_core (int core);
 void reorder_block(char *block, char *output);
 void calc_stats(char *block);
 
-// calculates rms for each pol from single packets
+// calculates rms for each pol from the first packet in each block. 
 // block has shape [2048 time, NANT antennas, 768 channels, 2 pol, r/i]
-void calc_stats(char *block) {
+void calc_stats(char *input) {
 
   float rmss[NANT*2];
   int iidx;
@@ -63,8 +63,8 @@ void calc_stats(char *block) {
     }
   }
 
-  for (int i=0;i<NANT*2;i++) {
-    if (DEBUG) syslog(LOG_DEBUG,"INPUT RMS %d %g",i,sqrt(rmss[i]/768.));
+  for (int i=0;i<NANT;i++) {
+    if (DEBUG) syslog(LOG_DEBUG,"RMS_ant_2pol %d %g",i,sqrt(rmss[2*i]/768.),sqrt(rmss[2*i+1]/768.));
   }
 
 }
@@ -125,6 +125,9 @@ void usage()
 	   " -d send debug messages to syslog\n"
 	   " -b connect to bf hdu\n"
 	   " -r reorder\n"
+	   " -i in_key [default CAPTURE_BLOCK_KEY]\n"
+	   " -o out_key [default CAPTURED_BLOCK_KEY]\n"
+	   " -j out_key2 [default REORDER_BLOCK_KEY2]\n"
 	   " -h print usage\n");
 }
 
@@ -155,7 +158,7 @@ int main (int argc, char *argv[]) {
   int arg = 0;
   int reorder = 0;
   
-  while ((arg=getopt(argc,argv,"c:dbrh")) != -1)
+  while ((arg=getopt(argc,argv,"c:i:o:j:dbrh")) != -1)
     {
       switch (arg)
 	{
@@ -171,6 +174,63 @@ int main (int argc, char *argv[]) {
 	      usage();
 	      return EXIT_FAILURE;
 	    }
+		case 'i':
+	  if (optarg)
+	    {
+	      if (sscanf (optarg, "%x", &in_key) != 1) {
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-i flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'o':
+	  if (optarg)
+	    {
+	      if (sscanf (optarg, "%x", &out_key) != 1) {
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-o flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'j':
+	  if (optarg)
+	    {
+	      if (sscanf (optarg, "%x", &out_key2) != 1) {
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-j flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'f':
+	  if (optarg)
+	    {
+	      strcpy(fnam,optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-f flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }	  
 	case 'd':
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");

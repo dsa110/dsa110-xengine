@@ -74,7 +74,7 @@ int DEBUG = 0;
 // kernel for summing and requantizing
 // input array has order [beam, 48 frequency, 2 pol, 16 time]
 // need to output to [beam, 48 frequency]
-// bp is 48-channel bandpass for each beam 
+// bp is scale factor for each beam 
 // run with 256*24=6144 blocks and 32 threads
 __global__
 void adder(float *input, unsigned char *output, float *bp) {
@@ -412,7 +412,10 @@ void usage()
 	   " -c core   bind process to CPU core [no default]\n"
 	   " -d send debug messages to syslog\n"
 	   " -o freq of first chan [default 1530.0 MHz]\n"
-	   " -f filename for antenna stuff [no default]\n" 
+	   " -f filename for antenna stuff [no default]\n"
+	   " -i input key [default REORDER_BLOCK_KEY2]\n"
+	   " -o output key [default BF_BLOCK_KEY]\n"
+	   " -z fch1 in MHz [default 1530]\n"
 	   " -h print usage\n");
 }
 
@@ -454,7 +457,7 @@ int main (int argc, char *argv[]) {
   fnam=(char *)malloc(sizeof(char)*100);
   sprintf(fnam,"nofile");  
 
-  while ((arg=getopt(argc,argv,"c:f:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:i:o:z:dh")) != -1)
     {
       switch (arg)
 	{
@@ -470,6 +473,36 @@ int main (int argc, char *argv[]) {
 	      usage();
 	      return EXIT_FAILURE;
 	    }
+	case 'i':
+	  if (optarg)
+	    {
+	      if (sscanf (optarg, "%x", &in_key) != 1) {
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-i flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'o':
+	  if (optarg)
+	    {
+	      if (sscanf (optarg, "%x", &out_key) != 1) {
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-o flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
 	case 'f':
 	  if (optarg)
 	    {
@@ -482,7 +515,7 @@ int main (int argc, char *argv[]) {
 	      usage();
 	      return EXIT_FAILURE;
 	    }	  
-	case 'o':
+	case 'z':
 	  if (optarg)
 	    {
 	      fch1 = atof(optarg);
@@ -490,7 +523,7 @@ int main (int argc, char *argv[]) {
 	    }
 	  else
 	    {
-	      syslog(LOG_ERR,"-o flag requires argument");
+	      syslog(LOG_ERR,"-z flag requires argument");
 	      usage();
 	      return EXIT_FAILURE;
 	    }	  

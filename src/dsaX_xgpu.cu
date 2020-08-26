@@ -66,11 +66,13 @@ void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out)
 void usage()
 {
 fprintf (stdout,
-	   "dsaX_xgpu [options]\n"
-	   " -c core   bind process to CPU core [no default]\n"
-	   " -d send debug messages to syslog\n"
-	   " -t number of threads for reading and writing [default 1]\n"
-	   " -h print usage\n");
+	 "dsaX_xgpu [options]\n"
+	 " -c core   bind process to CPU core [no default]\n"
+	 " -d send debug messages to syslog\n"
+	 " -t number of threads for reading and writing [default 1]\n"
+	 " -i in_key [default REORDER_BLOCK_KEY]\n"
+	 " -o out_key [default XGPU_BLOCK_KEY]\n"
+	 " -h print usage\n");
 }
 
 
@@ -153,7 +155,7 @@ int main (int argc, char *argv[]) {
   int arg = 0;
   int nthreads = 1;
   
-  while ((arg=getopt(argc,argv,"c:t:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:t:i:o:dh")) != -1)
     {
       switch (arg)
 	{
@@ -166,6 +168,36 @@ int main (int argc, char *argv[]) {
 	  else
 	    {
 	      syslog(LOG_ERR,"-c flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'i':
+	  if (optarg)
+	    {
+	      if (sscanf (optarg, "%x", &in_key) != 1) {
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-i flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'o':
+	  if (optarg)
+	    {
+	      if (sscanf (optarg, "%x", &out_key) != 1) {
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-o flag requires argument");
 	      usage();
 	      return EXIT_FAILURE;
 	    }

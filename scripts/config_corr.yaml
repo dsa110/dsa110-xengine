@@ -1,0 +1,34 @@
+# configuration for correlator with original file writing
+buffers:
+  - k: aada
+    b: 198180864
+    n: 4
+    c: 0
+  - k: dada
+    b: 198180864
+    n: 8
+    c: 0
+  - k: eada
+    b: 402653184
+    n: 8
+    c: 0
+  - k: fada
+    b: 51118080
+    n: 4
+    c: 0
+routines:
+  - name: dsaX_writevis
+    cmd: /home/dsa/dsa110-xengine/src/dsaX_writevis
+    args: -i 127.0.0.1 -f /home/dsa/data/testing -c 15 -k fada
+  - name: dsaX_xgpu
+    cmd: /home/dsa/dsa110-xengine/src/dsaX_xgpu
+    args: -t 4 -i eada -o fada
+  - name: dsaX_reorder_raw
+    cmd: /home/dsa/dsa110-xengine/src/dsaX_reorder_raw
+    args: -t 16 -i dada -o eada
+  - name: dsaX_fake
+    cmd: /home/dsa/dsa110-xengine/src/dsaX_fake
+    args: -f /home/dsa/dsa110-xengine/utils/packet.out -i aada -o dada
+  - name: dada_junkdb
+    cmd: dada_junkdb
+    args: -t 1000 -k aada -r 1500 /home/dsa/dsa110-xengine_TESTING/src/correlator_header_dsaX.txt

@@ -73,6 +73,7 @@ void usage()
 	   " -j IP to listen on for data packets [no default]\n"
 	   " -i IP to listen on for control commands [no default]\n"	
 	   " -f filename of template dada header [no default]\n"
+	   " -o out_key [default CAPTURE_BLOCK_KEY]\n"
 	   " -d send debug messages to syslog\n"
 	   " -h print usage\n");
 }
@@ -504,10 +505,25 @@ int main (int argc, char *argv[]) {
   char dada_fnam[200]; // filename for dada header
   char iface[100]; // IP for data packets
   
-  while ((arg=getopt(argc,argv,"c:j:i:f:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:j:i:f:o:dh")) != -1)
     {
       switch (arg)
 	{
+	case 'o':
+	  if (optarg)
+	    {
+	      if (sscanf (optarg, "%x", &out_key) != 1) {
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-o flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
 	case 'i':
 	  if (optarg)
 	    {	      

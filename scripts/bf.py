@@ -20,7 +20,7 @@ if sys.argv[1]=='stop':
     
     # destroy buffers
     os.system('dada_db -k aada -d')
-    os.system('dada_db -k dbda -d')
+    os.system('dada_db -k bada -d')
     os.system('dada_db -k dcda -d')
 
     
@@ -32,20 +32,18 @@ if sys.argv[1]=='start':
     os.system('dada_db -k aada -b 198180864 -l -p -c 0 -n 4') # 2048 packets, 63 ants
     #os.system('dada_db -k aada -b 84934656 -l -p -c 0 -n 4') # 2048 packets, 27 ants
     # CAPTURE
-    os.system('dada_db -k dbda -b 198180864 -l -p -c 0 -n 40') # 2048 packets, 63 ants
+    os.system('dada_db -k bada -b 198180864 -l -p -c 0 -n 40') # 2048 packets, 63 ants
     #os.system('dada_db -k dbda -b 84934656 -l -p -c 0 -n 20') # 2048 packets, 27 ants
     # BF
     #os.system('dada_db -k dcda -b 1572864 -l -p -c 0 -n 4') # all beams (128*256*48)
     os.system('dada_db -k dcda -b 6144 -l -p -c 0 -n 4') # one beam
     
-
-    
     # start code    
-    junk = 'dada_junkdb -t 1000 -k aada -r 1500 /home/dsa/dsa110-xengine/src/correlator_header_dsaX.txt'
-    #dbnull = 'dada_dbnull -k dcda'
-    dbnull = '/home/dsa/dsa110-run/src/dsaX_writeFil -c 27 -i 10.40.0.23 -f /home/dsa/data/bfil'
-    fake = '/home/dsa/dsa110-run/src/dsaX_fake -f /home/dsa/dsa110-run/utils/packet.out'
-    bf = '/home/dsa/dsa110-run/src/dsaX_beamformer -c 9 -f /home/dsa/dsa110-run/utils/antennas.out'
+    junk = 'dada_junkdb -t 1000 -k aada -r 150 /home/dsa/dsa110-xengine_TESTING/src/correlator_header_dsaX.txt'
+    dbnull = 'dada_dbnull -k dcda'
+    #dbnull = '/home/dsa/dsa110-run/src/dsaX_writeFil -c 27 -i 10.40.0.23 -f /home/dsa/data/bsfil'
+    fake = '/home/dsa/dsa110-xengine/src/dsaX_fake -f /home/dsa/dsa110-xengine/utils/packet.out'
+    bf = '/home/dsa/dsa110-xengine/src/dsaX_beamformer -c 9 -f /home/dsa/dsa110-xengine/utils/antennas.out -i bada -o dcda'
     
     
     print('Starting dbnull')

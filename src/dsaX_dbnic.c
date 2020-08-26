@@ -72,7 +72,7 @@ void usage()
 	   " -c core   bind process to CPU core [no default]\n"
 	   " -g chgroup [default 0]\n"
 	   " -d send debug messages to syslog\n"
-	   " -t testing second input\n"
+	   " -i in_key [default BF_BLOCK_KEY]\n"
 	   " -h print usage\n");
 }
 
@@ -147,9 +147,12 @@ int main (int argc, char *argv[]) {
   int core = -1;
   int chgroup = 0;
   int arg = 0;
-  int testing = 0;
+  // data block HDU keys
+  key_t in_key;
+  in_key = BF_BLOCK_KEY;
+
   
-  while ((arg=getopt(argc,argv,"c:g:tdh")) != -1)
+  while ((arg=getopt(argc,argv,"c:g:idh")) != -1)
     {
       switch (arg)
 	{
@@ -181,22 +184,26 @@ int main (int argc, char *argv[]) {
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
 	  break;
-	case 't':
-	  testing=1;
-	  syslog (LOG_INFO, "Using second BF buffer");
-	  break;
+	case 'i':
+	  if (optarg)
+	    {
+	      if (sscanf (optarg, "%x", &in_key) != 1) {
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-i flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
   	case 'h':
 	  usage();
 	  return EXIT_SUCCESS;
 	}
     }
-
-  // data block HDU keys
-  key_t in_key;
-  if (testing==0) 
-    in_key = BF_BLOCK_KEY;
-  if (testing==1) 
-    in_key = BF_BLOCK_KEY2;
   
   
   // Bind to cpu core

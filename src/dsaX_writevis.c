@@ -43,9 +43,9 @@ char srcnam[1024];
 float reclen;
 int DEBUG = 0;
 
-// assumes that only first 6 baselines are written and 384 channels and 2 pols
-const int n = 9216;
-float summed_vis[9216];
+// assumes that only first 78 baselines are written and 384 channels and 2 pols
+const int n = 119808;
+float summed_vis[119808];
 const int n_all = 3194880;
 
 // for extracting data
@@ -82,6 +82,7 @@ void usage()
 	   "dsaX_image [options]\n"
 	   " -c core   bind process to CPU core\n"
 	   " -d debug [default no]\n"
+	   " -k in_key [default XGPU_BLOCK_KEY]\n"
 	   " -f filename base [default test.fits]\n"
 	   " -o freq of chan 1 [default 1494.84375]\n"
 	   " -i IP to listen to [no default]\n"
@@ -200,7 +201,7 @@ int main (int argc, char *argv[]) {
   char fnam[300], foutnam[400];
   sprintf(fnam,"/home/dsa/alltest");
   
-  while ((arg=getopt(argc,argv,"c:f:o:i:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:o:i:k:dh")) != -1)
     {
       switch (arg)
 	{
@@ -213,6 +214,21 @@ int main (int argc, char *argv[]) {
 	  else
 	    {
 	      printf ("ERROR: -c flag requires argument\n");
+	      return EXIT_FAILURE;
+	    }
+	case 'k':
+	  if (optarg)
+	    {
+	      if (sscanf (optarg, "%x", &in_key) != 1) {
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-k flag requires argument");
+	      usage();
 	      return EXIT_FAILURE;
 	    }
 	case 'f':
@@ -318,13 +334,13 @@ int main (int argc, char *argv[]) {
     block = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
     cblock = (Complex *)(block);
 
-    //if (DEBUG) {
+    if (DEBUG) {
       if (nblocks==20) {
 	for (int i=100;i<200;i++) {
 	  syslog(LOG_DEBUG,"MAT %d %f %f",i,(float)(cblock[i].real),(float)(cblock[i].imag));
 	}
       }
-      //}
+    }
     
     // DO STUFF - from block to summed_vis
 
@@ -348,7 +364,7 @@ int main (int argc, char *argv[]) {
 	rownum=1;
 	
 	char *ttype[] = {"VIS"};
-	char *tform[] = {"9216E"}; // assumes classic npts
+	char *tform[] = {"119808E"}; // assumes classic npts
 	char *tunit[] = {"\0"};
 	char *wsrcnam = srcnam;
 	
