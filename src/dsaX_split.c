@@ -64,7 +64,7 @@ void calc_stats(char *input) {
   }
 
   for (int i=0;i<NANT;i++) {
-    if (DEBUG) syslog(LOG_DEBUG,"RMS_ant_2pol %d %g",i,sqrt(rmss[2*i]/768.),sqrt(rmss[2*i+1]/768.));
+    if (DEBUG) syslog(LOG_DEBUG,"RMS_ant_2pol %d %g %g",i,sqrt(rmss[2*i]/768.),sqrt(rmss[2*i+1]/768.));
   }
 
 }
@@ -219,18 +219,6 @@ int main (int argc, char *argv[]) {
 	      usage();
 	      return EXIT_FAILURE;
 	    }
-	case 'f':
-	  if (optarg)
-	    {
-	      strcpy(fnam,optarg);
-	      break;
-	    }
-	  else
-	    {
-	      syslog(LOG_ERR,"-f flag requires argument");
-	      usage();
-	      return EXIT_FAILURE;
-	    }	  
 	case 'd':
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");

@@ -1,13 +1,13 @@
-BINDIR=/usr/local/dsaX/bin
+# This is set up for the CORR containers
 
 CC=gcc
-CFLAGS1 = -g -O3 -Wall -pthread -march=native -I/usr/local/psrdada/src -I/usr/local/xGPU/src -I/usr/local/include -I/usr/local/sigproc
+CFLAGS1 = -g -O3 -Wall -pthread -march=native -I/usr/local/include -I/usr/local/include/src -I/usr/local/cfitsio-3.47/include/
 CDEPS1=dsaX_def.h dsaX_capture.h
-LIBS = -L/usr/local/lib -lpsrdada -L/usr/lib/gcc/x86_64-linux-gnu/5 -lgfortran  -L/usr/local/cuda/lib -lcudart -lm -lxgpu -lcfitsio -L/usr/local/sigproc/src -lsigproc
+LIBS = -L/usr/local/lib -lxgpu -lpsrdada -L/usr/lib/gcc/x86_64-linux-gnu/5 -lgfortran -L/usr/local/cuda/lib64 -lcudart -lm -L/usr/local/cfitsio-3.47/lib -lcfitsio -lsigproc -L/usr/local/lib -lxgpu -L/home/ubuntu/proj/dsa110-shell/dsa110-xGPU/src -lxgpu
 
 CCU=/usr/local/cuda/bin/nvcc -D CUDA -ccbin=g++
-CFLAGS2 = -I/home/dsa/dsa110-xengine/src -I/usr/local/xGPU/src -I/usr/local/thrust/thrust -I/usr/local/psrdada/src -I/usr/local/include -arch=sm_75 -O3 -Xcompiler="-pthread" -DMATRIX_ORDER_TRIANGULAR
-#CFLAGS2 = -I/home/dsa/dsa110-xengine/src -I/usr/local/psrdada/src -I/usr/local/include -arch=sm_75 -O3
+CFLAGS2 = -I/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src -I/home/ubuntu/proj/dsa110-shell/dsa110-xGPU/src -I/usr/local/include -I/usr/local/include/src -I/usr/local/cfitsio-3.47/include -arch=sm_75 -O3 -Xcompiler="-pthread" -DMATRIX_ORDER_TRIANGULAR
+
 
 .DEFAULT_GOAL := all
 
