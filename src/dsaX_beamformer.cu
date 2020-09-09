@@ -51,7 +51,7 @@ using std::endl;
 #include <mma.h>
 #include <cuda.h>
 #include "cuda_fp16.h"
-#include "dada_cuda.h"
+//#include "dada_cuda.h"
 #include "dada_client.h"
 #include "dada_def.h"
 #include "dada_hdu.h"

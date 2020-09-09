@@ -26,7 +26,7 @@ using std::endl;
 #include <thrust/transform.h>
 #include <thrust/scatter.h>
 
-#include "dada_cuda.h"
+//#include "dada_cuda.h"
 #include "dada_client.h"
 #include "dada_def.h"
 #include "dada_hdu.h"
