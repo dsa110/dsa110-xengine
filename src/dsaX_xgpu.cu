@@ -312,7 +312,7 @@ int main (int argc, char *argv[]) {
   // set up xgpu
 
   // register input hdu with gpu
-  dada_cuda_dbregister(hdu_in);
+  //dada_cuda_dbregister(hdu_in);
 
   // structures and definitions
   XGPUInfo xgpu_info;
@@ -397,6 +397,8 @@ int main (int argc, char *argv[]) {
       started=1;
     }    
 
+    // clear device
+    xgpuClearDeviceIntegrationBuffer(&context);
     
     // write to output
 
@@ -449,7 +451,7 @@ int main (int argc, char *argv[]) {
 
   // finish up
   free(output_buffer);
-  dada_cuda_dbunregister(hdu_in);
+  //dada_cuda_dbunregister(hdu_in);
   dsaX_dbgpu_cleanup (hdu_in, hdu_out);
   
 }

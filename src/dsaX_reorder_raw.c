@@ -251,7 +251,7 @@ void * massage(void *args) {
 
     for (int i=0;i<NANTS;i+=tile_size) {
       for (int j=0;j<384*2;j++) {
-	for (int b=0;b<tile_size;b++) out_int[j*na+i+b] = fluffed_int[(i+b)*384*2+j];
+	for (int b=0;b<tile_size;b++) out_int[i_packet*na*768 + j*na+i+b] = fluffed_int[i_packet*NANTS*768 + (i+b)*384*2+j];
       }
     }
 
