@@ -12,6 +12,7 @@ from os.path import realpath
 import sys
 import subprocess
 import os
+import socket
 import numpy as np
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
@@ -120,7 +121,10 @@ def process(params, cmd):
         # deal with processes
         for rout in params['routines']:
             print(rout)
-            cmdstr = rout['cmd']+' '+rout['args']
+            if rout.get('hostargs') is None:
+                cmdstr = rout['cmd']+' '+rout['args']
+            else:
+                cmdstr = rout['cmd']+' '+rout['args']+' '+rout.get('hostargs')[socket.gethostname()]
             my_log.debug('running: '+cmdstr)
             my_log.info('Starting '+rout['name'])
             log = open('/home/ubuntu/tmp/log.log','w')

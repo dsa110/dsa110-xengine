@@ -31,4 +31,21 @@ routines:
     args: -t 16 -i dada -o eada
   - name: dsaX_capture
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_capture
-    args: -c 26 -j 10.41.0.97 -i 127.0.0.1 -o dada -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt
+    args: -c 26 -i 127.0.0.1 -o dada -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt
+    hostargs:
+      corr00: -j 10.41.0.110
+      corr01: -j 10.41.0.111
+      corr02: -j 10.41.0.112
+      corr03: -j 10.41.0.113
+      corr04: -j 10.41.0.114
+      corr05: -j 10.41.0.115
+      corr06: -j 10.41.0.116
+      corr07: -j 10.41.0.117
+      corr08: -j 10.41.0.118
+      corr09: -j 10.41.0.119
+      corr10: -j 10.41.0.120
+      corr11: -j 10.41.0.121
+      corr12: -j 10.41.0.122
+      corr13: -j 10.41.0.123
+      corr14: -j 10.41.0.124
+      corr15: -j 10.41.0.125
