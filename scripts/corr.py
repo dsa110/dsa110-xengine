@@ -201,16 +201,12 @@ def corr_run(args):
     # infinite monitoring loop
     while True:
 
-        if recording is True:
-        
-            key = '/mon/corr/' + str(args.corr_num)
-            md = get_monitor_dict(params)
-            if md!=-1:
-                my_ds.put_dict(key, md)
-                sleep(1)
-
-        else:
+        key = '/mon/corr/' + str(args.corr_num)
+        md = get_monitor_dict(params)
+        if md!=-1:
+            my_ds.put_dict(key, md)
             sleep(1)
+
                                                         
 
 if __name__ == '__main__':
