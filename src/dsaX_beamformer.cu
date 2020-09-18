@@ -712,11 +712,11 @@ int main (int argc, char *argv[]) {
 	  
 	  // copy to host
 	  cudaMemcpyAsync(tmp_buf, d_outdata, 256*48*sizeof(unsigned char), cudaMemcpyDeviceToHost, stream[st]);
-	  for (int j=0;j<48;j++)
-	    output_buffer[(bst*NSTREAMS+st)*48+j] = tmp_buf[BEAM_OUT*48+j];
+	  for (int j=0;j<12288;j++)
+	    output_buffer[(bst*NSTREAMS+st)*12288+j] = tmp_buf[j];
 
 	  if (DEBUG && bst*NSTREAMS+st==10) {
-	    for (int j=0;j<48;j++) syslog(LOG_DEBUG,"%hu",output_buffer[(bst*NSTREAMS+st)*48+j]);
+	    for (int j=0;j<48;j++) syslog(LOG_DEBUG,"%hu",output_buffer[(bst*NSTREAMS+st)*12288+BEAM_OUT*48+j]);
 	  }      
 	
 	}
