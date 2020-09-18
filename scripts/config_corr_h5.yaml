@@ -1,0 +1,51 @@
+# configuration for correlator with original file writing
+buffers:
+  - k: dada
+    b: 37748736
+    n: 8
+    c: 0
+  - k: eada
+    b: 402653184
+    n: 8
+    c: 0
+  - k: fada
+    b: 51118080
+    n: 4
+    c: 0
+  - k: bada
+    b: 1996800
+    n: 40
+    c: 0
+routines:
+  - name: meridian_fs
+    cmd: python
+    args: /home/ubuntu/proj/dsa110-shell/dsa110-meridian-fs/dsamfs/meridian_fringestop.py /home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/dsa_parameters.yaml /home/ubuntu/data
+  - name: dsaX_wrangle
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_wrangle
+    args: -i fada -o bada
+  - name: dsaX_xgpu
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_xgpu
+    args: -t 4 -i eada -o fada
+  - name: dsaX_reorder_raw
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_reorder_raw
+    args: -t 16 -i dada -o eada
+  - name: dsaX_capture
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_capture
+    args: -c 26 -i 127.0.0.1 -o dada -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt
+    hostargs:
+      corr00: -j 10.41.0.110
+      corr01: -j 10.41.0.111
+      corr02: -j 10.41.0.112
+      corr03: -j 10.41.0.14
+      corr04: -j 10.41.0.114
+      corr05: -j 10.41.0.115
+      corr06: -j 10.41.0.115
+      corr07: -j 10.41.0.15
+      corr08: -j 10.41.0.117
+      corr09: -j 10.41.0.118
+      corr10: -j 10.41.0.119
+      corr11: -j 10.41.0.120
+      corr12: -j 10.41.0.121
+      corr13: -j 10.41.0.122
+      corr14: -j 10.41.0.123
+      corr15: -j 10.41.0.124

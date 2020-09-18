@@ -3,7 +3,7 @@
 CC=gcc
 CFLAGS1 = -g -O3 -Wall -pthread -march=native -I/usr/local/include -I/usr/local/include/src -I/usr/local/cfitsio-3.47/include/
 CDEPS1=dsaX_def.h dsaX_capture.h
-LIBS = -L/usr/local/lib -lxgpu -lpsrdada -L/usr/lib/gcc/x86_64-linux-gnu/5 -lgfortran -L/usr/local/cuda/lib64 -lcudart -lm -L/usr/local/cfitsio-3.47/lib -lcfitsio -lsigproc -L/usr/local/lib -lxgpu -L/home/ubuntu/proj/dsa110-shell/dsa110-xGPU/src -lxgpu
+LIBS = -L/usr/local/lib -lpsrdada -L/usr/lib/gcc/x86_64-linux-gnu/5 -lgfortran -L/usr/local/cuda/lib64 -lcudart -lm -L/usr/local/cfitsio-3.47/lib -lcfitsio -lsigproc -lxgpu
 
 CCU=/usr/local/cuda/bin/nvcc -D CUDA -ccbin=g++
 CFLAGS2 = -I/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src -I/home/ubuntu/proj/dsa110-shell/dsa110-xGPU/src -I/usr/local/include -I/usr/local/include/src -I/usr/local/cfitsio-3.47/include -arch=sm_75 -O3 -Xcompiler="-pthread" -DMATRIX_ORDER_TRIANGULAR
@@ -47,6 +47,12 @@ dsaX_writevis.o: dsaX_writevis.c $(CDEPS1)
 dsaX_writevis: dsaX_writevis.o
 	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
 
+dsaX_wrangle.o: dsaX_wrangle.c $(CDEPS1)
+	$(CC) -c -o $@ $< $(CFLAGS1)
+
+dsaX_wrangle: dsaX_wrangle.o
+	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
+
 dsaX_writeFil.o: dsaX_writeFil.c $(CDEPS1)
 	$(CC) -c -o $@ $< $(CFLAGS1)
 
@@ -68,8 +74,8 @@ dsaX_beamformer: dsaX_beamformer.cu
 .PHONY: clean all
 
 clean:
-	rm -f *.o *~ 
+	rm -f *.o *~ dsaX_beamformer dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle
 
-all: dsaX_beamformer dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_dbnic dsaX_nicdb dsaX_split
+all: dsaX_beamformer dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle
 
 

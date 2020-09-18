@@ -1,0 +1,58 @@
+test: False
+key_string: bada
+nant: 25
+bw_GHz: 0.250
+nchan: 8192 # Total number of channels before splitting into spws
+f0_GHz: 1.53 # Frequency of the first channel before splitting into spws
+chan_ascending: False
+npol: 2
+samples_per_frame: 1
+samples_per_frame_out: 1
+nint: 24 # Number of samples to integrate together
+pt_dec: 0.71094487066
+tsamp: 0.134217728 # Sampling time of data that will be read in
+antenna_order:
+  0: 24
+  1: 25
+  2: 26
+  3: 27
+  4: 28
+  5: 29
+  6: 30
+  7: 31
+  8: 32
+  9: 33
+  10: 34
+  11: 35
+  12: 36
+  13: 37
+  14: 38
+  15: 39
+  16: 40
+  17: 41
+  18: 42
+  19: 43
+  20: 44
+  21: 45
+  22: 46
+  23: 47
+  24: 48
+nchan_spw: 384
+ch0:
+  dsaenv01: 3400
+  corr00: 1024
+  corr01: 1408
+  corr02: 1792
+  corr03: 2176
+  corr04: 2560
+  corr05: 2944
+  corr06: 3328
+  corr07: 3712
+  corr08: 4096
+  corr09: 4480
+  corr10: 4864
+  corr11: 5248
+  corr12: 5632
+  corr13: 6016
+  corr14: 6400
+  corr15: 6784

@@ -12,12 +12,15 @@ from os.path import realpath
 import sys
 import subprocess
 import os
+import socket
 import numpy as np
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
 my_log = dsl.DsaSyslogger()
 my_log.subsystem('correlator')
 my_log.app('corr.py')
+
+recording = False # used to control monitoring
 
 def read_yaml(fname):
     """Read a YAML formatted file
@@ -71,7 +74,7 @@ def get_buf_info(buff):
     arr = result.decode("utf-8").split(',')
     oarr = np.zeros(4)
     for i in range(4):
-        oarr[i] = int(arr[i+6])
+        oarr[i] = int(arr[i+1])
 
     return oarr.tolist()
 
@@ -113,13 +116,18 @@ def process(params, cmd):
             os.system(cmdstr)
             sleep(0.5)
 
+        recording = True
+
         # deal with processes
         for rout in params['routines']:
             print(rout)
-            cmdstr = rout['cmd']+' '+rout['args']
+            if rout.get('hostargs') is None:
+                cmdstr = rout['cmd']+' '+rout['args']
+            else:
+                cmdstr = rout['cmd']+' '+rout['args']+' '+rout.get('hostargs')[socket.gethostname()]
             my_log.debug('running: '+cmdstr)
             my_log.info('Starting '+rout['name'])
-            log = open('/home/dsa/tmp/log.log','w')
+            log = open('/home/ubuntu/tmp/log.log','w')
             proc = subprocess.Popen(cmdstr, shell = True, stdout=log, stderr=log)
             sleep(0.5)
 
@@ -136,7 +144,9 @@ def process(params, cmd):
             my_log.info('Stopping '+rout['name'])
             proc = subprocess.Popen(cmdstr, shell = True)
             subprocess.Popen.wait(proc)            
-        
+
+        recording = False
+            
         # deal with buffers
         for buff in params['buffers']:
             cmdstr = 'dada_db -k '+str(buff['k'])+' -d'
@@ -190,11 +200,13 @@ def corr_run(args):
 
     # infinite monitoring loop
     while True:
+
         key = '/mon/corr/' + str(args.corr_num)
         md = get_monitor_dict(params)
         if md!=-1:
             my_ds.put_dict(key, md)
             sleep(1)
+
                                                         
 
 if __name__ == '__main__':

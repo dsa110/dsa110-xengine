@@ -44,8 +44,8 @@ float reclen;
 int DEBUG = 0;
 
 // assumes that only first 78 baselines are written and 384 channels and 2 pols
-const int n = 119808;
-float summed_vis[119808];
+const int n = 9216;
+float summed_vis[9216];
 const int n_all = 3194880;
 
 // for extracting data
@@ -199,7 +199,7 @@ int main (int argc, char *argv[]) {
   float fch1 = 1500.0;
   int nchans = 384;
   char fnam[300], foutnam[400];
-  sprintf(fnam,"/home/dsa/alltest");
+  sprintf(fnam,"/home/ubuntu/alltest");
   
   while ((arg=getopt(argc,argv,"c:f:o:i:k:dh")) != -1)
     {
@@ -364,7 +364,7 @@ int main (int argc, char *argv[]) {
 	rownum=1;
 	
 	char *ttype[] = {"VIS"};
-	char *tform[] = {"119808E"}; // assumes classic npts
+	char *tform[] = {"9216E"}; // assumes classic npts
 	char *tunit[] = {"\0"};
 	char *wsrcnam = srcnam;
 	
