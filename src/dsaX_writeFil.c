@@ -93,6 +93,7 @@ int dumpnum = 0;
 char iP[100];
 char srcnam[1024];
 float reclen;
+int DEBUG = 0;
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * in);
 void convert_block(char * b1, char * b2);
@@ -105,6 +106,7 @@ void usage()
 	   " -f filename base [default test.fil]\n"
 	   " -k in_key [BF_BLOCK_KEY]\n"
 	   " -i IP to listen to [no default]\n"
+	   " -d DEBUG\n"
 	   " -h        print usage\n");
 }
 
@@ -216,11 +218,10 @@ int main (int argc, char *argv[]) {
   int arg = 0;
   int core = -1;
   float fch1 = 1530.0;
-  int nchans = 384;
   char fnam[300], foutnam[400];
   sprintf(fnam,"/home/dsa/alltest");
   
-  while ((arg=getopt(argc,argv,"c:f:o:i:k:h")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:o:i:k:dh")) != -1)
     {
       switch (arg)
 	{
@@ -255,6 +256,9 @@ int main (int argc, char *argv[]) {
 	  break;
 	case 'i':
 	  strcpy(iP,optarg);
+	  break;
+	case 'd':
+	  DEBUG=1;
 	  break;
 	case 'h':
 	  usage();
@@ -342,7 +346,7 @@ int main (int argc, char *argv[]) {
 
     // read block
     block = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
-    
+    if (DEBUG) for (int i=0;i<48;i++) syslog(LOG_INFO,"%hu",((unsigned char *)(block))[i]);
     syslog(LOG_INFO,"read block %g",nblocks);
         
     // check for dump_pending
@@ -385,7 +389,7 @@ int main (int argc, char *argv[]) {
       }      
       
       // write data to file
-      syslog(LOG_INFO,"writing");
+      syslog(LOG_INFO,"writing");      
       fwrite((unsigned char *)(block),sizeof(unsigned char),block_size,output);
 
       integration++;

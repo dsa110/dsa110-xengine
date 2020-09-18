@@ -743,7 +743,7 @@ int main (int argc, char *argv[]) {
 	  // copy to h_indata
 	  memcpy(h_indata,block+(bst*NSTREAMS+st)*nbytes_per_int,nbytes_per_int);
 
-	  // rotate h_indata in place
+	  // rotate h_indata in place - this is current
 	  reorder_block(h_indata);
 
 	  // copy to device
