@@ -160,7 +160,7 @@ Input is [16 time, 48 channels, 2 pol, 64 antennas, 16 chunnels, r/i] (promoted)
 Arithmetic... for rotation, d2r = wr*dr-wi*di; d2i = wi*dr+wr*di
 
 Conventions for beamforming. beam 0 is furthest East, beam 127 is at meridian. antpos (D) is easting. 
-for bf weight calculation, where theta = s(127-n), ang = 2*pi*nu*theta*D/c; wr = cos(ang), wi = -sin(ang)
+for bf weight calculation, where theta = s(127-n), ang = 2*pi*nu*theta*D/c; wr = cos(ang), wi = sin(ang)
 use __float2int_rn, cosf, sinf intrinsics. 
 
 Each warp (==block) has to deal with 256 beams for 64 ants, summing over 16 chunnels and pols. 
@@ -208,7 +208,7 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
   wmma::fill_fragment(wr_ini_frag, 0.0f);
   wmma::fill_fragment(wi_inr_frag, 0.0f);
   wmma::fill_fragment(wi_ini_frag, 0.0f);
-    
+     
   // loop over ant tiles
   for (int ant_tile=0; ant_tile<4; ant_tile++) {
      
@@ -696,7 +696,7 @@ int main (int argc, char *argv[]) {
 	  memcpy(h_indata,block+(bst*NSTREAMS+st)*nbytes_per_int,nbytes_per_int);
 
 	  // rotate h_indata in place
-	  //reorder_block(h_indata);
+	  reorder_block(h_indata);
 	  
 	  // copy to device
 	  cudaMemcpyAsync(d_indata, h_indata, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
@@ -744,7 +744,7 @@ int main (int argc, char *argv[]) {
 	  memcpy(h_indata,block+(bst*NSTREAMS+st)*nbytes_per_int,nbytes_per_int);
 
 	  // rotate h_indata in place
-	  //reorder_block(h_indata);
+	  reorder_block(h_indata);
 
 	  // copy to device
 	  cudaMemcpyAsync(d_indata, h_indata, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
