@@ -50,6 +50,7 @@ struct data {
 
 /* global variables */
 int DEBUG = 0;
+int TEST = 0;
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * in);
 int dada_bind_thread_to_core (int core);
@@ -72,7 +73,9 @@ void usage()
 	   " -c core   bind process to CPU core [no default]\n"
 	   " -g chgroup [default 0]\n"
 	   " -d send debug messages to syslog\n"
+	   " -t TEST\n"
 	   " -i in_key [default BF_BLOCK_KEY]\n"
+	   " -w -x -y -z four ip addresses for corner turn\n"
 	   " -h print usage\n");
 }
 
@@ -89,13 +92,14 @@ void * transmit(void *args) {
   int chgroup = d->chgroup;
   int tseq = d->tseq;
 
-  // fill op
+  // fill op, doing transpose
   iop[0] = chgroup;
   iop[1] = tseq;
   for (int i=0;i<NSAMPS_PER_TRANSMIT;i++) {
     for (int j=0;j<NBEAMS_PER_BLOCK;j++) {
       for (int k=0;k<NW;k++) 
-	op[8+i*NBEAMS_PER_BLOCK*NW+j*NW+k] = output[i*NBMS*NW + thread_id*NBEAMS_PER_BLOCK*NW + j*NW+k];
+	// op[8+i*NBEAMS_PER_BLOCK*NW+j*NW+k] = output[i*NBMS*NW + thread_id*NBEAMS_PER_BLOCK*NW + j*NW+k]; // no transpose
+	op[8+j*NSAMPS_PER_TRANSMIT*NW+i*NW+k] = output[i*NBMS*NW + thread_id*NBEAMS_PER_BLOCK*NW + j*NW+k]; // yes transpose
     }
   }
 
@@ -147,12 +151,13 @@ int main (int argc, char *argv[]) {
   int core = -1;
   int chgroup = 0;
   int arg = 0;
+  char iP[4][20] = {"10.40.0.23", "10.41.0.43", "127.0.0.1", "127.0.0.1"}; 
   // data block HDU keys
   key_t in_key;
   in_key = BF_BLOCK_KEY;
 
   
-  while ((arg=getopt(argc,argv,"c:g:idh")) != -1)
+  while ((arg=getopt(argc,argv,"c:g:ti:w:x:y:z:dh")) != -1)
     {
       switch (arg)
 	{
@@ -183,6 +188,22 @@ int main (int argc, char *argv[]) {
 	case 'd':
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
+	  break;
+	case 'w':
+	  strcpy(iP[0],optarg);
+	  break;
+	case 'x':
+	  strcpy(iP[1],optarg);
+	  break;
+	case 'y':
+	  strcpy(iP[2],optarg);
+	  break;
+	case 'z':
+	  strcpy(iP[3],optarg);
+	  break;
+	case 't':
+	  TEST=1;
+	  syslog (LOG_INFO, "Will use test pattern");
 	  break;
 	case 'i':
 	  if (optarg)
@@ -268,13 +289,12 @@ int main (int argc, char *argv[]) {
   // create socket connections
   int sockfd[nthreads];
   struct sockaddr_in servaddr;
-  char iP[4][20] = {"127.0.0.1", "127.0.0.1", "127.0.0.1", "127.0.0.1"}; // HARDCODED FOR NOW
   for (int i=0;i<nthreads;i++) sockfd[i] = socket(AF_INET, SOCK_STREAM, 0);
   if (DEBUG) syslog(LOG_DEBUG,"sockets created");
   for (int i=0;i<nthreads;i++) {
     bzero(&servaddr, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
-    servaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    servaddr.sin_addr.s_addr = inet_addr(iP[i]);
     servaddr.sin_port = htons(FIL_PORT0+(uint16_t)(chgroup));
     if (connect(sockfd[i], (struct sockaddr *)&servaddr, sizeof(servaddr)) != 0) {
       syslog(LOG_ERR,"connection with the server failed %d",i);
@@ -285,6 +305,20 @@ int main (int argc, char *argv[]) {
   
   syslog(LOG_INFO, "starting observation");
 
+  /*
+  block has size/shape [NSAMPS_PER_TRANSMIT, NBMS, NW]
+  want to transmit [NBEAMS_PER_BLOCK, NSAMPS_PER_TRANSMIT, NW]
+  for test tone, populate with chgroup*10 + beam*NBMS/NBEAMS_PER_BLOCK + time*2/NSAMPS_PER_TRANSMIT
+  */
+  unsigned char * testblock = (unsigned char *)malloc(sizeof(unsigned char)*block_size);
+  for (int i=0;i<NSAMPS_PER_TRANSMIT;i++) {
+    for (int j=0;j<NBMS;j++) {
+      for (int k=0;k<NW;k++)
+	testblock[i*NBMS*NW + j*NW + k] = (unsigned char)(i/2);
+    }
+  }
+  
+  
   while (!observation_complete) {
 
     // open block
@@ -301,7 +335,8 @@ int main (int argc, char *argv[]) {
 
     // put together args
     for (int i=0; i<nthreads; i++) {
-      args[i].out = block;
+      if (TEST) args[i].out = testblock;
+      else args[i].out = block;
       args[i].sockfd = sockfd[i];
       args[i].thread_id = i;
       args[i].chgroup = chgroup;
@@ -334,6 +369,7 @@ int main (int argc, char *argv[]) {
   }
 
   for (int i=0;i<nthreads;i++) close(sockfd[i]);
+  free(testblock);
   dsaX_dbgpu_cleanup (hdu_in);
   
 }

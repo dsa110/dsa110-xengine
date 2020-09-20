@@ -53,6 +53,7 @@ int DEBUG = 0;
 int blockct = 0; // to count how many writes to block. max is NSAMPS_PER_BLOCK*NBEAMS_PER_BLOCK*NW
 int block_switch = 0; // 0 means write to output1, write out output2.
 int cores[16] = {3, 4, 5, 6, 7, 8, 9, 20, 21, 22, 23, 24, 25, 26, 27, 28}; // to bind threads to
+char iP[100];
 
 // structure to pass to threads
 struct data
@@ -114,7 +115,7 @@ void * process(void * ptr)
   if (DEBUG) syslog(LOG_DEBUG,"thread %d: opened socket",thread_id);
   memset(&address, 0, sizeof(struct sockaddr_in));
   address.sin_family = AF_INET;
-  inet_pton(AF_INET, "127.0.0.1", &(address.sin_addr));
+  inet_pton(AF_INET, iP, &(address.sin_addr));
   //address.sin_addr.s_addr = inet_addr("127.0.0.1");
   address.sin_port = htons(tport);
   if (DEBUG) syslog(LOG_DEBUG,"thread %d: socket ready",thread_id);
@@ -140,6 +141,7 @@ void * process(void * ptr)
   char * dblock = (char *)malloc((8+NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW)*sizeof(char));
   int *ibuf, chgroup, tseq, oidx, iidx;
   int remain_data, outptr, len;
+  int i0;
   
   // infinite loop 
   while (1) {
@@ -165,16 +167,19 @@ void * process(void * ptr)
       //if (DEBUG) syslog(LOG_DEBUG,"thread %d: read message with chgroup %d tseq %d blockct %d",thread_id,chgroup,tseq,blockct);
       tseq = (tseq * 128) % 4096; // place within output
       
-      // output order is [beam, time, freq]. input order is [time, beam, freq]
-      for (int i=0;i<NSAMPS_PER_TRANSMIT;i++) {
-	for (int j=0;j<NBEAMS_PER_BLOCK;j++) {
+      // output order is [beam, time, freq]. input order is [beam, time, freq], but only a subset of freqs
+      i0 = 0;
+      for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
+	for (int j=0;j<NSAMPS_PER_TRANSMIT;j++) {	
 	  for (int k=0;k<NW;k++) {
 	    
-	    oidx = j*NSAMPS_PER_BLOCK*NCHAN_FIL + (tseq+i)*NCHAN_FIL +  CHOFF/8 + chgroup*NW + k;
-	    iidx = 8 + i*NBEAMS_PER_BLOCK*NW + j*NW + k;
+	    oidx = i*NSAMPS_PER_BLOCK*NCHAN_FIL + (tseq+j)*NCHAN_FIL + CHOFF/8 + chgroup*NW + k;
+	    iidx = 8 + i0;
 	    
 	    if (block_switch==0) output1[oidx] = buffer[iidx];
 	    if (block_switch==1) output2[oidx] = buffer[iidx];
+
+	    i0++;
 	    
 	  }
 	}
@@ -203,6 +208,7 @@ void usage()
 	   " -f header file [no default]\n"
 	   " -d send debug messages to syslog\n"
 	   " -o out_key [default BEAMCAPTURE_BLOCK_KEY]\n"
+	   " -i IP address\n"
 	   " -h print usage\n");
 }
 
@@ -235,7 +241,7 @@ int main(int argc, char ** argv)
   int arg = 0;
   char fnam[200];
   
-  while ((arg=getopt(argc,argv,"c:f:o:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:o:i:dh")) != -1)
     {
       switch (arg)
 	{
@@ -281,6 +287,9 @@ int main(int argc, char ** argv)
 	case 'd':
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
+	  break;
+	case 'i':
+	  strcpy(iP,optarg);
 	  break;
 	case 'h':
 	  usage();
