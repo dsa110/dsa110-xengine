@@ -36,6 +36,7 @@
 
 /* global variables */
 int DEBUG = 0;
+int STATS = 0;
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * in, int write);
 int dada_bind_thread_to_core (int core);
@@ -64,7 +65,7 @@ void calc_stats(char *input) {
   }
 
   for (int i=0;i<NANT;i++) {
-    if (DEBUG) syslog(LOG_DEBUG,"RMS_ant_2pol %d %g %g",i,sqrt(rmss[2*i]/768.),sqrt(rmss[2*i+1]/768.));
+    if (STATS) syslog(LOG_INFO,"RMS_ant_2pol %d %g %g",i,sqrt(rmss[2*i]/768.),sqrt(rmss[2*i+1]/768.));
   }
 
 }
@@ -128,6 +129,7 @@ void usage()
 	   " -i in_key [default CAPTURE_BLOCK_KEY]\n"
 	   " -o out_key [default CAPTURED_BLOCK_KEY]\n"
 	   " -j out_key2 [default REORDER_BLOCK_KEY2]\n"
+	   " -s stats\n"
 	   " -h print usage\n");
 }
 
@@ -158,7 +160,7 @@ int main (int argc, char *argv[]) {
   int arg = 0;
   int reorder = 0;
   
-  while ((arg=getopt(argc,argv,"c:i:o:j:dbrh")) != -1)
+  while ((arg=getopt(argc,argv,"c:i:o:j:s:dbrh")) != -1)
     {
       switch (arg)
 	{
@@ -226,6 +228,10 @@ int main (int argc, char *argv[]) {
 	case 'r':
 	  reorder=1;
 	  syslog (LOG_INFO, "Will do reorder");
+	  break;
+	case 's':
+	  STATS=1;
+	  syslog (LOG_INFO, "Will print stats");
 	  break;
 	case 'b':
 	  bf=1;
@@ -390,7 +396,7 @@ int main (int argc, char *argv[]) {
     memcpy(output_buffer, block, block_size);      
 
     // stats
-    if (DEBUG) calc_stats(output_buffer);
+    if (STATS) calc_stats(output_buffer);
     
     // write to output
 
