@@ -1,13 +1,26 @@
-#include "stdio.h"  
-#include "stdlib.h"  
-#include "sys/types.h"  
-#include "sys/socket.h"  
-#include "string.h"  
-#include "netinet/in.h"  
-#include "netdb.h"
-#include <unistd.h>
+#define __USE_GNU
+#define _GNU_SOURCE
+#include <sched.h>
+#include <time.h>
+#include <sys/socket.h>
+#include <math.h>
 #include <pthread.h>
-#include <arpa/inet.h>
+#include <sys/types.h>
+#include <sys/syscall.h>
+#include <sys/mman.h>
+#include <sched.h>
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <string.h>
+#include <unistd.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <syslog.h>
+
+
 #include "sock.h"
 #include "tmutil.h"
 #include "dada_client.h"
@@ -16,9 +29,8 @@
 #include "ipcio.h"
 #include "ipcbuf.h"
 #include "dada_affinity.h"
-#include <math.h>
-#include <syslog.h>
-#include "dsaX_def.h"
+#include "ascii_header.h"
+#include "dsaX_capture.h"
 
 #define NTIMES_P 4096	// # of time samples (assuming 1ms sampling period)
 #define NCHAN_P 1024	// # of channels on BF node side
@@ -33,7 +45,8 @@ int DEBUG = 0;
 double skarray[NBEAMS_P*NCHAN_P+1];	// array with SK values -- size NCHANS * NBEAMS
 double avgspec[NBEAMS_P*NCHAN_P+1];	// spectrum over all beams to estimate median filter
 double baselinecorrec[NBEAMS_P*NCHAN_P+1];	// spectrum over all beams to estimate median filter
-	
+int cores[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 20, 21, 22, 23, 24, 25};
+
 void swap(char *p,char *q) {
    char t;
    
@@ -57,6 +70,87 @@ double medval(double a[],int n) {
 	return tmp[(n+1)/2-1];
 }
 
+/* THREAD FUNCTION */
+
+struct data {
+	unsigned char * indata;
+	double * inSK;
+  unsigned char * output;
+  int cnt;
+	double nThreshUp;
+	int n_threads;
+	int thread_id;
+	int debug;
+};
+
+void noise_inject(void *args) {
+	
+	struct data *d = args;
+	int thread_id = d->thread_id;
+	int dbg = d->debug;
+	// set affinity
+	const pthread_t pid = pthread_self();
+	const int core_id = cores[thread_id];
+	cpu_set_t cpuset;
+	CPU_ZERO(&cpuset);
+	CPU_SET(core_id, &cpuset);
+	const int set_result = pthread_setaffinity_np(pid, sizeof(cpu_set_t), &cpuset);
+	if (set_result != 0)
+		syslog(LOG_ERR,"thread %d: setaffinity_np fail",thread_id);
+	const int get_affinity = pthread_getaffinity_np(pid, sizeof(cpu_set_t), &cpuset);
+	if (get_affinity != 0) 
+		syslog(LOG_ERR,"thread %d: getaffinity_np fail",thread_id);
+	if (CPU_ISSET(core_id, &cpuset))
+	  if (dbg) syslog(LOG_DEBUG,"thread %d: successfully set thread",thread_id);
+	
+	
+	// noise injection
+	
+	unsigned char *indata = (unsigned char *)d->indata;
+	double *inSK = (double *)d->inSK;
+	unsigned char *output = (unsigned char *)d->output;
+	int * cnt = (int *)d->cnt;
+	double nThreshUp = (double)d->nThreshUp;
+	int nthreads = d->n_threads;
+	int i, j, k;
+	
+	// copy from input to output
+	//memcpy(output,indata,(NBEAMS_P/nthreads)*NTIMES_P*NCHAN_P);
+	
+	//cnt[thread_id] = 0;
+	
+	for (i = 0; i < (int)(NBEAMS_P/nthreads); i++){
+	  for (k = 0; k < NCHAN_P; k++){
+	    if (inSK[i*(int)(NCHAN_P) + k] > nThreshUp){
+	      cnt[thread_id]++;
+	      //if (dbg) syslog(LOG_DEBUG,"thread %d: flagging %d %d: sk %g",thread_id,i,k,inSK[i*(int)(NCHAN_P) + k]);
+	      //for (j = 0; j < NTIMES_P; j++){
+		//output[i*(int)(NCHAN_P*NTIMES_P)+j*(int)NCHAN_P+k] = (unsigned char)(20. * rand() / ( (double)RAND_MAX ) + 10.);
+		//indata[i*(int)(NCHAN_P*NTIMES_P)+j*(int)NCHAN_P+k] = (unsigned char)(20. * 1. / ( (double)RAND_MAX ) + 10.);
+	      //}
+
+	      // copy from lookup table
+	      for (j = 0; j < NTIMES_P; j++)
+		indata[i*(int)(NCHAN_P*NTIMES_P)+j*(int)NCHAN_P+k] = output[k*NTIMES_P+j];
+	      
+	    }
+	    /*else{
+	      for (j = 0; j < NTIMES_P; j++){
+	      output[i*(int)(NCHAN_P*NTIMES_P)+j*(int)NCHAN_P+k] = indata[i*(int)(NCHAN_P*NTIMES_P)+j*(int)NCHAN_P+k];
+	      }
+	      }*/
+	  }
+	}
+	
+	
+	
+	if (dbg) syslog(LOG_DEBUG,"thread %d: done - freeing",thread_id);
+	int thread_result = 0;
+	pthread_exit((void *) &thread_result);
+}
+
+/* END THREAD FUNCTION */
+
 void usage()
 {
   fprintf (stdout,
@@ -78,7 +172,15 @@ int main(int argc, char**argv)
   // syslog start
   openlog ("flagger", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
   syslog (LOG_NOTICE, "Program started by User %d", getuid ());
-
+  
+  // threads initialization
+  int nthreads = 16;
+  pthread_t threads[nthreads];
+  pthread_attr_t attr;
+  pthread_attr_init(&attr);
+  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+  void* result=0;
+  
   // read command line args
 
   // data block HDU keys
@@ -249,9 +351,17 @@ int main(int argc, char**argv)
   double S2 = 0;
   double sampval;
   double nThreshUp = skthresh;	// Threshold to apply to SK (empirical estimation)
-	
+  struct data args[16];
+  int * flag_counts = (int *)malloc(sizeof(int)*nthreads);
+  //unsigned char * output = (unsigned char *)malloc(sizeof(char)*NBEAMS_P*NCHAN_P*NTIMES_P);
   int nFiltSize = 21;
+  int cnt = 0;
 
+  // make array of random numbers
+  unsigned char * lookup_rand = (unsigned char *)malloc(sizeof(unsigned char)*NTIMES_P*NCHAN_P);
+  for (int i=0;i<NTIMES_P*NCHAN_P;i++) 
+    lookup_rand[i] = (unsigned char)(20. * rand() / ( (double)RAND_MAX ) + 10.);
+  
   // put rest of the code inside while loop
   while (1) {	
     
@@ -290,16 +400,49 @@ int main(int argc, char**argv)
     // compare SK values to threshold and
     // replace thresholded channels with noise or 0
     
-    int cnt = 0;
-    for (int i = 0; i < NBEAMS_P; i++){
-      for (int k = 0; k < NCHAN_P; k++){
-	if (skarray[i*(int)(NCHAN_P) + k] > nThreshUp){
-	  cnt++;
-	  for (int j = 0; j < NTIMES_P; j++){
-	    if (noise)
-	      in_data[i*(int)(NCHAN_P*NTIMES_P)+j*(int)NCHAN_P+k] = (unsigned char)(20 * rand() / ( (double)RAND_MAX ) + 10.);
-	    else
+    if (noise){
+
+      for (int i=0;i<nthreads;i++) flag_counts[i] = 0;
+      for (int i=0; i<nthreads; i++) {
+	args[i].indata = in_data + i*(int)((NBEAMS_P/nthreads)*NCHAN_P*NTIMES_P);
+	args[i].inSK = skarray + i*(int)(NBEAMS_P/nthreads*NCHAN_P);
+	args[i].output = lookup_rand;
+	args[i].cnt = flag_counts;
+	args[i].nThreshUp = nThreshUp;
+	args[i].n_threads = nthreads;
+	args[i].thread_id = i;
+	args[i].debug = DEBUG;
+      }
+      if (DEBUG) syslog(LOG_DEBUG,"creating %d threads",nthreads);
+      for(int i=0; i<nthreads; i++){
+	if (pthread_create(&threads[i], &attr, &noise_inject, (void *)(&args[i]))) {
+	  syslog(LOG_ERR,"Failed to create noise_inject thread %d\n", i);
+	}
+      }
+      /*for(int i=0; i<nthreads; i++){
+	for(int j=0; j<(int)(NBEAMS_P/nthreads*NCHAN_P*NTIMES_P); i++){
+	  in_data[i*(int)(NBEAMS_P/nthreads*NCHAN_P*NTIMES_P)+j] = args[i].output[j];
+	}
+	}*/
+      pthread_attr_destroy(&attr);
+
+      for(int i=0; i<nthreads; i++){
+	pthread_join(threads[i], &result);
+	if (DEBUG) syslog(LOG_DEBUG,"joined thread %d",i);
+      }
+
+      cnt = 0;
+      for(int i=0; i<nthreads; i++) cnt += flag_counts[i];
+      //memcpy(in_data,output,sizeof(in_data));
+    }
+    else{
+      for (int i = 0; i < NBEAMS_P; i++){
+	for (int k = 0; k < NCHAN_P; k++){
+	  if (skarray[i*(int)(NCHAN_P) + k] > nThreshUp){
+	    cnt++;
+	    for (int j = 0; j < NTIMES_P; j++){
 	      in_data[i*(int)(NCHAN_P*NTIMES_P)+j*(int)NCHAN_P+k] = 0;
+	    }
 	  }
 	}
       }
@@ -336,5 +479,6 @@ int main(int argc, char**argv)
     
   }
 
+  free(lookup_rand);
   return 0;    
-}  
+} 
