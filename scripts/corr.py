@@ -20,8 +20,6 @@ my_log = dsl.DsaSyslogger()
 my_log.subsystem('correlator')
 my_log.app('corr.py')
 
-recording = False # used to control monitoring
-
 def read_yaml(fname):
     """Read a YAML formatted file
 
@@ -85,7 +83,7 @@ def get_monitor_dict(params):
     
     :param params: corr config params
     """
-
+    
     mon_dict = {}
     
     for buff in params['buffers']:
@@ -116,8 +114,6 @@ def process(params, cmd):
             os.system(cmdstr)
             sleep(0.5)
 
-        recording = True
-
         # deal with processes
         for rout in params['routines']:
             print(rout)
@@ -144,8 +140,6 @@ def process(params, cmd):
             my_log.info('Stopping '+rout['name'])
             proc = subprocess.Popen(cmdstr, shell = True)
             subprocess.Popen.wait(proc)            
-
-        recording = False
             
         # deal with buffers
         for buff in params['buffers']:
@@ -171,7 +165,7 @@ def cb_func(params):
         value = event['val']
         my_log.info("cmd= {}, value= {}".format(cmd, value))
         process(params,cmd)
-
+    
     return a
                                                                                                 
 
@@ -205,7 +199,7 @@ def corr_run(args):
         md = get_monitor_dict(params)
         if md!=-1:
             my_ds.put_dict(key, md)
-            sleep(1)
+        sleep(1)
 
                                                         
 

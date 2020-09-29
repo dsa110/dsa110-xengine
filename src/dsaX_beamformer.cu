@@ -696,7 +696,7 @@ int main (int argc, char *argv[]) {
 	  memcpy(h_indata,block+(bst*NSTREAMS+st)*nbytes_per_int,nbytes_per_int);
 
 	  // rotate h_indata in place
-	  reorder_block(h_indata);
+	  //reorder_block(h_indata);
 	  
 	  // copy to device
 	  cudaMemcpyAsync(d_indata, h_indata, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
@@ -744,7 +744,7 @@ int main (int argc, char *argv[]) {
 	  memcpy(h_indata,block+(bst*NSTREAMS+st)*nbytes_per_int,nbytes_per_int);
 
 	  // rotate h_indata in place - this is current
-	  reorder_block(h_indata);
+	  //reorder_block(h_indata);
 
 	  // copy to device
 	  cudaMemcpyAsync(d_indata, h_indata, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);

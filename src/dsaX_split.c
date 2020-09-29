@@ -37,6 +37,58 @@
 /* global variables */
 int DEBUG = 0;
 int STATS = 0;
+const int nth = 4;
+
+// data to pass to threads
+struct data {
+  char * in;
+  char * out;
+  int n_threads;
+  int thread_id;
+};
+int cores[8] = {10, 11, 12, 13, 14, 15, 16, 17};
+
+void * massage (void *args) {
+
+  struct data *d = args;
+  int thread_id = d->thread_id;
+
+  // set affinity
+  const pthread_t pid = pthread_self();
+  const int core_id = cores[thread_id];
+  cpu_set_t cpuset;
+  CPU_ZERO(&cpuset);
+  CPU_SET(core_id, &cpuset);
+  const int set_result = pthread_setaffinity_np(pid, sizeof(cpu_set_t), &cpuset);
+  if (set_result != 0)
+    syslog(LOG_ERR,"thread %d: setaffinity_np fail",thread_id);
+  const int get_affinity = pthread_getaffinity_np(pid, sizeof(cpu_set_t), &cpuset);
+  if (get_affinity != 0) 
+    syslog(LOG_ERR,"thread %d: getaffinity_np fail",thread_id);
+  if (CPU_ISSET(core_id, &cpuset))
+    if (DEBUG) syslog(LOG_DEBUG,"thread %d: successfully set thread",thread_id);
+
+  // extract from input
+  char *in = (char *)d->in;
+  char *out = (char *)d->out;
+  int n_threads = d->n_threads;  
+
+  for (int i=(int)((thread_id/n_threads)*2048);i<(int)(((thread_id + 1)/n_threads)*2048);i++) { // over time
+    for (int k=0;k<48;k++) { // over channels
+      for (int j=0;j<NANT;j++) { // over ants
+	// copy 32 bytes
+	memcpy(out + i*1536*NANT + k*NANT*32 + j*32, in + i*1536*NANT + j*1536 + k*32, 32); 
+	
+      }
+    }
+  }  
+  
+  /* return 0 */
+  int thread_result = 0;
+  pthread_exit((void *) &thread_result);
+  
+}
+
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * in, int write);
 int dada_bind_thread_to_core (int core);
@@ -78,9 +130,8 @@ void reorder_block(char * block, char * output) {
   // 24576*NANT in total. 1536*NANT per time
   
   for (int i=0;i<2048;i++) { // over time
-    for (int j=0;j<NANT;j++) { // over ants
-      for (int k=0;k<48;k++) { // over channels
-
+    for (int k=0;k<48;k++) { // over channels
+      for (int j=0;j<NANT;j++) { // over ants
 	// copy 32 bytes
 	memcpy(output + i*1536*NANT + k*NANT*32 + j*32, block + i*1536*NANT + j*1536 + k*32, 32); 
 	
@@ -88,7 +139,7 @@ void reorder_block(char * block, char * output) {
     }
   }
 
-  memcpy(block,output,24576*NANT);
+  //memcpy(block,output,24576*NANT);
 
 }
 
@@ -155,7 +206,6 @@ int main (int argc, char *argv[]) {
   
   // command line arguments
   int core = -1;
-  int nthreads = 1;
   int bf = 0;
   int arg = 0;
   int reorder = 0;
@@ -366,10 +416,19 @@ int main (int argc, char *argv[]) {
   uint64_t  bytes_read = 0;
   char * block, * output_buffer;
   output_buffer = (char *)malloc(sizeof(char)*block_out);
-  char * output = (char *)malloc(sizeof(char)*24576*NANT);
+  char * output = (char *)malloc(sizeof(char)*3145728*NANT);
   memset(output_buffer,0,block_out);
   uint64_t written, block_id;
 
+  // set up threads
+  struct data args[8];
+  pthread_t threads[8];
+  pthread_attr_t attr;
+  pthread_attr_init(&attr);
+  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+  void* result=0;
+  
+  
   // set up
 
   int observation_complete=0;
@@ -414,9 +473,37 @@ int main (int argc, char *argv[]) {
     if (bf) {
 
       // do reorder      
-      if (reorder) reorder_block(output_buffer,output);
-      
-      written = ipcio_write (hdu_out2->data_block, output_buffer, block_out);
+      if (reorder) {
+
+	// set up data structure
+	for (int i=0; i<nth; i++) {
+	  args[i].in = output_buffer;
+	  args[i].out = output;
+	  args[i].n_threads = nth;
+	  args[i].thread_id = i;
+	}
+
+	if (DEBUG) syslog(LOG_INFO,"creating %d threads",nth);
+
+	for(int i=0; i<nth; i++){
+	  if (pthread_create(&threads[i], &attr, &massage, (void *)(&args[i]))) {
+	    syslog(LOG_ERR,"Failed to create massage thread %d\n", i);
+	  }
+	}
+
+	pthread_attr_destroy(&attr);
+	if (DEBUG) syslog(LOG_DEBUG,"threads kinda running");
+    
+	for(int i=0; i<nth; i++){
+	  pthread_join(threads[i], &result);
+	  if (DEBUG) syslog(LOG_INFO,"joined thread %d",i);
+	}
+	
+	written = ipcio_write (hdu_out2->data_block, output, block_out);
+      }
+      else
+	written = ipcio_write (hdu_out2->data_block, output_buffer, block_out);
+
       if (written < block_out)
 	{
 	  syslog(LOG_ERR, "main: failed to write all data to datablock [output]");

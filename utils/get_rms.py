@@ -102,7 +102,7 @@ def decode_header(data):
 # MAIN
 
 n = 10000
-ip = '10.41.0.97'
+ip = '10.41.0.62'
 port=4011
 data = s.capture(ip=ip,port=port,n=n)
 ant=0

@@ -53,7 +53,7 @@
 #define NCHANG 1
 
 // number of SNAPs to expect
-#define NSNAPS 4
+#define NSNAPS 8
 
 /* expect consecutive channel groups */
 #define CHOFF 1152 // offset in channels of first group
@@ -68,7 +68,7 @@
 #define NPACKETS_PER_BLOCK 2048
 #define NPACKETS_PER_FIL 2
 #define NPACKETS 2048
-#define NANTS 12
+#define NANTS 24
 
 // for beamformer
 #define sep 0.7 // arcmin

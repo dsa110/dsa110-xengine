@@ -51,7 +51,7 @@ struct data {
 
 /* global variables */
 int DEBUG = 0;
-int cores[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 20, 21, 22, 23, 24, 25};
+int cores[16] = {4, 5, 6, 7, 8, 9, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29};
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * in, int write);
 int dada_bind_thread_to_core (int core);
