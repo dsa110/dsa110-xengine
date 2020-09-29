@@ -1,0 +1,19 @@
+# configuration for correlator with original file writing
+buffers:
+  - k: dada
+    b: 268435456
+    n: 8
+    c: 0
+routines:
+  - name: dsaX_writeFil
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_writeFil
+    args: -c 27 -i 127.0.0.1 -f /home/ubuntu/data/bsfil -k dada
+  - name: dsaX_nicdb
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_nicdb
+    args: -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt -d -o dada 
+    hostargs:
+      corr17: -j 10.41.0.73
+      corr18: -j 10.41.0.69
+      corr19: -j 10.41.0.74
+      corr20: -j 10.41.0.70
+      

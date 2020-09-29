@@ -1,0 +1,30 @@
+# configuration for correlator with original file writing
+buffers:
+  - k: dada
+    b: 1572864
+    n: 8
+    c: 0
+routines:
+  - name: dsaX_dbnic
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_dbnic
+    args: -i dada -d -t
+    hostargs:
+      corr01: -g 0
+      corr02: -g 1
+      corr03: -g 2
+      corr04: -g 3
+      corr05: -g 4
+      corr06: -g 5
+      corr07: -g 6
+      corr08: -g 7
+      corr09: -g 8
+      corr10: -g 9
+      corr11: -g 10
+      corr12: -g 11
+      corr13: -g 12
+      corr14: -g 13
+      corr15: -g 14
+      corr21: -g 15
+  - name: dsaX_junkdb
+    cmd: dsaX_junkdb
+    args: -t 1000 -k dada -r 10 /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt

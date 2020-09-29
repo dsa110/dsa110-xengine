@@ -357,7 +357,7 @@ int main (int argc, char *argv[]) {
 
 	syslog(LOG_INFO, "beginning file write for SRC %s for %f s",srcnam,reclen);
 	
-	NINTS = (int)(floor(reclen/mytsamp/128.));
+	NINTS = (int)(floor(reclen/mytsamp/4096./64.));
 	sprintf(foutnam,"%s_%s_%d.fil",fnam,srcnam,fctr);
 	syslog(LOG_INFO, "main: opening new file %s",foutnam);
 
@@ -372,9 +372,9 @@ int main (int argc, char *argv[]) {
 	send_int("machine_id",1);
 	send_int("telescope_id",82);
 	send_int("data_type",1); // filterbank data
-	send_double("fch1",1494.84375); // THIS IS CHANNEL 0 :)
+	send_double("fch1",1530.0); // THIS IS CHANNEL 0 :)
 	send_double("foff",-0.244140625);
-	send_int("nchans",48);
+	send_int("nchans",1024);
 	send_int("nbits",8);
 	send_double("tstart",55000.0);
 	send_double("tsamp",8.192e-6*8.*16.);
