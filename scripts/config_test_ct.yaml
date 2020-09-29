@@ -25,6 +25,6 @@ routines:
       corr14: -g 13
       corr15: -g 14
       corr21: -g 15
-  - name: dsaX_junkdb
-    cmd: dsaX_junkdb
+  - name: dada_junkdb
+    cmd: dada_junkdb
     args: -t 1000 -k dada -r 10 /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt
