@@ -56,7 +56,7 @@
 #define NSNAPS 8
 
 /* expect consecutive channel groups */
-#define CHOFF 1152 // offset in channels of first group
+#define CHOFF 1024 // offset in channels of first group
 
 // default control ports
 #define CAPTURE_CONTROL_PORT 11223
