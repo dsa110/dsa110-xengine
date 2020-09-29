@@ -29,10 +29,10 @@ buffers:
     n: 4
     c: 1
 routines:
+  - name: meridian_fringestop
+    cmd: python
+    args: /home/ubuntu/proj/dsa110-shell/dsa110-meridian-fs/dsamfs/meridian_fringestop.py /home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/dsa_parameters.yaml /home/ubuntu/data 
   - name: dada_dbnull
-    cmd: dada_dbnull
-    args: -k bada
-  - name: dada_dbnull2
     cmd: dada_dbnull
     args: -k cada
   - name: dsaX_wrangle
@@ -49,7 +49,24 @@ routines:
     args: -t 16 -i dbda -o eada
   - name: dsaX_split
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_split
-    args: -b -i dada -o dbda -j dcda -c 19 -r -d
-  - name: dada_junkdb
-    cmd: dada_junkdb
-    args: -t 1000 -k dada -r 560 /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt
+    args: -b -i dada -o dbda -j dcda -c 19 -r
+  - name: dsaX_capture
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_capture
+    args: -c 26 -i 127.0.0.1 -o dada -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt
+    hostargs:
+      corr01: -j 10.41.0.62
+      corr02: -j 10.41.0.63
+      corr03: -j 10.41.0.54
+      corr04: -j 10.41.0.55
+      corr05: -j 10.41.0.58
+      corr06: -j 10.41.0.56
+      corr07: -j 10.41.0.57
+      corr08: -j 10.41.0.59
+      corr09: -j 10.41.0.60
+      corr10: -j 10.41.0.61
+      corr11: -j 10.41.0.64
+      corr12: -j 10.41.0.65
+      corr13: -j 10.41.0.66
+      corr14: -j 10.41.0.68
+      corr15: -j 10.41.0.75
+      corr16: -j 10.41.0.79

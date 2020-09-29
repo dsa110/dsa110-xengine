@@ -11,6 +11,7 @@ samples_per_frame_out: 1
 nint: 24 # Number of samples to integrate together
 pt_dec: 0.71094487066
 tsamp: 0.134217728 # Sampling time of data that will be read in
+nfreq_int: 8 # Number of channels to integrate
 antenna_order:
   0: 24
   1: 25
@@ -24,35 +25,35 @@ antenna_order:
   9: 33
   10: 34
   11: 35
-  12: 36
-  13: 37
-  14: 38
-  15: 39
-  16: 40
-  17: 41
-  18: 42
-  19: 43
-  20: 44
-  21: 45
-  22: 46
-  23: 47
-  24: 48
+  12: 19
+  13: 15
+  14: 20
+  15: 18
+  16: 17
+  17: 16
+  18: 14
+  19: 13
+  20: 116
+  21: 102
+  22: 101
+  23: 100
+  24: 103
 nchan_spw: 384
 ch0:
   dsaenv01: 3400
-  corr00: 1024
-  corr01: 1408
-  corr02: 1792
-  corr03: 2176
-  corr04: 2560
-  corr05: 2944
-  corr06: 3328
-  corr07: 3712
-  corr08: 4096
-  corr09: 4480
-  corr10: 4864
-  corr11: 5248
-  corr12: 5632
-  corr13: 6016
-  corr14: 6400
-  corr15: 6784
+  corr01: 1024
+  corr02: 1408
+  corr03: 1792
+  corr04: 2176
+  corr05: 2560
+  corr06: 2944
+  corr07: 3328
+  corr08: 3712
+  corr09: 4096
+  corr10: 4480
+  corr11: 4864
+  corr12: 5248
+  corr13: 5632
+  corr14: 6016
+  corr15: 6400
+  corr16: 6784
