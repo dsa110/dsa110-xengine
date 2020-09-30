@@ -858,7 +858,7 @@ int main (int argc, char *argv[]) {
 	      // if packet arrived too late, ignore
 	      if (seq_byte < udpdb.block_start_byte)
 		{
-		  syslog (LOG_INFO, "receive_obs: seq_byte < block_start_byte");
+		  syslog (LOG_INFO, "receive_obs: seq_byte < block_start_byte: %"PRIu64", %"PRIu64", %"PRIu64"", seq_no, ant_id, ch_id);
 		  udpdb.packets->dropped++;
 		  udpdb.bytes->dropped += UDP_DATA;
 		}
