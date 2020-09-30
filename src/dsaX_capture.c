@@ -75,6 +75,7 @@ void usage()
 	   " -f filename of template dada header [no default]\n"
 	   " -o out_key [default CAPTURE_BLOCK_KEY]\n"
 	   " -d send debug messages to syslog\n"
+	   " -g chgroup [default 0]\n"
 	   " -h print usage\n");
 }
 
@@ -501,11 +502,12 @@ int main (int argc, char *argv[]) {
 
   // command line arguments
   int core = -1;
+  int chgroup = 0;
   int arg=0;
   char dada_fnam[200]; // filename for dada header
   char iface[100]; // IP for data packets
   
-  while ((arg=getopt(argc,argv,"c:j:i:f:o:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:j:i:f:o:g:dh")) != -1)
     {
       switch (arg)
 	{
@@ -533,6 +535,18 @@ int main (int argc, char *argv[]) {
 	  else
 	    {
 	      syslog(LOG_ERR,"-i flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'g':
+	  if (optarg)
+	    {	      
+	      chgroup = atoi(optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-g flag requires argument");
 	      usage();
 	      return EXIT_FAILURE;
 	    }
@@ -814,7 +828,8 @@ int main (int argc, char *argv[]) {
 	  ant_id |= (unsigned char) (udpdb.sock->buf[6]) << 8;
 	  ant_id |= (unsigned char) (udpdb.sock->buf[7]);
 	  
-	  act_seq_no = seq_no*NCHANG*NSNAPS/2 + ant_id*NCHANG/3 + (ch_id-CHOFF)/384; // actual seq no
+	  //act_seq_no = seq_no*NCHANG*NSNAPS/2 + ant_id*NCHANG/3 + (ch_id-CHOFF)/384; // actual seq no
+	  act_seq_no = seq_no*NCHANG*NSNAPS/2 + ant_id*NCHANG/3 + chgroup; // actual seq no
 
 	  // check for starting or stopping condition, using continue
 	  //if (DEBUG) printf("%"PRIu64" %"PRIu64" %d\n",seq_no,act_seq_no,ch_id);//syslog(LOG_DEBUG, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
