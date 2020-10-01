@@ -26,15 +26,32 @@ buffers:
     c: 0
   - k: cada
     b: 1572864
-    n: 4
+    n: 8
     c: 1
 routines:
   - name: meridian_fringestop
     cmd: python
     args: /home/ubuntu/proj/dsa110-shell/dsa110-meridian-fs/dsamfs/meridian_fringestop.py /home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/dsa_parameters.yaml /home/ubuntu/data 
-  - name: dada_dbnull
-    cmd: dada_dbnull
-    args: -k cada
+  - name: dsaX_dbnic
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_dbnic
+    args: -i cada -d -t
+    hostargs:
+      corr01: -g 0
+      corr02: -g 1
+      corr03: -g 2
+      corr04: -g 3
+      corr05: -g 4
+      corr06: -g 5
+      corr07: -g 6
+      corr08: -g 7
+      corr09: -g 8
+      corr10: -g 9
+      corr11: -g 10
+      corr12: -g 11
+      corr13: -g 12
+      corr14: -g 13
+      corr15: -g 14
+      corr16: -g 15
   - name: dsaX_wrangle
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_wrangle
     args: -i fada -o bada
