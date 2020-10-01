@@ -168,16 +168,16 @@ void * process(void * ptr)
       tseq = (tseq * 128) % 4096; // place within output
       
       // output order is [beam, time, freq]. input order is [beam, time, freq], but only a subset of freqs
-      i0 = 0;
+      i0 = 8;
       for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
 	for (int j=0;j<NSAMPS_PER_TRANSMIT;j++) {	
 	  for (int k=0;k<NW;k++) {
 	    
 	    oidx = i*NSAMPS_PER_BLOCK*NCHAN_FIL + (tseq+j)*NCHAN_FIL + CHOFF/8 + chgroup*NW + k;
-	    iidx = 8 + i0;
+	    //iidx = 8 + i0;
 	    
-	    if (block_switch==0) output1[oidx] = buffer[iidx];
-	    if (block_switch==1) output2[oidx] = buffer[iidx];
+	    if (block_switch==0) output1[oidx] = buffer[i0];
+	    if (block_switch==1) output2[oidx] = buffer[i0];
 
 	    i0++;
 	    

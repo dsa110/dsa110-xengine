@@ -833,7 +833,7 @@ int main (int argc, char *argv[]) {
 
 	  // check for starting or stopping condition, using continue
 	  //if (DEBUG) printf("%"PRIu64" %"PRIu64" %d\n",seq_no,act_seq_no,ch_id);//syslog(LOG_DEBUG, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
-	  if (seq_no == UTC_START) canWrite=1;
+	  if (seq_no == UTC_START && ant_id==0) canWrite=1;
 	  if (canWrite == 0) continue;
 	  if (seq_no == UTC_STOP) canWrite=0;
 
