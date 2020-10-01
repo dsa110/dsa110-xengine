@@ -34,7 +34,7 @@ routines:
     args: /home/ubuntu/proj/dsa110-shell/dsa110-meridian-fs/dsamfs/meridian_fringestop.py /home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/dsa_parameters.yaml /home/ubuntu/data 
   - name: dsaX_dbnic
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_dbnic
-    args: -i cada -d -t
+    args: -i cada -d
     hostargs:
       corr01: -g 0
       corr02: -g 1

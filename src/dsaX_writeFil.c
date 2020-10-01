@@ -357,7 +357,7 @@ int main (int argc, char *argv[]) {
 
 	syslog(LOG_INFO, "beginning file write for SRC %s for %f s",srcnam,reclen);
 	
-	NINTS = (int)(floor(reclen/mytsamp/4096./64.));
+	NINTS = (int)(floor(reclen/(mytsamp*4096.)));
 	sprintf(foutnam,"%s_%s_%d.fil",fnam,srcnam,fctr);
 	syslog(LOG_INFO, "main: opening new file %s",foutnam);
 
