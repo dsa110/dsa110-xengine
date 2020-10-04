@@ -1,0 +1,30 @@
+# configuration for correlator and beamformer
+buffers:
+  - k: dada
+    b: 75497472
+    n: 10
+    c: 0    
+routines:
+  - name: dada_dbnull
+    cmd: dada_dbnull
+    args: -k dada
+  - name: dsaX_capture
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_capture
+    args: -c 1 -i 127.0.0.1 -o dada -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt
+    hostargs:
+      corr01: -j 10.41.0.62
+      corr02: -j 10.41.0.63
+      corr03: -j 10.41.0.54
+      corr04: -j 10.41.0.55
+      corr05: -j 10.41.0.58
+      corr06: -j 10.41.0.56
+      corr07: -j 10.41.0.57
+      corr08: -j 10.41.0.59
+      corr09: -j 10.41.0.60
+      corr10: -j 10.41.0.61
+      corr11: -j 10.41.0.64
+      corr12: -j 10.41.0.65
+      corr13: -j 10.41.0.66
+      corr14: -j 10.41.0.68
+      corr15: -j 10.41.0.75
+      corr16: -j 10.41.0.79
