@@ -390,7 +390,7 @@ void stats_thread(void * arg) {
     gb_rcv_ps /= 1000000000;
 
     /* determine how much memory is free in the receivers */
-    syslog (LOG_NOTICE,"UTC_START=%"PRIu64", R=%6.3f [Gb/s], D=%4.1f [MB/s], D=%"PRIu64" pkts, s_s=%"PRIu64"", UTC_START, gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, s_rcv_1sec);
+    syslog (LOG_NOTICE,"CAPSTATS %6.3f [Gb/s], D %4.1f [MB/s], D %"PRIu64" pkts", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped);
 
     sleep(1);
   }

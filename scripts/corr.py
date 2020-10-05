@@ -52,6 +52,28 @@ def parse_value(value):
         my_log.error("parse_value(): JSON Decode Error. Check JSON. value= {}".format(value))
         return rtn
                     
+def get_capture_stats():
+
+    """gets capture stats to put in etcd
+    """
+
+    # open logger
+    my_log.function('get_capture_stats')
+    
+    try:
+        result = subprocess.check_output("tail -n 50000 /var/log/syslog | grep CAPSTATS | tail -n 1 | awk '{print $7,$10,$13}'", shell=True, stderr=subprocess.STDOUT)
+        arr = result.decode("utf-8").split(' ')
+        oarr = np.zeros(3)
+        for i in range(3):
+            oarr[i] = float(arr[i])
+    except:
+        #my_log.warning('buffer not accessible: '+buff)
+        return -1
+
+    return oarr.tolist()
+    
+    
+
 def get_buf_info(buff):
 
     """get info on dada buffer
@@ -93,6 +115,13 @@ def get_monitor_dict(params):
             return -1
         mon_dict[buff['k']] = infoo
 
+    capstats = get_capture_stats()
+    if capstats==-1:
+        return -1
+    mon_dict['capture_rate'] = capstats[0]
+    mon_dict['drop_rate'] = capstats[1]*8.
+    mon_dict['drop_count'] = capstats[2]
+        
     return mon_dict
 
 # this actually processes commands
