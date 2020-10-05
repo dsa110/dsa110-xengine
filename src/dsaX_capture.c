@@ -757,8 +757,11 @@ int main (int argc, char *argv[]) {
   // for "saving" out of order packets near edges of blocks
   unsigned int temp_idx = 0;
   unsigned int temp_max = 32768;
-  char * temp_buffers[temp_max][UDP_DATA];
-  uint64_t temp_seq_byte[temp_max];
+  char ** temp_buffers; //[temp_max][UDP_DATA];
+  uint64_t * temp_seq_byte;
+  temp_buffers = (char **)malloc(sizeof(char *)*temp_max);
+  for (int i=0;i<temp_max;i++) temp_buffers[i] = (char *)malloc(sizeof(char)*UDP_DATA);
+  temp_seq_byte = (uint64_t *)malloc(sizeof(uint64_t)*temp_max);
   unsigned i = 0;
   uint64_t timeouts = 0;
   uint64_t timeout_max = 1000000000;
@@ -955,6 +958,9 @@ int main (int argc, char *argv[]) {
   pthread_join (control_thread_id, &result);
   pthread_join (stats_thread_id, &result);
 
+  free(temp_seq_byte);
+  free(temp_buffers);
+  
   dsaX_dbgpu_cleanup (hdu_out);
 
 }
