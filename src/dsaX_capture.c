@@ -756,7 +756,7 @@ int main (int argc, char *argv[]) {
   uint64_t seq_byte = 0; // offset of current packet in bytes from start of obs
   // for "saving" out of order packets near edges of blocks
   unsigned int temp_idx = 0;
-  unsigned int temp_max = 32768;
+  unsigned int temp_max = 10;
   char ** temp_buffers; //[temp_max][UDP_DATA];
   uint64_t * temp_seq_byte;
   temp_buffers = (char **)malloc(sizeof(char *)*temp_max);
@@ -839,7 +839,7 @@ int main (int argc, char *argv[]) {
 	  if (seq_no == UTC_START && ant_id==0) canWrite=1;
 	  if (canWrite == 0) continue;
 	  if (seq_no == UTC_STOP) canWrite=0;
-	  if (udpdb.packets->received<500) syslog(LOG_INFO, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
+	  if (udpdb.packets->received<100) syslog(LOG_INFO, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
 	  
 	  // if first packet
 	  if (!udpdb.capture_started)
