@@ -45,6 +45,10 @@ struct data {
   char * out;
   int n_threads;
   int thread_id;
+  ipcio_t * ipc1;
+  ipcio_t * ipc2;
+  int bf;
+  int reorder;
 };
 int cores[8] = {10, 11, 12, 13, 14, 15, 16, 17};
 
@@ -73,15 +77,33 @@ void * massage (void *args) {
   char *out = (char *)d->out;
   int n_threads = d->n_threads;  
 
-  for (int i=(int)((thread_id/n_threads)*2048);i<(int)(((thread_id + 1)/n_threads)*2048);i++) { // over time
-    for (int k=0;k<48;k++) { // over channels
-      for (int j=0;j<NANT;j++) { // over ants
-	// copy 32 bytes
-	memcpy(out + i*1536*NANT + k*NANT*32 + j*32, in + i*1536*NANT + j*1536 + k*32, 32); 
-	
+  // block for transpose
+  int block = 16;
+  
+  // write
+  memcpy(d->ipc1->curbuf + (int)((thread_id/n_threads)*2048*1536*NANT), in + (int)((thread_id/n_threads)*2048*1536*NANT), (int)(2048*1536*NANT/n_threads));
+  
+  if (d->bf) {
+
+    if (d->reorder) {
+      for (int i=(int)((thread_id/n_threads)*2048);i<(int)(((thread_id + 1)/n_threads)*2048);i++) { // over time
+	for (int i1 = 0; i1 < 48; i1 += block) {
+	  for(int j = 0; j < NANT; j++) {
+	    for(int b = 0; b < block && i1 + b < 48; b++) {
+	      memcpy(out + i*1536*NANT + (i1+b)*NANT*32 + j*32, in + i*1536*NANT + j*1536 + (i1+b)*32, 32);
+	    }
+	  }
+	}
       }
+    
+      memcpy(d->ipc2->curbuf + (int)((thread_id/n_threads)*2048*1536*NANT), out + (int)((thread_id/n_threads)*2048*1536*NANT), (int)(2048*1536*NANT/n_threads));
+      
     }
-  }  
+    else
+      memcpy(d->ipc2->curbuf + (int)((thread_id/n_threads)*2048*1536*NANT), in + (int)((thread_id/n_threads)*2048*1536*NANT), (int)(2048*1536*NANT/n_threads));
+
+  }
+    
   
   /* return 0 */
   int thread_result = 0;
@@ -449,73 +471,61 @@ int main (int argc, char *argv[]) {
       started=1;
     }
 
+    
     // DO STUFF
 
+        
     // copy to output buffer
     memcpy(output_buffer, block, block_size);      
 
     // stats
     if (STATS) calc_stats(output_buffer);
     
-    // write to output
-
-    written = ipcio_write (hdu_out->data_block, output_buffer, block_out);
-    if (written < block_out)
-      {
-	syslog(LOG_ERR, "main: failed to write all data to datablock [output]");
-	dsaX_dbgpu_cleanup (hdu_in,0);
-	dsaX_dbgpu_cleanup (hdu_out,1);
-	if (bf) dsaX_dbgpu_cleanup (hdu_out2,1);
-	return EXIT_FAILURE;
-      }
-
-    // do the bf stuff
+    // sort out write
+    hdu_out->data_block->curbuf = ipcbuf_get_next_write ((ipcbuf_t*)hdu_out->data_block);
+    hdu_out->data_block->marked_filled = 0;      
     if (bf) {
-
-      // do reorder      
-      if (reorder) {
-
-	// set up data structure
-	for (int i=0; i<nth; i++) {
-	  args[i].in = output_buffer;
-	  args[i].out = output;
-	  args[i].n_threads = nth;
-	  args[i].thread_id = i;
-	}
-
-	if (DEBUG) syslog(LOG_INFO,"creating %d threads",nth);
-
-	for(int i=0; i<nth; i++){
-	  if (pthread_create(&threads[i], &attr, &massage, (void *)(&args[i]))) {
-	    syslog(LOG_ERR,"Failed to create massage thread %d\n", i);
-	  }
-	}
-
-	pthread_attr_destroy(&attr);
-	if (DEBUG) syslog(LOG_DEBUG,"threads kinda running");
-    
-	for(int i=0; i<nth; i++){
-	  pthread_join(threads[i], &result);
-	  if (DEBUG) syslog(LOG_INFO,"joined thread %d",i);
-	}
-	
-	written = ipcio_write (hdu_out2->data_block, output, block_out);
-      }
-      else
-	written = ipcio_write (hdu_out2->data_block, output_buffer, block_out);
-
-      if (written < block_out)
-	{
-	  syslog(LOG_ERR, "main: failed to write all data to datablock [output]");
-	  dsaX_dbgpu_cleanup (hdu_in,0);
-	  dsaX_dbgpu_cleanup (hdu_out,1);
-	  if (bf) dsaX_dbgpu_cleanup (hdu_out2,1);
-	  //dsaX_dbgpu_cleanup (hdu_in, hdu_out, hdu_out2);
-	  return EXIT_FAILURE;
-	}
-
+      hdu_out2->data_block->curbuf = ipcbuf_get_next_write ((ipcbuf_t*)hdu_out2->data_block);
+      hdu_out2->data_block->marked_filled = 0;      
     }
+    // set up data structure
+    for (int i=0; i<nth; i++) {
+      args[i].in = output_buffer;
+      args[i].out = output;
+      args[i].n_threads = nth;
+      args[i].thread_id = i;
+      if (bf) args[i].ipc2 = hdu_out2->data_block;;
+      args[i].ipc1 = hdu_out->data_block;
+      args[i].bf = bf;
+      args[i].reorder = reorder;
+    }
+
+    if (DEBUG) syslog(LOG_DEBUG,"creating %d threads",nth);
     
+    for(int i=0; i<nth; i++){
+      if (pthread_create(&threads[i], &attr, &massage, (void *)(&args[i]))) {
+	syslog(LOG_ERR,"Failed to create massage thread %d\n", i);
+      }
+    }
+
+    pthread_attr_destroy(&attr);
+    if (DEBUG) syslog(LOG_DEBUG,"threads kinda running");
+    
+    for(int i=0; i<nth; i++){
+      pthread_join(threads[i], &result);
+      if (DEBUG) syslog(LOG_DEBUG,"joined thread %d",i);
+    }
+
+    // finish write
+    ipcbuf_mark_filled ((ipcbuf_t*)hdu_out->data_block, block_out);
+    ipcio_check_pending_sod (hdu_out->data_block);
+    hdu_out->data_block->marked_filled = 1;      
+    if (bf) {
+      ipcbuf_mark_filled ((ipcbuf_t*)hdu_out2->data_block, block_out);
+      ipcio_check_pending_sod (hdu_out2->data_block);
+      hdu_out2->data_block->marked_filled = 1;      
+    }
+
     if (DEBUG) syslog(LOG_DEBUG, "written block %d",blocks);      
     blocks++;
     
