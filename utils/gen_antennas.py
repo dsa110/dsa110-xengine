@@ -7,7 +7,7 @@ outfile = 'antennas.out'
 antpos = np.arange(64,dtype=np.float32)*6.25
 #weights = np.ones(64*NW*2*2,dtype=np.float32)
 weights = np.zeros(64*NW*2*2,dtype=np.float32)
-weights[0:NW*2*2] += 1.
+weights[2*NW*2*2:3*NW*2*2] += 1.
 
 output = np.zeros(64+64*NW*2*2,dtype=np.float32)
 output[0:64] = antpos
