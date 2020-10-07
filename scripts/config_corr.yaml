@@ -12,6 +12,10 @@ buffers:
     b: 75497472 
     n: 8
     c: 1
+  - k: ddda
+    b: 75497472 
+    n: 4
+    c: 1
   - k: eada
     b: 402653184
     n: 8
@@ -57,16 +61,19 @@ routines:
     args: -i fada -o bada
   - name: dsaX_beamformer
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_beamformer
-    args: -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -i dcda -o cada
+    args: -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -i ddda -o cada
   - name: dsaX_xgpu
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_xgpu
     args: -t 4 -i eada -o fada -c 2
   - name: dsaX_reorder_raw
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_reorder_raw
     args: -t 16 -i dbda -o eada
+  - name: dsaX_split2
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_split
+    args: -i dada -o dbda -c 19 -r
   - name: dsaX_split
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_split
-    args: -i dada -o dbda -j dcda -c 19
+    args: -i dada -o dbda -j dcda -c 19 -b
   - name: dsaX_capture
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_capture
     args: -c 1 -i 127.0.0.1 -o dada -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt
