@@ -70,7 +70,7 @@ routines:
     args: -t 16 -i dbda -o eada
   - name: dsaX_split2
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_split
-    args: -i dada -o dbda -c 19 -r
+    args: -i dcda -o ddda -c 19 -r
   - name: dsaX_split
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_split
     args: -i dada -o dbda -j dcda -c 19 -b
