@@ -38,15 +38,14 @@
 #include <smmintrin.h>
 #include <immintrin.h>
 
+#define S 4096
+
 // data to pass to threads
 struct data {
   char * in;
-  char * out;
   int n_threads;
   int thread_id;
-  int debug;
-  int write;
-  ipcio_t * ipc;
+  ipcio_t * out;
 };
 
 /* global variables */
@@ -101,15 +100,6 @@ void * massage(void *args) {
   // basic stuff
   struct data *d = args;
   int thread_id = d->thread_id;
-  int na = 64; // output ants
-  int dbg = d->debug;
-   
-  // masks for fluffing
-  __m512i masks[4];
-  masks[0] = _mm512_set_epi64(0x000f000f000f000fULL, 0x000f000f000f000fULL, 0x000f000f000f000fULL, 0x000f000f000f000fULL, 0x000f000f000f000fULL, 0x000f000f000f000fULL, 0x000f000f000f000fULL, 0x000f000f000f000fULL);
-  masks[1] = _mm512_set_epi64(0x00f000f000f000f0ULL, 0x00f000f000f000f0ULL, 0x00f000f000f000f0ULL, 0x00f000f000f000f0ULL, 0x00f000f000f000f0ULL, 0x00f000f000f000f0ULL, 0x00f000f000f000f0ULL, 0x00f000f000f000f0ULL);
-  masks[2] = _mm512_set_epi64(0x0f000f000f000f00ULL, 0x0f000f000f000f00ULL, 0x0f000f000f000f00ULL, 0x0f000f000f000f00ULL, 0x0f000f000f000f00ULL, 0x0f000f000f000f00ULL, 0x0f000f000f000f00ULL, 0x0f000f000f000f00ULL);
-  masks[3] = _mm512_set_epi64(0xf000f000f000f000ULL, 0xf000f000f000f000ULL, 0xf000f000f000f000ULL, 0xf000f000f000f000ULL, 0xf000f000f000f000ULL, 0xf000f000f000f000ULL, 0xf000f000f000f000ULL, 0xf000f000f000f000ULL);
 
   
   // set affinity
@@ -125,154 +115,17 @@ void * massage(void *args) {
   if (get_affinity != 0) 
     syslog(LOG_ERR,"thread %d: getaffinity_np fail",thread_id);
   if (CPU_ISSET(core_id, &cpuset))
-    if (DEBUG || dbg) syslog(LOG_DEBUG,"thread %d: successfully set thread",thread_id);
+    if (DEBUG) syslog(LOG_DEBUG,"thread %d: successfully set thread",thread_id);
 
   // extract from input data structure
   char *in = (char *)d->in;
-  char *out = (char *)d->out;
+  //char *out = (char *)d->out;
   int nthreads = d->n_threads;  
-
-  /* DO ALL PROCESSING
-   
-     "in" is input block: NPACKETS * NANTS * (384*2) * 2 pol * r/i. (384*2 is for the two times)
-     "out" needs to be in order NPACKETS * (384*2) * 64 * 2 pol * r/i
-     parallelize by splitting on NPACKETS axis. 
-
-   */
-
-  // input and output index and extracted data
-  int idx = thread_id; // PACKET idx for input and output
-  char * proc_data = (char *)malloc(sizeof(char)*(NPACKETS/nthreads)*NANTS*(384*2)*2); // for 4-bit data
-  char * fluffed_data = (char *)malloc(sizeof(char)*(NPACKETS/nthreads)*NANTS*(384*2)*2*2); // for 8-bit data
-  char * out_data = (char *)malloc(sizeof(char)*(NPACKETS/nthreads)*(384*2)*na*2*2); // for output 8-bit data
-  
-  // extract data
-  memcpy(proc_data,in+idx*(NPACKETS/nthreads)*NANTS*(384*2)*2,(NPACKETS/nthreads)*NANTS*(384*2)*2);
-  if (DEBUG || dbg) syslog(LOG_DEBUG,"thread %d: extracted data",thread_id);
-  
-  // do fluffing
-
-  /* 
-     technique is to use nybble masks to 
-     (a) unmask every fourth nybble
-     (b) bit shift to left using mm512_slli_epi16
-     (c) sign extend by 4 bits using mm512_srai_epi16
-     (d) bit shift to right
-
-     Will produce m512 for lower and upper bytes. Then just need to copy into fluffed_data
-
-   */
-
-  // variables
-  char * low = (char *)malloc(sizeof(char)*64); // m512
-  char * hi = (char *)malloc(sizeof(char)*64); // m512
-  __m512i low_m, hi_m;
-  unsigned short * low_u = (unsigned short *)(low);
-  unsigned short * hi_u = (unsigned short *)(hi);
-  __m512i v[4]; // for 4 packed 4-bit numbers
-
-  // input and output
-  __m512i proc_m;
-  unsigned short * fluffed_u = (unsigned short *)(fluffed_data);
-
-  // numbers to iterate over
-  int n_512 = (NPACKETS/nthreads)*NANTS*(384*2)*2/64;
-
-  if (dbg || DEBUG) syslog(LOG_DEBUG,"thread %d: ready to fluff",thread_id);
-  
-  // let's do it!
-  for (int i=0;i<n_512;i++) { // loop over lots of 512 bits
-
-    if (dbg) syslog(LOG_DEBUG,"thread %d: beginning fluff %d",thread_id,i);
-
-    // get input data
-    proc_m = _mm512_loadu_si512((proc_data+i*64));
-    if (dbg) syslog(LOG_DEBUG,"thread %d: copied data %d",thread_id,i);
-    
-    // retrieve masks
-    for (int j=0;j<4;j++) {
-      v[j] = _mm512_and_si512(proc_m, masks[j]);
-    }
-
-    if (dbg) syslog(LOG_DEBUG,"thread %d: masked %d",thread_id,i);
-    
-    // do in place fluffing
-    v[0] = _mm512_slli_epi16(v[0], 12);
-    v[0] = _mm512_srai_epi16(v[0], 4);
-    v[0] = _mm512_srli_epi16(v[0], 8);
-
-    v[1] = _mm512_slli_epi16(v[1], 8);
-    v[1] = _mm512_srai_epi16(v[1], 4);
-
-    v[2] = _mm512_slli_epi16(v[2], 4);
-    v[2] = _mm512_srai_epi16(v[2], 4);
-    v[2] = _mm512_srli_epi16(v[2], 8);
-
-    v[3] = _mm512_srai_epi16(v[3], 4);
-
-    if (dbg) syslog(LOG_DEBUG,"thread %d: in place %d",thread_id,i);
-
-    // make lower and upper 
-    low_m = _mm512_or_si512(v[0], v[1]);
-    hi_m = _mm512_or_si512(v[2], v[3]);
-
-    if (dbg) syslog(LOG_DEBUG,"thread %d: lower and upper %d",thread_id,i);
-
-    // copy back to bytes
-    _mm512_storeu_si512((__m512i *) &low[0], low_m);
-    _mm512_storeu_si512((__m512i *) &hi[0], hi_m);
-
-    if (dbg) syslog(LOG_DEBUG,"thread %d: copied lower and upper %d",thread_id,i);
-    
-    // extract from lower and upper into fluffed
-    // there are 32 2-byte unsigned shorts in each of low and hi
-    for (int j=0;j<32;j++) {
-      fluffed_u[i*64+j*2] = low_u[j];
-      fluffed_u[i*64+j*2+1] = hi_u[j];
-    }
-
-    if (dbg) syslog(LOG_DEBUG,"thread %d: extracted %d",thread_id,i);
-    
-  }
-
-  if (dbg || DEBUG) syslog(LOG_DEBUG,"thread %d: fluffed",thread_id);
-  
-  // transpose antennas and frequencies by ints
-  // from fluffed_data to out_data
-  int * fluffed_int = (int *)(fluffed_data);
-  memset(out_data,0,(NPACKETS/nthreads)*(384*2)*na*2*2);
-  int * out_int = (int *)out_data;
-
-  if (dbg || DEBUG) syslog(LOG_DEBUG,"thread %d: ready to transpose",thread_id);
-
-  // do block transpose - https://codereview.stackexchange.com/questions/229876/fast-matrix-transpose
-  int tile_size = 4; // set by benchmarking
-  for (int i_packet=0;i_packet<NPACKETS/nthreads;i_packet++) {
-
-    for (int i=0;i<NANTS;i+=tile_size) {
-      for (int j=0;j<384*2;j++) {
-	for (int b=0;b<tile_size;b++) out_int[i_packet*na*768 + j*na+i+b] = fluffed_int[i_packet*NANTS*768 + (i+b)*384*2+j];
-      }
-    }
-
-  }
-
-  if (dbg || DEBUG) syslog(LOG_DEBUG,"thread %d: transposed",thread_id);
   
   // place in out
-  if (d->write)
-    memcpy (d->ipc->curbuf + idx*(NPACKETS/nthreads)*(384*2)*na*2*2,out_data,(NPACKETS/nthreads)*(384*2)*na*2*2);
-  else
-    memcpy(out + idx*(NPACKETS/nthreads)*(384*2)*na*2*2,out_data,(NPACKETS/nthreads)*(384*2)*na*2*2);
-  
-  if (dbg || DEBUG) syslog(LOG_DEBUG,"thread %d: done - freeing",thread_id);
-  
-  // free stuff
-  free(proc_data);
-  free(fluffed_data);
-  free(out_data);
-  free(low);
-  free(hi);
+  int i = thread_id*(S/nthreads);
+  //syslog(LOG_INFO,"thread %d: %d",thread_id,i);
+  memcpy (d->out->curbuf + i, in + i, S/nthreads);  
   
   /* return 0 */
   int thread_result = 0;
@@ -287,7 +140,7 @@ int main (int argc, char *argv[]) {
   
   // startup syslog message
   // using LOG_LOCAL0
-  openlog ("dsaX_reorder_raw", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
+  openlog ("test_write", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
   syslog (LOG_NOTICE, "Program started by User %d", getuid ());
 
   // TESTING and initialization
@@ -298,51 +151,6 @@ int main (int argc, char *argv[]) {
   pthread_attr_init(&attr);
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
   void* result=0;
-
-  // run test with single thread
-
-  syslog(LOG_INFO,"Running TEST...\n");
-  
-  // set up data structure
-  char * test_block = (char *)malloc(sizeof(char)*NPACKETS*NANTS*(384*2)*2);
-  char * test_output = (char *)malloc(sizeof(char)*NPACKETS*64*(384*2)*2*2);
-  memset(test_block,0,sizeof(test_block));
-  
-  /* TEST CODE 
-  FILE *fin;
-  fin=fopen("../utils/packet.out","rb");
-  fread(test_block, 96768, 1, fin);
-  fclose(fin);
-   END TEST CODE */
-  
-  args[0].in = test_block;
-  args[0].out = test_output;
-  args[0].n_threads = 1;
-  args[0].thread_id = 0;
-  args[0].debug = 0;
-  args[0].write = 0;
-
-  // run test thread
-  if (pthread_create(&threads[0], &attr, &massage, (void *)(&args[0]))) {
-    syslog(LOG_ERR,"Failed to create TEST massage thread 0\n");
-  }
-  else
-    syslog(LOG_INFO,"Created TEST thread\n");
-  pthread_attr_destroy(&attr);    
-  pthread_join(threads[0], &result);
-  syslog(LOG_INFO,"joined TEST thread");
-
-  /* TEST CODE 
-  fin=fopen("../utils/test.out","wb");
-  fwrite(test_output, 1, 196608, fin);
-  fclose(fin);
-  END TEST CODE */
-  
-  // clean up
-  free(test_block);
-  free(test_output);
-
-  syslog(LOG_INFO,"TEST COMPLETE");
   
   /* DADA Header plus Data Unit */
   dada_hdu_t* hdu_in = 0;
@@ -474,19 +282,6 @@ int main (int argc, char *argv[]) {
     syslog (LOG_ERR, "could not lock to output buffer");
     return EXIT_FAILURE;
   }
-
-  if (bf) {
-    hdu_out2  = dada_hdu_create ();
-    dada_hdu_set_key (hdu_out2, out_key2);
-    if (dada_hdu_connect (hdu_out2) < 0) {
-      syslog (LOG_ERR,"could not connect to output  buffer2");
-      return EXIT_FAILURE;
-    }
-    if (dada_hdu_lock_write(hdu_out2) < 0) {
-      syslog (LOG_ERR, "could not lock to output buffer2");
-      return EXIT_FAILURE;
-    }
-  }
   
   uint64_t header_size = 0;
 
@@ -567,7 +362,7 @@ int main (int argc, char *argv[]) {
   uint64_t  bytes_read = 0;
   char * block, * output_buffer, * blockie;
   output_buffer = (char *)malloc(sizeof(char)*block_out);
-  memset(output_buffer,0,block_out);
+  memset(output_buffer,1,block_out);
   uint64_t written, block_id;
 
   // set up
@@ -595,17 +390,14 @@ int main (int argc, char *argv[]) {
     // sort out write
     hdu_out->data_block->curbuf = ipcbuf_get_next_write ((ipcbuf_t*)hdu_out->data_block);
     hdu_out->data_block->marked_filled = 0;      
-    //blockie = ipcio_open_block_write(hdu_out->data_block, &block_id);
+    //blockie = ipcio_open_block_write (hdu_out->data_block, &block_id);
     
     // set up data structure
     for (int i=0; i<nthreads; i++) {
-      args[i].in = block;
-      args[i].out = output_buffer;
+      args[i].in = output_buffer;
       args[i].n_threads = nthreads;
       args[i].thread_id = i;
-      args[i].debug = 0;
-      args[i].ipc = hdu_out->data_block;
-      args[i].write = 1;
+      args[i].out = hdu_out->data_block;
     }
 
     if (DEBUG) syslog(LOG_DEBUG,"creating %d threads",nthreads);
@@ -628,21 +420,6 @@ int main (int argc, char *argv[]) {
 
     //written = ipcio_write (hdu_out->data_block, output_buffer, block_out);
     
-    if (bf) {
-
-      written = ipcio_write (hdu_out2->data_block, output_buffer, block_out);
-      if (written < block_out)
-	{
-	  syslog(LOG_ERR, "main: failed to write all data to datablock [output]");
-	  dsaX_dbgpu_cleanup (hdu_in,0);
-	  dsaX_dbgpu_cleanup (hdu_out,1);
-	  if (bf) dsaX_dbgpu_cleanup (hdu_out2,1);
-	  //dsaX_dbgpu_cleanup (hdu_in, hdu_out, hdu_out2);
-	  return EXIT_FAILURE;
-	}
-
-    }
-
     // finish write
     ipcbuf_mark_filled ((ipcbuf_t*)hdu_out->data_block, block_out);
     ipcio_check_pending_sod (hdu_out->data_block);
