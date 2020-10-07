@@ -77,7 +77,7 @@ void * massage (void *args) {
   // block for transpose
   int block = 16;
 
-  for (int i=(int)((thread_id/n_threads)*2048);i<(int)(((thread_id + 1)/n_threads)*2048);i++) { // over time
+  for (int i=(int)(thread_id*(2048/n_threads));i<(int)((thread_id + 1)*2048/n_threads);i++) { // over time
     for (int i1 = 0; i1 < 48; i1 += block) {
       for(int j = 0; j < NANT; j++) {
 	for(int b = 0; b < block && i1 + b < 48; b++) {
