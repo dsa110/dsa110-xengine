@@ -7,7 +7,7 @@ buffers:
   - k: dbda
     b: 75497472 
     n: 8
-    c: 0
+    c: 1
   - k: dcda
     b: 75497472 
     n: 8
@@ -19,11 +19,11 @@ buffers:
   - k: eada
     b: 402653184
     n: 8
-    c: 0
+    c: 1
   - k: fada
     b: 51118080
     n: 4
-    c: 0
+    c: 1
   - k: bada
     b: 1996800
     n: 40
@@ -47,16 +47,16 @@ routines:
     args: -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -i ddda -o cada
   - name: dsaX_xgpu
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_xgpu
-    args: -t 4 -i eada -o fada -c 2
+    args: -t 8 -i eada -o fada -c 31
   - name: dsaX_reorder_raw
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_reorder_raw
     args: -t 16 -i dbda -o eada
   - name: dsaX_split2
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_split
-    args: -i dcda -o ddda -c 19 -r
+    args: -i dcda -o ddda -c 18 -r -m
   - name: dsaX_split
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_split
-    args: -i dada -o dbda -j dcda -c 19 -b
+    args: -i dada -o dbda -j dcda -c 19 -b -m
   - name: dada_junkdb
     cmd: dada_junkdb
     args: -t 1000 -k dada -r 563 /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt

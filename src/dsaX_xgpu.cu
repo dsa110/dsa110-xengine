@@ -41,7 +41,7 @@ using std::endl;
 
 /* global variables */
 int DEBUG = 0;
-int cores[8] = {26,27,28,29,20,21,22,23};
+int cores[8] = {32, 33, 34, 35, 36, 37, 38, 39};
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out);
 int dada_bind_thread_to_core (int core);
