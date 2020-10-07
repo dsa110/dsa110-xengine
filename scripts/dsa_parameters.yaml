@@ -9,7 +9,7 @@ npol: 2
 samples_per_frame: 1
 samples_per_frame_out: 1
 nint: 1 # Number of samples to integrate together
-pt_dec: 0.3842253908553808 # Declination of the Crab
+pt_dec: 0.415388362 # Declination of the Crab
 tsamp: 0.134217728 # Sampling time of data that will be read in
 nfreq_int: 8 # Number of channels to integrate
 antenna_order:
