@@ -11,6 +11,31 @@ CFLAGS2 = -I/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src -I/home/ubuntu/pro
 
 .DEFAULT_GOAL := all
 
+test_write.o: test_write.c $(CDEPS1)
+	$(CC) -c -o $@ $< $(CFLAGS1)
+
+test_write: test_write.o
+	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
+
+test_read.o: test_read.c $(CDEPS1)
+	$(CC) -c -o $@ $< $(CFLAGS1)
+
+test_read: test_read.o
+	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
+
+dsaX_fluff.o: dsaX_fluff.c $(CDEPS1)
+	$(CC) -c -o $@ $< $(CFLAGS1)
+
+dsaX_fluff: dsaX_fluff.o
+	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
+
+dsaX_reorder.o: dsaX_reorder.c $(CDEPS1)
+	$(CC) -c -o $@ $< $(CFLAGS1)
+
+dsaX_reorder: dsaX_reorder.o
+	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
+
+
 dsaX_dbnic.o: dsaX_dbnic.c $(CDEPS1)
 	$(CC) -c -o $@ $< $(CFLAGS1)
 

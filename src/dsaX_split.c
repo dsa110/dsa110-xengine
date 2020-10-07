@@ -45,12 +45,9 @@ struct data {
   char * out;
   int n_threads;
   int thread_id;
-  ipcio_t * ipc1;
-  ipcio_t * ipc2;
-  int bf;
-  int reorder;
 };
 int cores[8] = {10, 11, 12, 13, 14, 15, 16, 17};
+
 
 void * massage (void *args) {
 
@@ -79,31 +76,16 @@ void * massage (void *args) {
 
   // block for transpose
   int block = 16;
-  
-  // write
-  memcpy(d->ipc1->curbuf + (int)((thread_id/n_threads)*2048*1536*NANT), in + (int)((thread_id/n_threads)*2048*1536*NANT), (int)(2048*1536*NANT/n_threads));
-  
-  if (d->bf) {
 
-    if (d->reorder) {
-      for (int i=(int)((thread_id/n_threads)*2048);i<(int)(((thread_id + 1)/n_threads)*2048);i++) { // over time
-	for (int i1 = 0; i1 < 48; i1 += block) {
-	  for(int j = 0; j < NANT; j++) {
-	    for(int b = 0; b < block && i1 + b < 48; b++) {
-	      memcpy(out + i*1536*NANT + (i1+b)*NANT*32 + j*32, in + i*1536*NANT + j*1536 + (i1+b)*32, 32);
-	    }
-	  }
+  for (int i=(int)((thread_id/n_threads)*2048);i<(int)(((thread_id + 1)/n_threads)*2048);i++) { // over time
+    for (int i1 = 0; i1 < 48; i1 += block) {
+      for(int j = 0; j < NANT; j++) {
+	for(int b = 0; b < block && i1 + b < 48; b++) {
+	  memcpy(out + i*1536*NANT + (i1+b)*NANT*32 + j*32, in + i*1536*NANT + j*1536 + (i1+b)*32, 32);
 	}
       }
-    
-      memcpy(d->ipc2->curbuf + (int)((thread_id/n_threads)*2048*1536*NANT), out + (int)((thread_id/n_threads)*2048*1536*NANT), (int)(2048*1536*NANT/n_threads));
-      
     }
-    else
-      memcpy(d->ipc2->curbuf + (int)((thread_id/n_threads)*2048*1536*NANT), in + (int)((thread_id/n_threads)*2048*1536*NANT), (int)(2048*1536*NANT/n_threads));
-
-  }
-    
+  }    
   
   /* return 0 */
   int thread_result = 0;
@@ -480,52 +462,49 @@ int main (int argc, char *argv[]) {
 
     // stats
     if (STATS) calc_stats(output_buffer);
-    
-    // sort out write
-    hdu_out->data_block->curbuf = ipcbuf_get_next_write ((ipcbuf_t*)hdu_out->data_block);
-    hdu_out->data_block->marked_filled = 0;      
-    if (bf) {
-      hdu_out2->data_block->curbuf = ipcbuf_get_next_write ((ipcbuf_t*)hdu_out2->data_block);
-      hdu_out2->data_block->marked_filled = 0;      
-    }
-    // set up data structure
-    for (int i=0; i<nth; i++) {
-      args[i].in = output_buffer;
-      args[i].out = output;
-      args[i].n_threads = nth;
-      args[i].thread_id = i;
-      if (bf) args[i].ipc2 = hdu_out2->data_block;;
-      args[i].ipc1 = hdu_out->data_block;
-      args[i].bf = bf;
-      args[i].reorder = reorder;
-    }
 
-    if (DEBUG) syslog(LOG_DEBUG,"creating %d threads",nth);
+    if (reorder) {
     
-    for(int i=0; i<nth; i++){
-      if (pthread_create(&threads[i], &attr, &massage, (void *)(&args[i]))) {
-	syslog(LOG_ERR,"Failed to create massage thread %d\n", i);
+      // set up data structure
+      for (int i=0; i<nth; i++) {
+	args[i].in = output_buffer;
+	args[i].out = output;
+	args[i].n_threads = nth;
+	args[i].thread_id = i;
       }
+      
+      if (DEBUG) syslog(LOG_DEBUG,"creating %d threads",nth);
+      
+      for(int i=0; i<nth; i++){
+	if (pthread_create(&threads[i], &attr, &massage, (void *)(&args[i]))) {
+	  syslog(LOG_ERR,"Failed to create massage thread %d\n", i);
+	}
+      }
+      
+      pthread_attr_destroy(&attr);
+      if (DEBUG) syslog(LOG_DEBUG,"threads kinda running");
+      
+      for(int i=0; i<nth; i++){
+	pthread_join(threads[i], &result);
+	if (DEBUG) syslog(LOG_DEBUG,"joined thread %d",i);
+      }
+
     }
 
-    pthread_attr_destroy(&attr);
-    if (DEBUG) syslog(LOG_DEBUG,"threads kinda running");
-    
-    for(int i=0; i<nth; i++){
-      pthread_join(threads[i], &result);
-      if (DEBUG) syslog(LOG_DEBUG,"joined thread %d",i);
-    }
 
-    // finish write
-    ipcbuf_mark_filled ((ipcbuf_t*)hdu_out->data_block, block_out);
-    ipcio_check_pending_sod (hdu_out->data_block);
-    hdu_out->data_block->marked_filled = 1;      
+    if (reorder && (!bf))
+      written = ipcio_write (hdu_out->data_block, output, block_out);
+    else 
+      written = ipcio_write (hdu_out->data_block, output_buffer, block_out);
+
     if (bf) {
-      ipcbuf_mark_filled ((ipcbuf_t*)hdu_out2->data_block, block_out);
-      ipcio_check_pending_sod (hdu_out2->data_block);
-      hdu_out2->data_block->marked_filled = 1;      
+      written = ipcio_write (hdu_out->data_block, output_buffer, block_out);
+      if (reorder)
+	written = ipcio_write (hdu_out2->data_block, output, block_out);
+      else
+	written = ipcio_write (hdu_out2->data_block, output_buffer, block_out);
     }
-
+    
     if (DEBUG) syslog(LOG_DEBUG, "written block %d",blocks);      
     blocks++;
     
