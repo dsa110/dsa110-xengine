@@ -175,13 +175,14 @@ launch with 16time * 48freq * 2pol * 16beam_tile blocks of 32 threads for massiv
  = 24576 blocks
 
 */
-__global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *output) {
+__global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *output, int stuffants) {
 
   // get block and thread ids
   int bidx = blockIdx.x; // assume 24576
   int tidx = threadIdx.x; // assume 32
   int orig_bidx = (int)(bidx / 16);
   int beam_tile = (int)(bidx % 16);
+  int stuff_tile = (int)(beam_tile % 4);
   int data_offset = orig_bidx*1024; // offset for first part of data
   int weight_offset = (int)(orig_bidx % 96); // offset for first part of weight
   weight_offset *= 16384;
@@ -208,32 +209,46 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
   wmma::fill_fragment(wr_ini_frag, 0.0f);
   wmma::fill_fragment(wi_inr_frag, 0.0f);
   wmma::fill_fragment(wi_ini_frag, 0.0f);
-     
-  // loop over ant tiles
-  for (int ant_tile=0; ant_tile<4; ant_tile++) {
-     
-    // copy weight and data to fragments, and multiply to accumulators
-    
-    wmma::load_matrix_sync(a_frag, wr + weight_offset + beam_tile*1024 + ant_tile*256, 16);
-    wmma::load_matrix_sync(b_frag, inr + data_offset + ant_tile*256, 16);
-    wmma::mma_sync(wr_inr_frag, a_frag, b_frag, wr_inr_frag);
-    
-    wmma::load_matrix_sync(a_frag, wi + weight_offset + beam_tile*1024 + ant_tile*256, 16);
-    wmma::mma_sync(wi_inr_frag, a_frag, b_frag, wi_inr_frag);
-    
-    wmma::load_matrix_sync(b_frag, ini + data_offset + ant_tile*256, 16);
-    wmma::mma_sync(wi_ini_frag, a_frag, b_frag, wi_ini_frag);
-    
-    wmma::load_matrix_sync(a_frag, wr + weight_offset + beam_tile*1024 + ant_tile*256, 16);
-    wmma::mma_sync(wr_ini_frag, a_frag, b_frag, wr_ini_frag);
-    
-  }
 
-  // form real and imaginary matrices
-  for(int i=0; i < wr_inr_frag.num_elements; i++) {
-    wr_inr_frag.x[i] = wr_inr_frag.x[i] - wi_ini_frag.x[i]; // output real
-    wi_inr_frag.x[i] = wi_inr_frag.x[i] + wr_ini_frag.x[i]; // output imag
-    wr_inr_frag.x[i] = wr_inr_frag.x[i]*wr_inr_frag.x[i] + wi_inr_frag.x[i]*wi_inr_frag.x[i]; // squared
+  if (stuffants) {
+
+    wmma::load_matrix_sync(a_frag, inr + data_offset + stuff_tile*256, 16);
+    wmma::load_matrix_sync(b_frag, ini + data_offset + stuff_tile*256, 16);
+
+    // form real and imaginary matrices
+    for(int i=0; i < a_frag.num_elements; i++) {
+      wr_inr_frag.x[i] = a_frag.x[i]*a_frag.x[i] + b_frag.x[i]*b_frag.x[i]; // squared
+    }
+
+  }
+  else {
+  
+    // loop over ant tiles
+    for (int ant_tile=0; ant_tile<4; ant_tile++) {
+      
+      // copy weight and data to fragments, and multiply to accumulators
+      
+      wmma::load_matrix_sync(a_frag, wr + weight_offset + beam_tile*1024 + ant_tile*256, 16);
+      wmma::load_matrix_sync(b_frag, inr + data_offset + ant_tile*256, 16);
+      wmma::mma_sync(wr_inr_frag, a_frag, b_frag, wr_inr_frag);
+      
+      wmma::load_matrix_sync(a_frag, wi + weight_offset + beam_tile*1024 + ant_tile*256, 16);
+      wmma::mma_sync(wi_inr_frag, a_frag, b_frag, wi_inr_frag);
+      
+      wmma::load_matrix_sync(b_frag, ini + data_offset + ant_tile*256, 16);
+      wmma::mma_sync(wi_ini_frag, a_frag, b_frag, wi_ini_frag);
+      
+      wmma::load_matrix_sync(a_frag, wr + weight_offset + beam_tile*1024 + ant_tile*256, 16);
+      wmma::mma_sync(wr_ini_frag, a_frag, b_frag, wr_ini_frag);
+      
+    }
+
+    // form real and imaginary matrices
+    for(int i=0; i < wr_inr_frag.num_elements; i++) {
+      wr_inr_frag.x[i] = wr_inr_frag.x[i] - wi_ini_frag.x[i]; // output real
+      wi_inr_frag.x[i] = wi_inr_frag.x[i] + wr_ini_frag.x[i]; // output imag
+      wr_inr_frag.x[i] = wr_inr_frag.x[i]*wr_inr_frag.x[i] + wi_inr_frag.x[i]*wi_inr_frag.x[i]; // squared
+    }
   }
 
   // at this stage the matrices are [beam, chunnel], and need to be summed over columns
@@ -416,6 +431,7 @@ void usage()
 	   " -i input key [default REORDER_BLOCK_KEY2]\n"
 	   " -o output key [default BF_BLOCK_KEY]\n"
 	   " -z fch1 in MHz [default 1530]\n"
+	   " -s stuffants \n"
 	   " -h print usage\n");
 }
 
@@ -452,12 +468,13 @@ int main (int argc, char *argv[]) {
   // command line arguments
   int core = -1;
   int arg = 0;
+  int stuffants=0;
   float fch1 = 1530.0;
   char * fnam;
   fnam=(char *)malloc(sizeof(char)*100);
   sprintf(fnam,"nofile");  
 
-  while ((arg=getopt(argc,argv,"c:f:i:o:z:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:i:o:z:sdh")) != -1)
     {
       switch (arg)
 	{
@@ -530,6 +547,10 @@ int main (int argc, char *argv[]) {
 	case 'd':
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
+	  break;
+	case 's':
+	  stuffants=1;
+	  syslog (LOG_INFO, "Will place antennas in output");
 	  break;
 	case 'h':
 	  usage();
@@ -705,7 +726,7 @@ int main (int argc, char *argv[]) {
 	  promoter<<<16*48*NANT, 32, 0, stream[st]>>>(d_indata, d_inr, d_ini);
 	  
 	  // run beamformer kernel
-	  beamformer<<<24576, 32, 0, stream[st]>>>(d_inr, d_ini, d_wr, d_wi, d_transfer);
+	  beamformer<<<24576, 32, 0, stream[st]>>>(d_inr, d_ini, d_wr, d_wi, d_transfer, stuffants);
 	  	  
 	  // run adder kernel
 	  adder<<<6144, 32, 0, stream[st]>>>(d_transfer, d_outdata, d_bp);
@@ -753,7 +774,7 @@ int main (int argc, char *argv[]) {
 	  promoter<<<16*48*NANT, 32, 0, stream[st]>>>(d_indata, d_inr, d_ini);
 
 	  // run beamformer kernel
-	  beamformer<<<24576, 32, 0, stream[st]>>>(d_inr, d_ini, d_wr, d_wi, d_transfer);
+	  beamformer<<<24576, 32, 0, stream[st]>>>(d_inr, d_ini, d_wr, d_wi, d_transfer, stuffants);
 	  
 	  // copy back to host
 	  cudaMemcpyAsync(h_transfer, d_transfer, sizeof(float)*393216, cudaMemcpyDeviceToHost, stream[st]);	
@@ -768,8 +789,10 @@ int main (int argc, char *argv[]) {
       syslog(LOG_INFO,"Final BP...");
       for (int i=0;i<256;i++) {
 	syslog(LOG_INFO,"coeff %d %g",i,bp[i]);
-	bp[i] /= 48.*nints; 
-	bp[i] = 128./bp[i];	
+	if (bp[i]!=0.) {
+	  bp[i] /= 48.*nints; 
+	  bp[i] = 128./bp[i];
+	}
       }
       cudaMemcpy(d_bp, bp, sizeof(float)*256, cudaMemcpyHostToDevice);
       

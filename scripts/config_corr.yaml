@@ -61,7 +61,7 @@ routines:
     args: -i fada -o bada
   - name: dsaX_beamformer
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_beamformer
-    args: -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -i ddda -o cada
+    args: -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -i ddda -o cada -s
   - name: dsaX_xgpu
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_xgpu
     args: -t 8 -i eada -o fada -c 31
