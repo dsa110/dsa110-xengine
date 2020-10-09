@@ -30,7 +30,7 @@ buffers:
     c: 1
 routines:
   - name: meridian_fringestop
-    cmd: python
+    cmd: /home/ubuntu/anaconda3/envs/casa/bin/python
     args: /home/ubuntu/proj/dsa110-shell/dsa110-meridian-fs/dsamfs/meridian_fringestop.py /home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/dsa_parameters.yaml /home/ubuntu/data 
   - name: dsaX_dbnic
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_dbnic
