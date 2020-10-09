@@ -12,10 +12,6 @@ buffers:
     b: 75497472 
     n: 8
     c: 1
-  - k: ddda
-    b: 75497472 
-    n: 4
-    c: 1
   - k: eada
     b: 402653184
     n: 8
@@ -61,16 +57,13 @@ routines:
     args: -i fada -o bada
   - name: dsaX_beamformer
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_beamformer
-    args: -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -i ddda -o cada -s
+    args: -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -i dcda -o cada -s
   - name: dsaX_xgpu
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_xgpu
     args: -t 8 -i eada -o fada -c 31
   - name: dsaX_reorder_raw
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_reorder_raw
     args: -t 16 -i dbda -o eada
-  - name: dsaX_split2
-    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_split
-    args: -i dcda -o ddda -c 18 -r -m
   - name: dsaX_split
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_split
     args: -i dada -o dbda -j dcda -c 19 -b -m

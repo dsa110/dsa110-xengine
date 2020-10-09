@@ -124,6 +124,7 @@ void adder(float *input, unsigned char *output, float *bp) {
 
 // kernel for promotion
 /*
+orig input is [16 time, NANT antennas, 48 channels, 16 chunnels, 2 pol, r/i]
 input is [16 time, 48 channels, NANT antennas, 16 chunnels, 2 pol, r/i]
 output needs to be [16 time, 48 channels, 2 pol, 64 antennas, 16 chunnels, r/i] 
 promoted to half precision  
@@ -135,18 +136,43 @@ __global__ void promoter(char *input, half *inr, half *ini) {
 
   int bidx = blockIdx.x; // assume 16*48*NANT
   int tidx = threadIdx.x; // assume 32
-  
-  int ant = (int)(bidx % NANT);
-  int time_chan = (int)(bidx / NANT);
   int iidx = bidx*32+tidx;
   int pol = (int)(tidx % 2);
   int chunnel = (int)(tidx / 2);
+  
+  /*int ant = (int)(bidx % NANT);
+  int time_chan = (int)(bidx / NANT);    
+  int oidx = time_chan*2048+pol*1024+ant*16+chunnel;*/
 
-  int oidx = time_chan*2048+pol*1024+ant*16+chunnel;
+  int chan = (int)(bidx % 48);
+  int time_ant = (int)(bidx / 48);
+  int tim = (int)(time_ant / NANT);
+  int ant = (int)(time_ant % NANT);
+  int oidx = tim*98304 + chan*2048 + pol*1024 + ant*16 + chunnel;
 
   inr[oidx] = __float2half((float)(((char)((input[iidx] & 15) << 4)) >> 4));
   ini[oidx] = __float2half((float)(((char)((input[iidx] & 240))) >> 4));
 
+}
+
+// 16 time, 48 channels, 2 pol, 64 antennas, 16 chunnels
+// for first time, launch with 3072, 32
+__global__ void printer(half *inr, half *ini) {
+
+  int idx = blockIdx.x*32+threadIdx.x;
+  float ir = __half2float(inr[idx]);
+  float ii = __half2float(ini[idx]);
+
+  int chunnel = (int)(threadIdx.x % 16);
+  int channel = (int)(blockIdx.x/64);
+  int tt = (int)(blockIdx.x % 64);
+  int pol = (int)(tt/32);
+  int ant = ((int)(tt % 32))*((int)(threadIdx.x / 16));
+  
+  if (ir!=0. || ii!=0.) {
+    printf("%d %d %d %d %f %f\n",channel,pol,ant,chunnel,ir,ii);
+  }
+  
 }
 
 
@@ -210,16 +236,17 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
   wmma::fill_fragment(wi_inr_frag, 0.0f);
   wmma::fill_fragment(wi_ini_frag, 0.0f);
 
-  if (stuffants) {
+  if (stuffants) {        
 
-    wmma::load_matrix_sync(a_frag, inr + data_offset + stuff_tile*256, 16);
-    wmma::load_matrix_sync(b_frag, ini + data_offset + stuff_tile*256, 16);
-
-    // form real and imaginary matrices
-    for(int i=0; i < a_frag.num_elements; i++) {
-      wr_inr_frag.x[i] = a_frag.x[i]*a_frag.x[i] + b_frag.x[i]*b_frag.x[i]; // squared
-    }
-
+    wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> c_frag;
+    wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::col_major> d_frag;
+    wmma::load_matrix_sync(c_frag, inr + data_offset + stuff_tile*256, 16);
+    wmma::load_matrix_sync(d_frag, inr + data_offset + stuff_tile*256, 16);
+    wmma::mma_sync(wr_inr_frag, c_frag, d_frag, wr_inr_frag);
+    wmma::load_matrix_sync(c_frag, ini + data_offset + stuff_tile*256, 16);
+    wmma::load_matrix_sync(d_frag, ini + data_offset + stuff_tile*256, 16);
+    wmma::mma_sync(wr_inr_frag, c_frag, d_frag, wr_inr_frag);
+    
   }
   else {
   
@@ -257,38 +284,49 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
   float *p1;
   p1 = &summr[0][0];
   wmma::store_matrix_sync(p1, wr_inr_frag, 16, wmma::mem_row_major);
-    
-  // do thread reduction for each beam
-  if (tidx<8) {
-    for (int i=0;i<4;i++) summr[i][tidx] += summr[i][tidx+8];
-    for (int i=0;i<4;i++) summr[i][tidx] += summr[i][tidx+4];
-    for (int i=0;i<4;i++) summr[i][tidx] += summr[i][tidx+2];
-    for (int i=0;i<4;i++) summr[i][tidx] += summr[i][tidx+1];
-  }
-  if (tidx>=8 && tidx<16) {
-    for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+8-8];
-    for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+4-8];
-    for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+2-8];
-    for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+1-8];  
-  }
-  if (tidx>=16 && tidx<24) {
-    for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+8-16];
-    for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+4-16];
-    for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+2-16];
-    for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+1-16];  
-  }
-  if (tidx>=24) {
-    for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+8-24];
-    for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+4-24];
-    for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+2-24];
-    for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+1-24];  
-  }
+
+  if (!stuffants) {
   
-  // now summr[beam][0] can go into output
-  if (tidx<16) {
-    output[(beam_tile*16+tidx)*1536 + oidx] = summr[tidx][0];
-  }
+    // do thread reduction for each beam
+    if (tidx<8) {
+      for (int i=0;i<4;i++) summr[i][tidx] += summr[i][tidx+8];
+      for (int i=0;i<4;i++) summr[i][tidx] += summr[i][tidx+4];
+      for (int i=0;i<4;i++) summr[i][tidx] += summr[i][tidx+2];
+      for (int i=0;i<4;i++) summr[i][tidx] += summr[i][tidx+1];
+    }
+    if (tidx>=8 && tidx<16) {
+      for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+8-8];
+      for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+4-8];
+      for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+2-8];
+      for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+1-8];  
+    }
+    if (tidx>=16 && tidx<24) {
+      for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+8-16];
+      for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+4-16];
+      for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+2-16];
+      for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+1-16];  
+    }
+    if (tidx>=24) {
+      for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+8-24];
+      for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+4-24];
+      for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+2-24];
+      for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+1-24];  
+    }
   
+    // now summr[beam][0] can go into output
+    if (tidx<16) {
+      output[(beam_tile*16+tidx)*1536 + oidx] = summr[tidx][0];
+    }
+
+  }
+  else {
+
+    if (tidx<16) {
+      output[(beam_tile*16+tidx)*1536 + oidx] = summr[tidx][tidx];
+    }
+
+
+  }
 
   
 }
@@ -346,6 +384,7 @@ void calc_bp(float *data, float *bp, int pr) {
     for (int f=0;f<48;f++) {
       for (int a=0;a<32;a++) {
 	bp[b] += data[i];
+	if (pr && data[i]!=0.) printf("%d %d %d %f\n",b,f,a,data[i]);
 	i++;
       }
     }
@@ -773,6 +812,9 @@ int main (int argc, char *argv[]) {
 	  // do promotion
 	  promoter<<<16*48*NANT, 32, 0, stream[st]>>>(d_indata, d_inr, d_ini);
 
+	  //if (bst==0 && st==0) 
+	  //  printer<<<3072, 32>>>(d_inr,d_ini);	  
+	  
 	  // run beamformer kernel
 	  beamformer<<<24576, 32, 0, stream[st]>>>(d_inr, d_ini, d_wr, d_wi, d_transfer, stuffants);
 	  
@@ -780,6 +822,8 @@ int main (int argc, char *argv[]) {
 	  cudaMemcpyAsync(h_transfer, d_transfer, sizeof(float)*393216, cudaMemcpyDeviceToHost, stream[st]);	
 
 	  // calculate bandpass
+	  //if (st==0 && bst==0) 
+	  //calc_bp(h_transfer,bp,1);
 	  calc_bp(h_transfer,bp,0);
 
 	}
