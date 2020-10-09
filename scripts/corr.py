@@ -227,7 +227,10 @@ def corr_run(args):
         key = '/mon/corr/' + str(args.corr_num)
         md = get_monitor_dict(params)
         if md!=-1:
-            my_ds.put_dict(key, md)
+            try:
+                my_ds.put_dict(key, md)
+            except:
+                my_log.error('COULD NOT CONNECT TO ETCD')
         sleep(1)
 
                                                         
