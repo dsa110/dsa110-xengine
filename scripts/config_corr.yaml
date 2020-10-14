@@ -58,6 +58,23 @@ routines:
   - name: dsaX_beamformer
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_beamformer
     args: -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -i dcda -o cada
+    hostargs:
+      corr01: -z 1498.75
+      corr02: -z 1487.03125
+      corr03: -z 1475.3125
+      corr04: -z 1463.59375
+      corr05: -z 1451.875
+      corr06: -z 1440.15625
+      corr07: -z 1428.4375
+      corr08: -z 1416.71875
+      corr09: -z 1405.0
+      corr10: -z 1393.28125
+      corr11: -z 1381.5625
+      corr12: -z 1369.84375
+      corr13: -z 1358.125
+      corr14: -z 1346.40625
+      corr15: -z 1334.6875
+      corr16: -z 1322.96875
   - name: dsaX_xgpu
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_xgpu
     args: -t 8 -i eada -o fada -c 31
