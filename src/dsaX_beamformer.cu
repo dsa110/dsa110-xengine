@@ -354,7 +354,7 @@ void calc_weights(float *antpos, float *weights, float *freqs, half *wr, half *w
   int widx = ant*NW*2*2 + f*2*2 + pol*2;
   
   float theta = sep*(127.-beam*1.)*PI/10800.; // radians
-  float afac = 2.*PI*freqs[f*8+4]*theta/CVAC; // factor for rotate
+  float afac = -2.*PI*freqs[f*8+4]*theta/CVAC; // factor for rotate
   float twr = cos(afac*antpos[ant]);
   float twi = sin(afac*antpos[ant]);
 
@@ -465,7 +465,6 @@ void usage()
 	   "dsaX_beamformer [options]\n"
 	   " -c core   bind process to CPU core [no default]\n"
 	   " -d send debug messages to syslog\n"
-	   " -o freq of first chan [default 1530.0 MHz]\n"
 	   " -f filename for antenna stuff [no default]\n"
 	   " -i input key [default REORDER_BLOCK_KEY2]\n"
 	   " -o output key [default BF_BLOCK_KEY]\n"
