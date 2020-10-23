@@ -12,8 +12,8 @@ routines:
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_nicdb
     args: -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt -d -o dada 
     hostargs:
-      corr17: -j 10.41.0.73
-      corr18: -j 10.41.0.69
-      corr19: -j 10.41.0.74
-      corr20: -j 10.41.0.70
+      corr17: -j 10.41.0.22
+      corr18: -j 10.41.0.80
+      corr19: -j 10.41.0.105
+      corr20: -j 10.41.0.27
       
