@@ -88,19 +88,19 @@ routines:
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_capture
     args: -c 1 -i 127.0.0.1 -o dada -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt
     hostargs:
-      corr01: -j 10.41.0.62
-      corr02: -j 10.41.0.63
-      corr03: -j 10.41.0.54
-      corr04: -j 10.41.0.55
-      corr05: -j 10.41.0.58
-      corr06: -j 10.41.0.56
-      corr21: -j 10.41.0.71
-      corr08: -j 10.41.0.59
-      corr09: -j 10.41.0.60
-      corr10: -j 10.41.0.61
-      corr11: -j 10.41.0.64
-      corr12: -j 10.41.0.65
-      corr13: -j 10.41.0.66
-      corr14: -j 10.41.0.68
-      corr15: -j 10.41.0.75
-      corr16: -j 10.41.0.79
+      corr01: -j 10.41.0.35
+      corr02: -j 10.41.0.47
+      corr03: -j 10.41.0.40
+      corr04: -j 10.41.0.49
+      corr05: -j 10.41.0.37
+      corr06: -j 10.41.0.36
+      corr07: -j 10.41.0.46
+      corr08: -j 10.41.0.48
+      corr09: -j 10.41.0.72
+      corr10: -j 10.41.0.53
+      corr11: -j 10.41.0.41
+      corr12: -j 10.41.0.18
+      corr13: -j 10.41.0.44
+      corr14: -j 10.41.0.84
+      corr15: -j 10.41.0.39
+      corr16: -j 10.41.0.78
