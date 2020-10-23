@@ -151,7 +151,7 @@ int main (int argc, char *argv[]) {
   int core = -1;
   int chgroup = 0;
   int arg = 0;
-  char iP[4][20] = {"10.41.0.73", "10.41.0.69", "10.41.0.74", "10.41.0.70"}; 
+  char iP[4][20] = {"10.41.0.22", "10.41.0.80", "10.41.0.105", "10.41.0.27"}; 
   // data block HDU keys
   key_t in_key;
   in_key = BF_BLOCK_KEY;
