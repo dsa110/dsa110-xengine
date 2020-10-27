@@ -357,9 +357,11 @@ void calc_weights(float *antpos, float *weights, float *freqs, half *wr, half *w
   float afac = -2.*PI*freqs[f*8+4]*theta/CVAC; // factor for rotate
   float twr = cos(afac*antpos[ant]);
   float twi = sin(afac*antpos[ant]);
+  float normw = sqrtf(weights[widx]*weights[widx] + weights[widx+1]*weights[widx+1]);
 
-  wr[i] = __float2half(twr*weights[widx] - twi*weights[widx+1]);
-  wi[i] = __float2half(twi*weights[widx] + twr*weights[widx+1]);
+  wr[i] = __float2half((twr*weights[widx] - twi*weights[widx+1])/normw);
+  wi[i] = __float2half((twi*weights[widx] + twr*weights[widx+1])/normw);
+  
   
 }  
  
