@@ -90,7 +90,22 @@ dsaX_reorder_raw.o: dsaX_reorder_raw.c $(CDEPS1)
 dsaX_reorder_raw: dsaX_reorder_raw.o $(CDEPS1)
 	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
 
+fil2dada.o: fil2dada.c $(CDEPS1)
+	$(CC) -c -o $@ $< $(CFLAGS1)
+
+fil2dada: fil2dada.o $(CDEPS1)
+	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
+
+dumpfil.o: dumpfil.c $(CDEPS1)
+	$(CC) -c -o $@ $< $(CFLAGS1)
+
+dumpfil: dumpfil.o $(CDEPS1)
+	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
+
 dsaX_xgpu: dsaX_xgpu.cu
+	$(CCU) -o $@ $^ $(CFLAGS2) $(LIBS)
+
+gpu_flagger: gpu_flagger.cu
 	$(CCU) -o $@ $^ $(CFLAGS2) $(LIBS)
 
 dsaX_beamformer: dsaX_beamformer.cu
@@ -99,8 +114,8 @@ dsaX_beamformer: dsaX_beamformer.cu
 .PHONY: clean all
 
 clean:
-	rm -f *.o *~ dsaX_beamformer dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle
+	rm -f *.o *~ dsaX_beamformer dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle fil2dada gpu_flagger dumpfil
 
-all: dsaX_beamformer dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle
+all: dsaX_beamformer dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle fil2dada gpu_flagger dumpfil
 
 
