@@ -357,10 +357,9 @@ void calc_weights(float *antpos, float *weights, float *freqs, half *wr, half *w
   float afac = -2.*PI*freqs[f*8+4]*theta/CVAC; // factor for rotate
   float twr = cos(afac*antpos[ant]);
   float twi = sin(afac*antpos[ant]);
-  float normw = sqrtf(weights[widx]*weights[widx] + weights[widx+1]*weights[widx+1]);
 
-  wr[i] = __float2half((twr*weights[widx] - twi*weights[widx+1])/normw);
-  wi[i] = __float2half((twi*weights[widx] + twr*weights[widx+1])/normw);
+  wr[i] = __float2half((twr*weights[widx] - twi*weights[widx+1]));
+  wi[i] = __float2half((twi*weights[widx] + twr*weights[widx+1]));
   
   
 }  
@@ -369,7 +368,7 @@ void calc_weights(float *antpos, float *weights, float *freqs, half *wr, half *w
 // function prototypes
 void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out);
 int dada_bind_thread_to_core (int core);
-int init_weights(char *fnam, float *antpos, float *weights);
+int init_weights(char *fnam, float *antpos, float *weights, char *flagants);
 void reorder_block(char *block);
 void calc_bp(float *data, float *bp, int pr);
 
@@ -421,22 +420,37 @@ void reorder_block(char * block) {
 
 
 // loads in weights
-int init_weights(char * fnam, float *antpos, float *weights) {
+int init_weights(char * fnam, float *antpos, float *weights, char *flagants) {
 
   // assumes 64 antennas
   // antpos: takes only easting
   // weights: takes [ant, NW==48] 
 
   FILE *fin;
+  FILE *fants;
   
   if (!(fin=fopen(fnam,"rb"))) {
     syslog(LOG_ERR,"Couldn't open weights file %s",fnam);
     return 1;
   }
+  if (!(fants=fopen(flagants,"r"))) {
+    syslog(LOG_ERR,"Couldn't open flag ants file %s",flagants);
+    return 1;
+  }
 
   fread(antpos,64*sizeof(float),1,fin);
   fread(weights,64*NW*2*2*sizeof(float),1,fin);
-  
+
+  int ant;
+  while (!feof(fants)) {
+    fscanf(fants,"%f\n",&ant);
+    for (int j=0;j<NW*2*2;j++) {
+      weights[ant*NW*2*2+j] = 0.0;
+    }
+  }
+      
+
+  fclose(fants);
   fclose(fin);
   syslog(LOG_INFO,"Loaded antenna positions and weights");
   return 0;
@@ -513,8 +527,11 @@ int main (int argc, char *argv[]) {
   char * fnam;
   fnam=(char *)malloc(sizeof(char)*100);
   sprintf(fnam,"nofile");  
+  char * flagants;
+  flagants=(char *)malloc(sizeof(char)*100);
+  sprintf(flagants,"nofile");  
 
-  while ((arg=getopt(argc,argv,"c:f:i:o:z:sdh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:i:o:z:a:sdh")) != -1)
     {
       switch (arg)
 	{
@@ -572,6 +589,18 @@ int main (int argc, char *argv[]) {
 	      usage();
 	      return EXIT_FAILURE;
 	    }	  
+	case 'a':
+	  if (optarg)
+	    {
+	      strcpy(flagants,optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-a flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }	  
 	case 'z':
 	  if (optarg)
 	    {
@@ -601,13 +630,14 @@ int main (int argc, char *argv[]) {
   // print stuff
   syslog(LOG_INFO,"Forming 256 beams with sep %g arcmin, fch1 %g",sep,fch1);
   syslog(LOG_INFO,"Using calibrations file %s",fnam);
+  syslog(LOG_INFO,"Using flagants file %s",flagants);
 
   // load in weights and antpos
   float * antpos = (float *)malloc(sizeof(float)*64); // easting
   float * weights = (float *)malloc(sizeof(float)*64*NW*2*2); // complex weights [ant, NW, pol, r/i]
   float * freqs = (float *)malloc(sizeof(float)*384); // freq
   for (int i=0;i<384;i++) freqs[i] = (fch1 - i*250./8192.)*1e6;
-  init_weights(fnam,antpos,weights);
+  init_weights(fnam,antpos,weights,flagants);
   
   // Bind to cpu core
   if (core >= 0)
@@ -872,6 +902,7 @@ int main (int argc, char *argv[]) {
 
   for (int i=0;i<NSTREAMS;i++) cudaStreamDestroy(stream[i]);
   free(fnam);
+  free(flagants);
   free(h_indata);
   free(output_buffer);
   free(antpos);

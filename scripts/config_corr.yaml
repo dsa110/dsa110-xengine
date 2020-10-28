@@ -42,7 +42,7 @@ routines:
       corr04: -g 3
       corr05: -g 4
       corr06: -g 5
-      corr21: -g 6
+      corr07: -g 6
       corr08: -g 7
       corr09: -g 8
       corr10: -g 9
@@ -65,7 +65,7 @@ routines:
       corr04: -z 1463.59375
       corr05: -z 1451.875
       corr06: -z 1440.15625
-      corr21: -z 1428.4375
+      corr07: -z 1428.4375
       corr08: -z 1416.71875
       corr09: -z 1405.0
       corr10: -z 1393.28125
