@@ -257,8 +257,12 @@ int main(int argc, char**argv)
   int arg = 0;
   int noise = 0;
   double thresh = 5.0;
+  char * fnam;
+  FILE *fout;
+  fnam = (char *)malloc(sizeof(char)*200);
+  int fwrite = 0;
   
-  while ((arg=getopt(argc,argv,"c:t:i:o:ndh")) != -1)
+  while ((arg=getopt(argc,argv,"c:t:i:o:f:ndh")) != -1)
     {
       switch (arg)
 	{
@@ -271,6 +275,19 @@ int main(int argc, char**argv)
 	  else
 	    {
 	      syslog(LOG_ERR,"-c flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'f':
+	  if (optarg)
+	    {
+	      strcpy(fnam,optarg);
+	      fwrite = 1;
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-f flag requires argument");
 	      usage();
 	      return EXIT_FAILURE;
 	    }
@@ -471,17 +488,20 @@ int main(int argc, char**argv)
       }
 
     if (DEBUG) syslog (LOG_INFO,"write flagged data done.");
-     if (DEBUG) {
-       for (int i=0;i<NCHAN_P;i++) syslog(LOG_INFO,"DEBUG_SPEC %d %g",h_mask[i],h_spec[i]);
-     }
+    if (fwrite) {
+      fout=fopen(fnam,"a");
+      for (int i=0;i<NCHAN_P;i++) fprintf(fout,"%d %g\n",h_mask[i],h_spec[i]);
+      fclose(fout);
+    }
      
-     for (int i=0;i<NBEAMS_P*NCHAN_P;i++)
+    for (int i=0;i<NBEAMS_P*NCHAN_P;i++)
       h_mask[0] += h_mask[i];
     syslog(LOG_INFO,"FLAG_COUNT %d",h_mask[0]);   		
     
   }
 
   free(lookup_rand);
+  free(fnam);
   free(h_data);
   free(h_mask);
   free(h_spec);
