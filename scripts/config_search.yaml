@@ -12,7 +12,7 @@ buffers:
     b: 268435456
     n: 4
     c: 0
-   - k: bada
+  - k: bada
     b: 268435456
     n: 8
     c: 0
