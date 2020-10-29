@@ -28,7 +28,7 @@ routines:
     args: -i fada -o bada -t 4.5 -d -f /home/ubuntu/tmp/spectra.dat
   - name: dsaX_simplesplit
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_simplesplit
-    args: -c 28 -i dada -o eada -j fada
+    args: -c 28 -i dada -o eada -j fada -b
   - name: dsaX_nicdb
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_nicdb
     args: -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt -d -o dada 
