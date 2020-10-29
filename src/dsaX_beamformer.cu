@@ -485,6 +485,7 @@ void usage()
 	   " -i input key [default REORDER_BLOCK_KEY2]\n"
 	   " -o output key [default BF_BLOCK_KEY]\n"
 	   " -z fch1 in MHz [default 1530]\n"
+	   " -a flagants file\n"
 	   " -s stuffants \n"
 	   " -h print usage\n");
 }

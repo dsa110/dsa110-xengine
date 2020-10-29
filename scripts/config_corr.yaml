@@ -57,7 +57,7 @@ routines:
     args: -i fada -o bada
   - name: dsaX_beamformer
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_beamformer
-    args: -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -i dcda -o cada 
+    args: -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -a /home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/flagants.dat -i dcda -o cada 
     hostargs:
       corr01: -z 1498.75
       corr02: -z 1487.03125
