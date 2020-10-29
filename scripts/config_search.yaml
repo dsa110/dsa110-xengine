@@ -4,10 +4,31 @@ buffers:
     b: 268435456
     n: 8
     c: 0
+  - k: eada
+    b: 268435456
+    n: 4
+    c: 0
+  - k: fada
+    b: 268435456
+    n: 4
+    c: 0
+   - k: bada
+    b: 268435456
+    n: 8
+    c: 0
 routines:
+  - name: heimdall
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-mbheimdall/bin/heimdall
+    args: -k bada -v -gpu_id 0 -nsamps_gulp 4096 -output_dir /home/ubuntu/data -dm 10 1000 -dm_tol 1.35 -max_giant_rate 20000000 -nbeams 64
   - name: dsaX_writeFil
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_writeFil
-    args: -c 27 -i 127.0.0.1 -f /home/ubuntu/data/bsfil -k dada
+    args: -c 27 -i 127.0.0.1 -f /home/ubuntu/data/bsfil -k eada
+  - name: gpu_flagger
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/gpu_flagger
+    args: -i fada -o bada -t 4.5 -d -f /home/ubuntu/tmp/spectra.dat
+  - name: dsaX_simplesplit
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_simplesplit
+    args: -c 28 -i dada -o eada -j fada
   - name: dsaX_nicdb
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_nicdb
     args: -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt -d -o dada 
