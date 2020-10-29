@@ -245,6 +245,8 @@ int main(int argc, char**argv)
   openlog ("gpu_flagger", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
   syslog (LOG_NOTICE, "Program started by User %d", getuid ());
   
+  // set cuda device
+  cudaSetDevice(1);
   
   // read command line args
 
