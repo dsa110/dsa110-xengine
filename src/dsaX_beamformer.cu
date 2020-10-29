@@ -443,13 +443,12 @@ int init_weights(char * fnam, float *antpos, float *weights, char *flagants) {
 
   int ant;
   while (!feof(fants)) {
-    fscanf(fants,"%f\n",&ant);
+    fscanf(fants,"%d\n",&ant);
     for (int j=0;j<NW*2*2;j++) {
       weights[ant*NW*2*2+j] = 0.0;
     }
   }
       
-
   fclose(fants);
   fclose(fin);
   syslog(LOG_INFO,"Loaded antenna positions and weights");
