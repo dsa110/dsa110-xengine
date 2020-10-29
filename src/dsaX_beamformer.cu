@@ -441,7 +441,7 @@ int init_weights(char * fnam, float *antpos, float *weights, char *flagants) {
   fread(antpos,64*sizeof(float),1,fin);
   fread(weights,64*NW*2*2*sizeof(float),1,fin);
   float wnorm;
-  for (int i=0;i<64*NW*2) {
+  for (int i=0;i<64*NW*2;i++) {
     wnorm = sqrt(weights[2*i]*weights[2*i] + weights[2*i+1]*weights[2*i+1]);
     if (wnorm!=0.0) {
       weights[2*i] /= wnorm;
