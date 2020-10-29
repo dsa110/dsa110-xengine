@@ -230,7 +230,7 @@ int main (int argc, char *argv[]) {
   int reorder = 0;
   int mwrite = 0;
   
-  while ((arg=getopt(argc,argv,"c:i:o:j:s:mdbrh")) != -1)
+  while ((arg=getopt(argc,argv,"c:i:o:j:smdbrh")) != -1)
     {
       switch (arg)
 	{
