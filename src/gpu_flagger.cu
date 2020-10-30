@@ -109,6 +109,48 @@ void calc_spectrum(unsigned char *data, float * spectrum) {
 
 }
 
+
+// kernel to calculate variance spectrum
+// launch with NBEAMS_P*NCHAN_P blocks of NTHREADS_GPU threads 
+__global__
+void calc_varspec(unsigned char *data, float * spectrum, float * varspec) {
+
+  int block_id = blockIdx.x;
+  int thread_id = threadIdx.x;
+  __shared__ float csum[NTHREADS_GPU];
+  csum[thread_id] = 0.;
+
+  int bm =(int)( block_id/NCHAN_P);
+  int ch = (int)(block_id % (NCHAN_P));
+  int tm0 = (int)(thread_id*(NTIMES_P/NTHREADS_GPU));
+  float val;
+  
+  // find sum of local times
+  int idx0 = bm*NTIMES_P*NCHAN_P + tm0*NCHAN_P + ch;
+  for (int i=idx0;i<idx0+NCHAN_P*(NTIMES_P/NTHREADS_GPU);i+=NCHAN_P) {
+    val = (float)(data[i]) - spectrum[bm*NCHAN_P + ch];
+    csum[thread_id] += val*val;
+  }
+  
+  __syncthreads();
+  
+  // sum into shared memory
+  int maxn = NTHREADS_GPU/2;
+  int act_maxn = maxn;
+  if (thread_id<maxn) {
+    while (act_maxn>0) {
+      csum[thread_id] += csum[thread_id+act_maxn];
+      act_maxn = (int)(act_maxn/2);
+    }
+  }
+
+  if (thread_id==0) {    
+    varspec[bm*NCHAN_P+ch] = csum[thread_id] / (1.*NTIMES_P);
+  }
+
+}
+
+
 // kernel to do flagging
 // launch with NBEAMS_P*NCHAN_P blocks of NTHREADS_GPU threads 
 __global__
@@ -233,6 +275,7 @@ void usage()
 	   " -o out_key [default caca]\n"
 	   " -n use noise generation rather than zeros\n"
 	   " -t flagging threshold [default 5.0]\n"
+	   " -v variance flagging\n"
 	   " -h print usage\n");
 }
 
@@ -259,12 +302,13 @@ int main(int argc, char**argv)
   int arg = 0;
   int noise = 0;
   double thresh = 5.0;
+  int varf = 0;
   char * fnam;
   FILE *fout;
   fnam = (char *)malloc(sizeof(char)*200);
   int fwrite = 0;
   
-  while ((arg=getopt(argc,argv,"c:t:i:o:f:ndh")) != -1)
+  while ((arg=getopt(argc,argv,"c:t:i:o:f:vndh")) != -1)
     {
       switch (arg)
 	{
@@ -344,6 +388,10 @@ int main(int argc, char**argv)
 	case 'n':
 	  noise=1;
 	  syslog (LOG_INFO, "Will generate noise samples");
+	  break;	  
+	case 'v':
+	  varf=1;
+	  syslog (LOG_INFO, "Will do variance flagging");
 	  break;	  
 	case 'h':
 	  usage();
@@ -448,6 +496,9 @@ int main(int argc, char**argv)
   float * d_spec;
   cudaMalloc((void **)&d_spec, NBEAMS_P*NCHAN_P*sizeof(float));
   float * h_spec = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
+  float * d_var;
+  cudaMalloc((void **)&d_var, NBEAMS_P*NCHAN_P*sizeof(float));
+  float * h_var = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   unsigned char * d_repval;
   cudaMalloc((void **)&d_repval, NTIMES_P*NCHAN_P*sizeof(unsigned char));
   cudaMemcpy(d_repval, lookup_rand, NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyHostToDevice);
@@ -465,11 +516,16 @@ int main(int argc, char**argv)
     if (DEBUG) syslog(LOG_INFO,"starting spectrum calc");
     cudaMemcpy(d_data, in_data, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyHostToDevice);
     calc_spectrum<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_spec);
+    calc_varspec<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_spec, d_var);
     cudaMemcpy(h_spec, d_spec, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_var, d_var, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
     if (DEBUG) syslog(LOG_INFO,"finished spectrum calc");
 
     // figure out flagging - fill h_mask
-    channflag(h_spec, thresh, h_mask);
+    if (varf)
+      channflag(h_var, thresh, h_mask);
+    else
+      channflag(h_spec, thresh, h_mask);
     
     // do flagging
     if (DEBUG) syslog(LOG_INFO,"starting flagging calc");
@@ -492,7 +548,7 @@ int main(int argc, char**argv)
     if (DEBUG) syslog (LOG_INFO,"write flagged data done.");
     if (fwrite) {
       fout=fopen(fnam,"a");
-      for (int i=0;i<NCHAN_P;i++) fprintf(fout,"%d %g\n",h_mask[i],h_spec[i]);
+      for (int i=0;i<NCHAN_P;i++) fprintf(fout,"%d %g %g\n",h_mask[i],h_spec[i],h_var[i]);
       fclose(fout);
     }
      
@@ -507,8 +563,10 @@ int main(int argc, char**argv)
   free(h_data);
   free(h_mask);
   free(h_spec);
+  free(h_var);
   cudaFree(d_data);
   cudaFree(d_spec);
+  cudaFree(d_var);
   cudaFree(d_mask);
   cudaFree(d_repval);
   return 0;    
