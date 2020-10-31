@@ -2,7 +2,7 @@
 buffers:
   - k: dada
     b: 75497472
-    n: 16
+    n: 8
     c: 0    
   - k: dbda
     b: 75497472 
@@ -14,7 +14,7 @@ buffers:
     c: 1
   - k: eada
     b: 402653184
-    n: 8
+    n: 4
     c: 1
   - k: fada
     b: 51118080
@@ -26,7 +26,7 @@ buffers:
     c: 0
   - k: cada
     b: 1572864
-    n: 8
+    n: 4
     c: 1
 routines:
   - name: meridian_fringestop

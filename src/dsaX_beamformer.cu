@@ -734,33 +734,24 @@ int main (int argc, char *argv[]) {
   // allocate host and device memory for calculations
   //inr and ini are data, in [16 time, 48 freq, 2 pol, 64 ant, 16 chunnels] for real and imag
   //wr and wi are weights, in [48 freq, 2 pol, 16 beam_tile, 4 ant_tile, 16 beam, 16 ant]        
-  char *d_indata;
-  unsigned char *d_outdata;
-  float *d_transfer, *d_bp, *d_antpos, *d_weights, *d_freqs;
-  half *d_wr, *d_wi, *d_inr, *d_ini;
-  cudaMalloc((void **)&d_indata, 16*96*NANT*8*2*sizeof(char)); // data input to bf kernel
-  cudaMalloc((void **)&d_outdata, 256*48*sizeof(unsigned char)); // data output from adder
+  char *d_indata[NSTREAMS];
+  unsigned char *d_outdata[NSTREAMS];
+  float *d_transfer[NSTREAMS], *d_bp, *d_antpos, *d_weights, *d_freqs;
+  half *d_wr, *d_wi, *d_inr[NSTREAMS], *d_ini[NSTREAMS];
   cudaMalloc((void **)&d_antpos, 64*sizeof(float)); // ant positions
   cudaMalloc((void **)&d_weights, 64*NW*2*2*sizeof(float)); // weights
-  cudaMalloc((void **)&d_freqs, 384*sizeof(float)); // freqs      
-  cudaMalloc((void **)&d_transfer, 256*96*16*sizeof(float)); // output from beamformer
+  cudaMalloc((void **)&d_freqs, 384*sizeof(float)); // freqs        
   cudaMalloc((void **)&d_bp, 256*sizeof(float)); // bandpass
   cudaMalloc((void **)&d_wr, 48*2*16*4*16*16*sizeof(half)); // real weight
   cudaMalloc((void **)&d_wi, 48*2*16*4*16*16*sizeof(half)); // imag weight
-  cudaMalloc((void **)&d_inr, 16*48*2*64*16*sizeof(half)); // real data
-  cudaMalloc((void **)&d_ini, 16*48*2*64*16*sizeof(half)); // real data
-  thrust::device_ptr<half> d1(d_inr);
-  thrust::fill(d1, d1+16*48*2*64*16, 0.0);
-  thrust::device_ptr<half> d2(d_ini);
-  thrust::fill(d2, d2+16*48*2*64*16, 0.0);
   cudaMemcpy(d_antpos, antpos, 64*sizeof(float), cudaMemcpyHostToDevice);
   cudaMemcpy(d_weights, weights, 64*NW*2*2*sizeof(float), cudaMemcpyHostToDevice);
   cudaMemcpy(d_freqs, freqs, 384*sizeof(float), cudaMemcpyHostToDevice);
   
-  float *h_transfer = (float *)malloc(sizeof(float)*256*96*16);
+  float *h_transfer = (float *)malloc(sizeof(float)*256*96*16*NSTREAMS);
   char *h_indata = (char *)malloc(sizeof(char)*16*NANT*96*8*2);
   float *bp = (float *)malloc(sizeof(float)*256);
-  unsigned char *tmp_buf = (unsigned char *)malloc(sizeof(unsigned char)*256*48);
+  unsigned char *tmp_buf = (unsigned char *)malloc(sizeof(unsigned char)*256*48*NSTREAMS);
 
   // calculate weights on device
   calc_weights<<<6144, 256>>>(d_antpos, d_weights, d_freqs, d_wr, d_wi);
@@ -792,33 +783,52 @@ int main (int argc, char *argv[]) {
 
 	for (int st=0;st<NSTREAMS;st++) {
 
+	  cudaMalloc((void **)&d_indata[st], 16*96*NANT*8*2*sizeof(char)); // data input to bf kernel
+	  cudaMalloc((void **)&d_outdata[st], 256*48*sizeof(unsigned char)); // data output from adder
+	  cudaMalloc((void **)&d_transfer[st], 256*96*16*sizeof(float)); // output from beamformer
+	  cudaMalloc((void **)&d_inr[st], 16*48*2*64*16*sizeof(half)); // real data
+	  cudaMalloc((void **)&d_ini[st], 16*48*2*64*16*sizeof(half)); // real data
+	  thrust::device_ptr<half> d1(d_inr[st]);
+	  thrust::fill(d1, d1+16*48*2*64*16, 0.0);
+	  thrust::device_ptr<half> d2(d_ini[st]);
+	  thrust::fill(d2, d2+16*48*2*64*16, 0.0);
+
+	  
 	  // copy to h_indata
-	  memcpy(h_indata,block+(bst*NSTREAMS+st)*nbytes_per_int,nbytes_per_int);
+	  //memcpy(h_indata,block+(bst*NSTREAMS+st)*nbytes_per_int,nbytes_per_int);
 
 	  // rotate h_indata in place
 	  //reorder_block(h_indata);
 	  
 	  // copy to device
-	  cudaMemcpyAsync(d_indata, h_indata, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
+	  //cudaMemcpyAsync(d_indata, h_indata, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
+	  cudaMemcpyAsync(d_indata[st], block+(bst*NSTREAMS+st)*nbytes_per_int, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
 
 	  // do promotion
-	  promoter<<<16*48*NANT, 32, 0, stream[st]>>>(d_indata, d_inr, d_ini);
+	  promoter<<<16*48*NANT, 32, 0, stream[st]>>>(d_indata[st], d_inr[st], d_ini[st]);
 	  
 	  // run beamformer kernel
-	  beamformer<<<24576, 32, 0, stream[st]>>>(d_inr, d_ini, d_wr, d_wi, d_transfer, stuffants);
+	  beamformer<<<24576, 32, 0, stream[st]>>>(d_inr[st], d_ini[st], d_wr, d_wi, d_transfer[st], stuffants);
 	  	  
 	  // run adder kernel
-	  adder<<<6144, 32, 0, stream[st]>>>(d_transfer, d_outdata, d_bp);
+	  adder<<<6144, 32, 0, stream[st]>>>(d_transfer[st], d_outdata[st], d_bp);
 	  
 	  // copy to host
-	  cudaMemcpyAsync(tmp_buf, d_outdata, 256*48*sizeof(unsigned char), cudaMemcpyDeviceToHost, stream[st]);
+	  cudaMemcpyAsync(tmp_buf + 256*48*st, d_outdata[st], 256*48*sizeof(unsigned char), cudaMemcpyDeviceToHost, stream[st]);
 	  for (int j=0;j<12288;j++)
-	    output_buffer[(bst*NSTREAMS+st)*12288+j] = tmp_buf[j];
+	    output_buffer[(bst*NSTREAMS+st)*12288+j] = tmp_buf[j+256*48*st];
 
 	  if (DEBUG && bst*NSTREAMS+st==10) {
 	    for (int j=0;j<48;j++) syslog(LOG_DEBUG,"%hu",output_buffer[(bst*NSTREAMS+st)*12288+BEAM_OUT*48+j]);
 	  }      
-	
+
+	  cudaFree(d_indata[st]);
+	  cudaFree(d_outdata[st]);
+	  cudaFree(d_transfer[st]);
+	  cudaFree(d_inr[st]);
+	  cudaFree(d_ini[st]);
+  
+	  
 	}
       }
 
@@ -839,32 +849,43 @@ int main (int argc, char *argv[]) {
       for (int bst=0;bst<nints/NSTREAMS;bst++) {
 
 	for (int st=0;st<NSTREAMS;st++) {
-	
+
+	  cudaMalloc((void **)&d_indata[st], 16*96*NANT*8*2*sizeof(char)); // data input to bf kernel
+	  cudaMalloc((void **)&d_outdata[st], 256*48*sizeof(unsigned char)); // data output from adder
+	  cudaMalloc((void **)&d_transfer[st], 256*96*16*sizeof(float)); // output from beamformer
+	  cudaMalloc((void **)&d_inr[st], 16*48*2*64*16*sizeof(half)); // real data
+	  cudaMalloc((void **)&d_ini[st], 16*48*2*64*16*sizeof(half)); // real data
+	  thrust::device_ptr<half> d1(d_inr[st]);
+	  thrust::fill(d1, d1+16*48*2*64*16, 0.0);
+	  thrust::device_ptr<half> d2(d_ini[st]);
+	  thrust::fill(d2, d2+16*48*2*64*16, 0.0);
+	  
 	  // copy to h_indata
-	  memcpy(h_indata,block+(bst*NSTREAMS+st)*nbytes_per_int,nbytes_per_int);
+	  //memcpy(h_indata,block+(bst*NSTREAMS+st)*nbytes_per_int,nbytes_per_int);
 
 	  // rotate h_indata in place - this is current
 	  //reorder_block(h_indata);
 
 	  // copy to device
-	  cudaMemcpyAsync(d_indata, h_indata, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
+	  //cudaMemcpyAsync(d_indata, h_indata, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
+	  cudaMemcpyAsync(d_indata[st], block+(bst*NSTREAMS+st)*nbytes_per_int, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
 
 	  // do promotion
-	  promoter<<<16*48*NANT, 32, 0, stream[st]>>>(d_indata, d_inr, d_ini);
+	  promoter<<<16*48*NANT, 32, 0, stream[st]>>>(d_indata[st], d_inr[st], d_ini[st]);
 
 	  //if (bst==0 && st==0) 
 	  //  printer<<<3072, 32>>>(d_inr,d_ini);	  
 	  
 	  // run beamformer kernel
-	  beamformer<<<24576, 32, 0, stream[st]>>>(d_inr, d_ini, d_wr, d_wi, d_transfer, stuffants);
+	  beamformer<<<24576, 32, 0, stream[st]>>>(d_inr[st], d_ini[st], d_wr, d_wi, d_transfer[st], stuffants);
 	  
 	  // copy back to host
-	  cudaMemcpyAsync(h_transfer, d_transfer, sizeof(float)*393216, cudaMemcpyDeviceToHost, stream[st]);	
+	  cudaMemcpyAsync(h_transfer + st*256*96*16, d_transfer[st], sizeof(float)*393216, cudaMemcpyDeviceToHost, stream[st]);	
 
 	  // calculate bandpass
 	  //if (st==0 && bst==0) 
 	  //calc_bp(h_transfer,bp,1);
-	  calc_bp(h_transfer,bp,0);
+	  calc_bp(h_transfer + st*256*96*16,bp,0);
 
 	}
       }
@@ -920,8 +941,6 @@ int main (int argc, char *argv[]) {
   free(bp);
   free(h_transfer);
   free(tmp_buf);
-  cudaFree(d_indata);
-  cudaFree(d_outdata);
   cudaFree(d_wr);
   cudaFree(d_wi);
   cudaFree(d_antpos);
@@ -929,9 +948,6 @@ int main (int argc, char *argv[]) {
   cudaFree(d_weights);
   cudaFree(d_wr);
   cudaFree(d_wi);
-  cudaFree(d_inr);
-  cudaFree(d_ini);  
-  cudaFree(d_transfer);
   cudaFree(d_bp);
   dsaX_dbgpu_cleanup (hdu_in, hdu_out);
   

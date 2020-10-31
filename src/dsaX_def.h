@@ -63,11 +63,13 @@
 #define REORDER_CONTROL_PORT 11224
 #define XGPU_CONTROL_PORT 11225
 #define WRITEVIS_CONTROL_PORT 11226
+#define TRIGGER_CONTROL_PORT 11227
 
 #define NPACKETS_PER_CALL 2048
 #define NPACKETS_PER_BLOCK 2048
 #define NPACKETS_PER_FIL 2
 #define NPACKETS 2048
+#define NOUTBLOCKS 30 // number of input blocks stored by trigger
 #define NANTS 24
 
 // for beamformer

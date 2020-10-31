@@ -60,7 +60,8 @@
 #include <src/header.h>
 
 
-#define NTIMES_P 4096	// # of time samples (assuming 1ms sampling period)
+#define NSPLIT 8 // # of sub-blocks
+#define NTIMES_P 4096/NSPLIT	// # of time samples (assuming 1ms sampling period)
 #define NCHAN_P 1024	// # of channels on BF node side
 #define NBEAMS_P 64	// # of beams on BF side
 #define M_P NTIMES_P
@@ -411,7 +412,7 @@ int main(int argc, char**argv)
   // CONNECT AND READ FROM BUFFER
 
   dada_hdu_t* hdu_in = 0;	// header and data unit
-  uint64_t blocksize = NTIMES_P*NCHAN_P*NBEAMS_P;	// size of buffer
+  uint64_t blocksize = NSPLIT*NTIMES_P*NCHAN_P*NBEAMS_P;	// size of buffer
   hdu_in  = dada_hdu_create ();
   dada_hdu_set_key (hdu_in, in_key);
   if (dada_hdu_connect (hdu_in) < 0) {
@@ -489,7 +490,7 @@ int main(int argc, char**argv)
   // declare stuff for host and GPU
   unsigned char * d_data;
   cudaMalloc((void **)&d_data, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(unsigned char));
-  unsigned char * h_data = (unsigned char *)malloc(sizeof(unsigned char)*NBEAMS_P*NTIMES_P*NCHAN_P);
+  unsigned char * h_data = (unsigned char *)malloc(sizeof(unsigned char)*NBEAMS_P*NTIMES_P*NCHAN_P*NSPLIT);
   int * h_mask = (int *)malloc(sizeof(int)*NBEAMS_P*NCHAN_P);
   int * d_mask;
   cudaMalloc((void **)&d_mask, NBEAMS_P*NCHAN_P*sizeof(int));
@@ -511,29 +512,37 @@ int main(int argc, char**argv)
     in_data = (unsigned char *)(cin_data);
 
     if (DEBUG) syslog(LOG_INFO,"read block");
-    
-    // compute the mean spectrum
-    if (DEBUG) syslog(LOG_INFO,"starting spectrum calc");
-    cudaMemcpy(d_data, in_data, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyHostToDevice);
-    calc_spectrum<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_spec);
-    calc_varspec<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_spec, d_var);
-    cudaMemcpy(h_spec, d_spec, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_var, d_var, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
-    if (DEBUG) syslog(LOG_INFO,"finished spectrum calc");
 
-    // figure out flagging - fill h_mask
-    if (varf)
-      channflag(h_var, thresh, h_mask);
-    else
-      channflag(h_spec, thresh, h_mask);
+    for (int splits=0;splits<NSPLIT;splits++) {
     
-    // do flagging
-    if (DEBUG) syslog(LOG_INFO,"starting flagging calc");
-    cudaMemcpy(d_mask, h_mask, NBEAMS_P*NCHAN_P*sizeof(int), cudaMemcpyHostToDevice);
-    flag<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_mask, d_repval);
-    cudaMemcpy(h_data, d_data, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyDeviceToHost);
-    if (DEBUG) syslog(LOG_INFO,"finished flagging calc");
-		
+      // compute the mean spectrum
+      if (DEBUG) syslog(LOG_INFO,"starting spectrum calc %d",splits);
+      cudaMemcpy(d_data, in_data + splits*NBEAMS_P*NTIMES_P*NCHAN_P, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyHostToDevice);
+      calc_spectrum<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_spec);
+      calc_varspec<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_spec, d_var);
+      cudaMemcpy(h_spec, d_spec, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
+      cudaMemcpy(h_var, d_var, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
+      if (DEBUG) syslog(LOG_INFO,"finished spectrum calc %d",splits);
+
+      // figure out flagging - fill h_mask
+      if (varf)
+	channflag(h_var, thresh, h_mask);
+      else
+	channflag(h_spec, thresh, h_mask);
+    
+      // do flagging
+      if (DEBUG) syslog(LOG_INFO,"starting flagging calc %d",splits);
+      cudaMemcpy(d_mask, h_mask, NBEAMS_P*NCHAN_P*sizeof(int), cudaMemcpyHostToDevice);
+      flag<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_mask, d_repval);
+      cudaMemcpy(h_data + splits*NBEAMS_P*NTIMES_P*NCHAN_P, d_data, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+      if (DEBUG) syslog(LOG_INFO,"finished flagging calc %d",splits);
+
+      for (int i=0;i<NBEAMS_P*NCHAN_P;i++)
+	h_mask[0] += h_mask[i];
+      syslog(LOG_INFO,"FLAG_COUNT %d",h_mask[0]);   		
+
+    }
+      
     // close block after reading
     ipcio_close_block_read (hdu_in->data_block, bytes_read);
     if (DEBUG) syslog(LOG_DEBUG,"closed read block");		
@@ -551,11 +560,7 @@ int main(int argc, char**argv)
       for (int i=0;i<NCHAN_P;i++) fprintf(fout,"%d %g %g\n",h_mask[i],h_spec[i],h_var[i]);
       fclose(fout);
     }
-     
-    for (int i=0;i<NBEAMS_P*NCHAN_P;i++)
-      h_mask[0] += h_mask[i];
-    syslog(LOG_INFO,"FLAG_COUNT %d",h_mask[0]);   		
-    
+         
   }
 
   free(lookup_rand);
