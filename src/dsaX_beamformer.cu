@@ -760,7 +760,20 @@ int main (int argc, char *argv[]) {
   
   // streams and device  
   cudaStream_t stream[NSTREAMS];
-  for (int i=0;i<NSTREAMS;i++) cudaStreamCreate(&stream[i]);
+  for (int st=0;st<NSTREAMS;st++) {
+    cudaStreamCreate(&stream[st]);
+    cudaMalloc((void **)&d_indata[st], 16*96*NANT*8*2*sizeof(char)); // data input to bf kernel
+    cudaMalloc((void **)&d_outdata[st], 256*48*sizeof(unsigned char)); // data output from adder
+    cudaMalloc((void **)&d_transfer[st], 256*96*16*sizeof(float)); // output from beamformer
+    cudaMalloc((void **)&d_inr[st], 16*48*2*64*16*sizeof(half)); // real data
+    cudaMalloc((void **)&d_ini[st], 16*48*2*64*16*sizeof(half)); // real data
+    thrust::device_ptr<half> d1(d_inr[st]);
+    thrust::fill(d1, d1+16*48*2*64*16, 0.0);
+    thrust::device_ptr<half> d2(d_ini[st]);
+    thrust::fill(d2, d2+16*48*2*64*16, 0.0);
+  }
+
+  
   
   // set up
 
@@ -783,15 +796,6 @@ int main (int argc, char *argv[]) {
 
 	for (int st=0;st<NSTREAMS;st++) {
 
-	  cudaMalloc((void **)&d_indata[st], 16*96*NANT*8*2*sizeof(char)); // data input to bf kernel
-	  cudaMalloc((void **)&d_outdata[st], 256*48*sizeof(unsigned char)); // data output from adder
-	  cudaMalloc((void **)&d_transfer[st], 256*96*16*sizeof(float)); // output from beamformer
-	  cudaMalloc((void **)&d_inr[st], 16*48*2*64*16*sizeof(half)); // real data
-	  cudaMalloc((void **)&d_ini[st], 16*48*2*64*16*sizeof(half)); // real data
-	  thrust::device_ptr<half> d1(d_inr[st]);
-	  thrust::fill(d1, d1+16*48*2*64*16, 0.0);
-	  thrust::device_ptr<half> d2(d_ini[st]);
-	  thrust::fill(d2, d2+16*48*2*64*16, 0.0);
 
 	  
 	  // copy to h_indata
@@ -820,14 +824,7 @@ int main (int argc, char *argv[]) {
 
 	  if (DEBUG && bst*NSTREAMS+st==10) {
 	    for (int j=0;j<48;j++) syslog(LOG_DEBUG,"%hu",output_buffer[(bst*NSTREAMS+st)*12288+BEAM_OUT*48+j]);
-	  }      
-
-	  cudaFree(d_indata[st]);
-	  cudaFree(d_outdata[st]);
-	  cudaFree(d_transfer[st]);
-	  cudaFree(d_inr[st]);
-	  cudaFree(d_ini[st]);
-  
+	  }        
 	  
 	}
       }
@@ -849,16 +846,6 @@ int main (int argc, char *argv[]) {
       for (int bst=0;bst<nints/NSTREAMS;bst++) {
 
 	for (int st=0;st<NSTREAMS;st++) {
-
-	  cudaMalloc((void **)&d_indata[st], 16*96*NANT*8*2*sizeof(char)); // data input to bf kernel
-	  cudaMalloc((void **)&d_outdata[st], 256*48*sizeof(unsigned char)); // data output from adder
-	  cudaMalloc((void **)&d_transfer[st], 256*96*16*sizeof(float)); // output from beamformer
-	  cudaMalloc((void **)&d_inr[st], 16*48*2*64*16*sizeof(half)); // real data
-	  cudaMalloc((void **)&d_ini[st], 16*48*2*64*16*sizeof(half)); // real data
-	  thrust::device_ptr<half> d1(d_inr[st]);
-	  thrust::fill(d1, d1+16*48*2*64*16, 0.0);
-	  thrust::device_ptr<half> d2(d_ini[st]);
-	  thrust::fill(d2, d2+16*48*2*64*16, 0.0);
 	  
 	  // copy to h_indata
 	  //memcpy(h_indata,block+(bst*NSTREAMS+st)*nbytes_per_int,nbytes_per_int);
@@ -930,7 +917,14 @@ int main (int argc, char *argv[]) {
 
   }
 
-  for (int i=0;i<NSTREAMS;i++) cudaStreamDestroy(stream[i]);
+  for (int st=0;st<NSTREAMS;st++) {
+    cudaStreamDestroy(stream[st]);
+    cudaFree(d_indata[st]);
+    cudaFree(d_outdata[st]);
+    cudaFree(d_transfer[st]);
+    cudaFree(d_inr[st]);
+    cudaFree(d_ini[st]);
+  }
   free(fnam);
   free(flagants);
   free(h_indata);

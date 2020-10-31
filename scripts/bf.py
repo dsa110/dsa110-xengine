@@ -21,7 +21,7 @@ if sys.argv[1]=='stop':
     # destroy buffers
     os.system('dada_db -k aada -d')
     os.system('dada_db -k bada -d')
-    os.system('dada_db -k cada -d')
+    #os.system('dada_db -k cada -d')
     os.system('dada_db -k dada -d')
 
     
@@ -32,17 +32,18 @@ if sys.argv[1]=='start':
     # TEST DATA
     os.system('dada_db -k aada -b 75497472 -l -p -c 1 -n 8') # 2048 packets, 24 ants
     os.system('dada_db -k bada -b 75497472 -l -p -c 1 -n 8') # 2048 packets, 24 ants
-    os.system('dada_db -k cada -b 75497472 -l -p -c 1 -n 8') # 2048 packets, 24 ants
+    #os.system('dada_db -k cada -b 75497472 -l -p -c 1 -n 8') # 2048 packets, 24 ants
     os.system('dada_db -k dada -b 1572864 -l -p -c 1 -n 8') # 2048 packets, 24 ants
 
     
     
     # start code    
-    junk = 'dada_junkdb -t 1000 -k aada -r 550 /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt'    
-    dbnull = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_writeFil -c 27 -i 127.0.0.1 -f /home/ubuntu/data/bsfil -k dada'
-    fake = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_bigfake -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/packet.out -i aada -o bada'
-    bf = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_beamformer -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -i cada -o dada -s'
-    split = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_split -c 18 -m -i bada -o cada'
+    junk = 'dada_junkdb -t 1000 -k aada -r 563 /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt'    
+    #dbnull = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_writeFil -c 27 -i 127.0.0.1 -f /home/ubuntu/data/bsfil -k dada'
+    dbnull = 'dada_dbnull -k dada'
+    fake = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_fake -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/packet.out -i aada -o bada'
+    bf = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_beamformer -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -i bada -o dada'
+    #split = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_split -c 18 -m -i bada -o cada'
     
     
     print('Starting dbnull')
@@ -55,10 +56,10 @@ if sys.argv[1]=='start':
     bf_proc = subprocess.Popen(bf, shell = True, stdout=bf_log, stderr=bf_log)
     sleep(0.1)
 
-    print('Starting split')
-    bf_log = open('/home/ubuntu/tmp/split.log','w')
-    bf_proc = subprocess.Popen(split, shell = True, stdout=bf_log, stderr=bf_log)
-    sleep(0.1)
+    #print('Starting split')
+    #bf_log = open('/home/ubuntu/tmp/split.log','w')
+    #bf_proc = subprocess.Popen(split, shell = True, stdout=bf_log, stderr=bf_log)
+    #sleep(0.1)
     
     print('Starting fake')
     fake_log = open('/home/ubuntu/tmp/fake.log','w')
