@@ -125,13 +125,21 @@ def get_monitor_dict(params):
     return mon_dict
 
 # this actually processes commands
-def process(params, cmd):
+def process(params, cmd, val):
     """ starts and stops correlator pipeline generically according to config file
-    input: params, cmd
+    input: params, cmd, val
     """
 
     # start up logger
     my_log.function('process')
+
+    # to send trigger
+    if cmd=='trigger':
+        cmdstr = 'echo '+val+' | nc -4u -w1 127.0.0.1 11227 &'
+        my_log.info('running: '+cmdstr)
+        os.system(cmdstr)
+        sleep(0.5)
+        my_log.info('Successfully issued trigger (I think)')
     
     # start up stuff
     if cmd=='start':
@@ -193,7 +201,7 @@ def cb_func(params):
         cmd = event['cmd']
         value = event['val']
         my_log.info("cmd= {}, value= {}".format(cmd, value))
-        process(params,cmd)
+        process(params,cmd,value)
     
     return a
                                                                                                 

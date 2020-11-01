@@ -12,6 +12,18 @@ buffers:
     b: 75497472 
     n: 8
     c: 1
+  - k: ddda
+    b: 75497472 
+    n: 8
+    c: 1
+  - k: eaea
+    b: 75497472 
+    n: 20
+    c: 1
+  - k: fafa
+    b: 2264924160
+    n: 2
+    c: 1
   - k: eada
     b: 402653184
     n: 4
@@ -29,6 +41,12 @@ buffers:
     n: 4
     c: 1
 routines:
+  - name: dsaX_store
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_store
+    args: -c 11 -k fafa
+  - name: dsaX_trigger
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_trigger
+    args: -c 11 -i 127.0.0.1 -j eaea -o fafa -d -n log
   - name: meridian_fringestop
     cmd: /home/ubuntu/anaconda3/envs/casa/bin/python
     args: /home/ubuntu/proj/dsa110-shell/dsa110-meridian-fs/dsamfs/meridian_fringestop.py /home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/dsa_parameters.yaml /home/ubuntu/data 
@@ -57,7 +75,7 @@ routines:
     args: -i fada -o bada
   - name: dsaX_beamformer
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_beamformer
-    args: -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -a /home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/flagants.dat -i dcda -o cada 
+    args: -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -a /home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/flagants.dat -i ddda -o cada 
     hostargs:
       corr01: -z 1498.75
       corr02: -z 1487.03125
@@ -81,6 +99,9 @@ routines:
   - name: dsaX_reorder_raw
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_reorder_raw
     args: -t 16 -i dbda -o eada
+  - name: dsaX_split
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_split
+    args: -i dcda -o ddda -j eaea -c 19 -b -m 
   - name: dsaX_split
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_split
     args: -i dada -o dbda -j dcda -c 19 -b -m -s

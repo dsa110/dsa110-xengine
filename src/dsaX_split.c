@@ -246,7 +246,7 @@ int main (int argc, char *argv[]) {
 	      usage();
 	      return EXIT_FAILURE;
 	    }
-		case 'i':
+	case 'i':
 	  if (optarg)
 	    {
 	      if (sscanf (optarg, "%x", &in_key) != 1) {

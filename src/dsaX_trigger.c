@@ -24,18 +24,18 @@ Sequence of events:
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <syslog.h>
 
+#include "dsaX_capture.h"
 #include "sock.h"
 #include "tmutil.h"
 #include "dada_client.h"
 #include "dada_def.h"
 #include "dada_hdu.h"
-#include "multilog.h"
 #include "ipcio.h"
 #include "ipcbuf.h"
 #include "dada_affinity.h"
 #include "ascii_header.h"
-#include "dsaX_correlator_udpdb_thread.h"
 #include "dsaX_def.h"
 
 /* global variables */
@@ -47,22 +47,23 @@ int trignum = 0;
 int dumpnum = 0;
 char iP[100];
 char footer_buf[1024];
+int DEBUG = 0;
 
-void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out, multilog_t * log);
+void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out);
 int dada_bind_thread_to_core (int core);
 
-void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out, multilog_t * log)
+void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out)
 {
   
   if (dada_hdu_unlock_read (in) < 0)
     {
-      multilog(log, LOG_ERR, "could not unlock read on hdu_in\n");
+      syslog(LOG_ERR, "could not unlock read on hdu_in");
     }
   dada_hdu_destroy (in);
 
   if (dada_hdu_unlock_write (out) < 0)
     {
-      multilog(log, LOG_ERR, "could not unlock read on hdu_out\n");
+      syslog(LOG_ERR, "could not unlock read on hdu_out");
     }
   dada_hdu_destroy (out);
 
@@ -76,6 +77,9 @@ void usage()
 	   "dsaX_correlator_trigger [options]\n"
 	   " -c core   bind process to CPU core\n"
 	   " -i IP to listen to [no default]\n"
+	   " -j in_key [default eaea]\n"
+	   " -o out_key [default fafa]\n"
+	   " -d debug\n"
 	   " -n output file name [no default]\n"
 	   " -h print usage\n");
 }
@@ -86,7 +90,7 @@ void usage()
 void control_thread (void * arg) {
 
   udpdb_t * ctx = (udpdb_t *) arg;
-  multilog(ctx->log, LOG_INFO, "control_thread: starting\n");
+  syslog(LOG_INFO, "control_thread: starting");
 
   // port on which to listen for control commands
   int port = ctx->control_port;
@@ -107,7 +111,7 @@ void control_thread (void * arg) {
   socklen_t src_addr_len=sizeof(src_addr);
   hints.ai_family=AF_INET;
   hints.ai_socktype=SOCK_DGRAM;
-  getaddrinfo(iP,"11223",&hints,&res);
+  getaddrinfo(iP,"11227",&hints,&res);
   int fd;
   ssize_t ct;
   char tmpstr;
@@ -116,33 +120,33 @@ void control_thread (void * arg) {
   uint64_t tmps;
   char * token;
   
-  multilog(ctx->log, LOG_INFO, "control_thread: created socket on port %d\n", port);
+  syslog(LOG_INFO, "control_thread: created socket on port %d", port);
   
   while (!quit_threads) {
     
     fd = socket(res->ai_family,res->ai_socktype,res->ai_protocol);
     bind(fd,res->ai_addr,res->ai_addrlen);
     memset(buffer,'\0',sizeof(buffer));
-    multilog(ctx->log, LOG_INFO, "control_thread: waiting for packet\n");
+    syslog(LOG_INFO, "control_thread: waiting for packet");
     ct = recvfrom(fd,buffer,1024,0,(struct sockaddr*)&src_addr,&src_addr_len);
     
-    multilog(ctx->log, LOG_INFO, "control_thread: received buffer string %s\n",buffer);
+    syslog(LOG_INFO, "control_thread: received buffer string %s",buffer);
     strcpy(tbuf,buffer);
     trignum++;
 
     // interpret buffer string
     char * rest = buffer;
-    tmps = (uint64_t)(strtoull(strtok_r(rest, "-", &rest),&endptr,0)*16);
+    tmps = (uint64_t)(strtoull(strtok_r(rest, "-", &rest),&endptr,0));
     
     if (!dump_pending) {
       //specnum = (uint64_t)(strtoull(buffer,&endptr,0)*16);
       specnum = tmps;
       strcpy(footer_buf,tbuf);
-      multilog(ctx->log, LOG_INFO, "control_thread: received command to dump at %llu\n",specnum);
+      syslog(LOG_INFO, "control_thread: received command to dump at %llu",specnum);
     }
 	
     if (dump_pending)
-      multilog(ctx->log, LOG_ERR, "control_thread: BACKED UP - CANNOT dump at %llu\n",tmps);
+      syslog(LOG_ERR, "control_thread: BACKED UP - CANNOT dump at %llu",tmps);
   
     if (!dump_pending) dump_pending = 1;
     
@@ -154,7 +158,7 @@ void control_thread (void * arg) {
   free (tbuf);
 
   if (ctx->verbose)
-    multilog(ctx->log, LOG_INFO, "control_thread: exiting\n");
+    syslog(LOG_INFO, "control_thread: exiting");
 
   /* return 0 */
   int thread_result = 0;
@@ -166,15 +170,18 @@ void control_thread (void * arg) {
 	
 int main (int argc, char *argv[]) {
 
+  // startup syslog message
+  // using LOG_LOCAL0
+  openlog ("dsaX_trigger", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
+  syslog (LOG_NOTICE, "Program started by User %d", getuid ());
+
+  
   /* DADA Header plus Data Unit */
   dada_hdu_t* hdu_in = 0;
   dada_hdu_t* hdu_out = 0;
 
   /* port for control commands */
-  int control_port = CONTROL_PORT;
-  
-  /* DADA Logger */
-  multilog_t* log = 0;
+  int control_port = TRIGGER_CONTROL_PORT;
 
   /* actual struct with info */
   udpdb_t udpdb;
@@ -191,7 +198,7 @@ int main (int argc, char *argv[]) {
   FILE *foutp;
   char foutnam[100];
     
-  while ((arg=getopt(argc,argv,"i:c:n:h")) != -1)
+  while ((arg=getopt(argc,argv,"i:c:n:j:o:h")) != -1)
     {
       switch (arg)
 	{
@@ -206,7 +213,41 @@ int main (int argc, char *argv[]) {
 	    }
 	  else
 	    {
-	      printf ("ERROR: -c flag requires argument\n");
+	      syslog (LOG_ERR,"ERROR: -c flag requires argument\n");
+	      return EXIT_FAILURE;
+	    }
+	case 'd':
+	  DEBUG=1;
+	  syslog (LOG_DEBUG, "Will excrete all debug messages");
+	  break;
+	case 'o':
+	  if (optarg)
+	    {
+	      if (sscanf (optarg, "%x", &out_key) != 1) {
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-o flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'j':
+	  if (optarg)
+	    {
+	      if (sscanf (optarg, "%x", &in_key) != 1) {
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-j flag requires argument");
+	      usage();
 	      return EXIT_FAILURE;
 	    }
 	case 'n':
@@ -221,61 +262,56 @@ int main (int argc, char *argv[]) {
 
   // DADA stuff
   
-  log = multilog_open ("dsaX_correlator_trigger", 0);
-  multilog_add (log, stderr);
-  udpdb.log = log;
-  udpdb.verbose = 1;
+  udpdb.verbose = DEBUG;
   udpdb.control_port = control_port;
   
+    // start control thread
+  int rval = 0;
+  pthread_t control_thread_id;
+  syslog(LOG_INFO, "starting control_thread()");
+  rval = pthread_create (&control_thread_id, 0, (void *) control_thread, (void *) &udpdb);
+  if (rval != 0) {
+    syslog(LOG_ERR, "Error creating control_thread: %s", strerror(rval));
+    return -1;
+  }
 
-  multilog (log, LOG_INFO, "dsaX_correlator_trigger: creating hdus\n");
+  
+  syslog (LOG_INFO, "creating hdus");
 
   // open connection to the in/read DBs
   
-  hdu_in  = dada_hdu_create (log);
+  hdu_in  = dada_hdu_create ();
   dada_hdu_set_key (hdu_in, in_key);
   if (dada_hdu_connect (hdu_in) < 0) {
-    printf ("dsaX_correlator_trigger: could not connect to dada buffer\n");
+    syslog (LOG_ERR,"could not connect to dada buffer");
     return EXIT_FAILURE;
   }
   if (dada_hdu_lock_read (hdu_in) < 0) {
-    printf ("dsaX_correlator_trigger: could not lock to dada buffer\n");
+    syslog (LOG_ERR,"could not lock to dada buffer");
     return EXIT_FAILURE;
   }
 
-  hdu_out  = dada_hdu_create (log);
+  hdu_out  = dada_hdu_create ();
   dada_hdu_set_key (hdu_out, out_key);
   if (dada_hdu_connect (hdu_out) < 0) {
-    printf ("dsaX_correlator_trigger: could not connect to output dada buffer\n");
+    syslog (LOG_ERR,"could not connect to output dada buffer");
     return EXIT_FAILURE;
   }
   if (dada_hdu_lock_write(hdu_out) < 0) {
-    dsaX_dbgpu_cleanup (hdu_in, hdu_out, log);
-    fprintf (stderr, "dsaX_correlator_trigger: could not lock4 to eada buffer\n");
+    dsaX_dbgpu_cleanup (hdu_in, hdu_out);
+    syslog (LOG_ERR,"could not lock4 to eada buffer");
     return EXIT_FAILURE;
   }
 
   // Bind to cpu core
   if (core >= 0)
     {
-      printf("binding to core %d\n", core);
+      syslog(LOG_INFO,"binding to core %d", core);
       if (dada_bind_thread_to_core(core) < 0)
-	printf("dsaX_correlator_trigger: failed to bind to core %d\n", core);
+	syslog(LOG_ERR,"failed to bind to core %d", core);
     }
 
   int observation_complete=0;
-
-  // stuff for writing data
-  uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
-  uint64_t block_out = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
-  uint64_t specs_per_block = NPACKETS;
-  uint64_t specs_per_out = NPACKETS*NOUTBLOCKS;
-  uint64_t current_specnum = 0; // updates with each dada block read
-  uint64_t start_byte, bytes_to_copy, bytes_copied=0;
-  char * out_data = (char *)malloc(sizeof(char)*blocksize);
-  char * in_data;
-  uint64_t written=0;
-  uint64_t block_id, bytes_read=0;
   
   // more DADA stuff - deal with headers
   
@@ -285,8 +321,8 @@ int main (int argc, char *argv[]) {
   char * header_in = ipcbuf_get_next_read (hdu_in->header_block, &header_size);
   if (!header_in)
     {
-      multilog(log ,LOG_ERR, "main: could not read next header\n");
-      dsaX_dbgpu_cleanup (hdu_in, hdu_out, log);
+      syslog(LOG_ERR, "main: could not read next header");
+      dsaX_dbgpu_cleanup (hdu_in, hdu_out);
       return EXIT_FAILURE;
     }
 
@@ -294,8 +330,8 @@ int main (int argc, char *argv[]) {
   char * header_out = ipcbuf_get_next_write (hdu_out->header_block);
   if (!header_out)
     {
-      multilog(log, LOG_ERR, "could not get next header block [output]\n");
-      dsaX_dbgpu_cleanup (hdu_in, hdu_out, log);
+      syslog(LOG_ERR, "could not get next header block [output]");
+      dsaX_dbgpu_cleanup (hdu_in, hdu_out);
       return EXIT_FAILURE;
     }
 
@@ -305,34 +341,38 @@ int main (int argc, char *argv[]) {
   // mark the input header as cleared
   if (ipcbuf_mark_cleared (hdu_in->header_block) < 0)
     {
-      multilog (log, LOG_ERR, "could not mark header block cleared [input]\n");
-      dsaX_dbgpu_cleanup (hdu_in, hdu_out, log);
+      syslog (LOG_ERR, "could not mark header block cleared [input]");
+      dsaX_dbgpu_cleanup (hdu_in, hdu_out);
       return EXIT_FAILURE;
     }
 
   // mark the output header buffer as filled
   if (ipcbuf_mark_filled (hdu_out->header_block, header_size) < 0)
     {
-      multilog (log, LOG_ERR, "could not mark header block filled [output]\n");
-      dsaX_dbgpu_cleanup (hdu_in, hdu_out, log);
+      syslog (LOG_ERR, "could not mark header block filled [output]");
+      dsaX_dbgpu_cleanup (hdu_in, hdu_out);
       return EXIT_FAILURE;
     }
 
+  // stuff for writing data
+  uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
+  uint64_t block_out = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
+  uint64_t specs_per_block = NPACKETS;
+  uint64_t specs_per_out = NPACKETS*NOUTBLOCKS;
+  uint64_t current_specnum = 0; // updates with each dada block read
+  uint64_t start_byte, bytes_to_copy, bytes_copied=0;
+  char * out_data = (char *)malloc(sizeof(char)*block_out);
+  char * in_data;
+  uint64_t written=0;
+  uint64_t block_id, bytes_read=0;
 
-  // start control thread
-  int rval = 0;
-  pthread_t control_thread_id;
-  multilog(log, LOG_INFO, "starting control_thread()\n");
-  rval = pthread_create (&control_thread_id, 0, (void *) control_thread, (void *) &udpdb);
-  if (rval != 0) {
-    multilog(log, LOG_INFO, "Error creating control_thread: %s\n", strerror(rval));
-    return -1;
-  }
+  
+
 
   // main reading loop
   float pc_full = 0.;
   
-  multilog(log, LOG_INFO, "main: starting observation\n");
+  syslog(LOG_INFO, "main: starting observation");
 
   while (!observation_complete) {
 
@@ -343,7 +383,7 @@ int main (int argc, char *argv[]) {
       // only proceed if input data block is 80% full
       while (pc_full < 0.85) {
 	pc_full = ipcio_percent_full(hdu_in->data_block);
-	sleep(1);
+	usleep(100);
       }
       pc_full = 0.;
       
@@ -355,8 +395,8 @@ int main (int argc, char *argv[]) {
 	if (specnum > current_specnum && specnum < current_specnum+specs_per_block) {
 	  
 	  // find start byte and bytes to copy
-	  start_byte = 8192*(specnum-current_specnum);
-	  bytes_to_copy = blocksize-start_byte;
+	  start_byte = 4608*NSNAPS*(specnum-current_specnum);
+	  bytes_to_copy = block_size-start_byte;
 	  
 	  // do copy
 	  memcpy(out_data, in_data+start_byte, bytes_to_copy);
@@ -364,27 +404,34 @@ int main (int argc, char *argv[]) {
 	  
 	}
 
-	// if this is the second block in the pair to dump from
-	if (specnum < current_specnum && specnum > current_specnum-specs_per_block) {	  
+	// if this is one of the middle blocks to dump from
+	if (specnum < current_specnum && specnum + specs_per_out > current_specnum + specs_per_block) {
+
+	  // do copy
+	  memcpy(out_data + bytes_copied, in_data, block_size);
+	  bytes_copied += block_size;
+
+	}
+
+	// if this is the last block to dump from
+	if (specnum + specs_per_out > current_specnum && specnum + specs_per_out <= current_specnum + specs_per_block) {	  
 
 	  // find start byte and bytes to copy
-	  start_byte = 0;
-	  bytes_to_copy = blocksize-bytes_copied-1024;
+	  bytes_to_copy = block_out-bytes_copied;
 
 	  // do copy
 	  memcpy(out_data+bytes_copied, in_data, bytes_to_copy);
-	  bytes_copied += bytes_to_copy;
 
 	  // DO THE WRITING
-	  written = ipcio_write (hdu_out->data_block, out_data, blocksize);
+	  written = ipcio_write (hdu_out->data_block, out_data, block_out);
 
-	  if (written < blocksize)
+	  if (written < block_out)
 	    {
-	      multilog(log, LOG_INFO, "main: failed to write all data to datablock [output]\n");
-	      dsaX_dbgpu_cleanup (hdu_in, hdu_out, log);
+	      syslog(LOG_ERR, "main: failed to write all data to datablock [output]");
+	      dsaX_dbgpu_cleanup (hdu_in, hdu_out);
 	      return EXIT_FAILURE;
 	    }
-	  multilog(log, LOG_INFO, "main: written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s\n", specnum, trignum-1, dumpnum, footer_buf);
+	  syslog(LOG_INFO, "written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s\n", specnum, trignum-1, dumpnum, footer_buf);
 	  fprintf(foutp,"%d %llu %s\n",dumpnum,specnum,footer_buf);
 	  
 	  dumpnum++;
@@ -397,7 +444,7 @@ int main (int argc, char *argv[]) {
 
 	// if trigger arrived too late
 	if (specnum < current_specnum-specs_per_block) {
-	  multilog(log, LOG_INFO, "main: trigger arrived too late: specnum %llu, current_specnum %llu\n",specnum,current_specnum);
+	  syslog(LOG_INFO, "trigger arrived too late: specnum %llu, current_specnum %llu",specnum,current_specnum);
 
 	  bytes_copied=0;
 	  dump_pending=0;
@@ -407,30 +454,31 @@ int main (int argc, char *argv[]) {
       }
 
       // update current spec
+      if (DEBUG) syslog(LOG_INFO,"current_specnum %llu",current_specnum);
       current_specnum += specs_per_block;
+      
 
       // for exiting
-      if (bytes_read < blocksize) {
+      if (bytes_read < block_size) {
 	observation_complete = 1;
-	multilog(log, LOG_INFO, "main: finished, with bytes_read %llu < expected %llu\n", bytes_read, blocksize);
+	syslog(LOG_INFO, "main: finished, with bytes_read %llu < expected %llu\n", bytes_read, block_size);
       }
 
       // close block for reading
       ipcio_close_block_read (hdu_in->data_block, bytes_read);
 
-      //    }
 
   }
 
   fclose(foutp);
 
   // close control thread
-  multilog(log, LOG_INFO, "joining control_thread\n");
+  syslog(LOG_INFO, "joining control_thread");
   quit_threads = 1;
   void* result=0;
   pthread_join (control_thread_id, &result);
 
   free(out_data);
-  dsaX_dbgpu_cleanup (hdu_in, hdu_out, log);
+  dsaX_dbgpu_cleanup (hdu_in, hdu_out);
 
 }
