@@ -34,8 +34,8 @@ if sys.argv[1]=='start':
     
     # start code    
     junk = 'dada_junkdb -t 1000 -k aada -r 100 /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt'    
-    fake = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/fil2dada -f /home/ubuntu/data/fl_5.out -i aada -o bada'
-    bf = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_beamformer -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -i bada -o cada -a /home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/flagants.dat -z 1498.75'
+    fake = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/fil2dada -f /home/ubuntu/data/fl_6.out -i aada -o bada'
+    bf = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_beamformer -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -i bada -o cada -a /home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/flagants.dat -z 1440.15625'
     dump = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dumpfil -f /home/ubuntu/tmp/test.fil -i cada'
     
     
