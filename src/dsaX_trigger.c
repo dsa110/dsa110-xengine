@@ -194,11 +194,7 @@ int main (int argc, char *argv[]) {
   int core = -1;
   int arg=0;
 
-  // output logging
-  FILE *foutp;
-  char foutnam[100];
-    
-  while ((arg=getopt(argc,argv,"i:c:n:j:o:h")) != -1)
+  while ((arg=getopt(argc,argv,"i:c:j:o:d:h")) != -1)
     {
       switch (arg)
 	{
@@ -218,7 +214,7 @@ int main (int argc, char *argv[]) {
 	    }
 	case 'd':
 	  DEBUG=1;
-	  syslog (LOG_DEBUG, "Will excrete all debug messages");
+	  syslog (LOG_INFO, "Will excrete all debug messages");
 	  break;
 	case 'o':
 	  if (optarg)
@@ -250,10 +246,6 @@ int main (int argc, char *argv[]) {
 	      usage();
 	      return EXIT_FAILURE;
 	    }
-	case 'n':
-	  sprintf(foutnam,"/home/ubuntu/data/%s_triglog.dat",optarg);
-	  foutp=fopen(foutnam,"w");
-	  break;
 	case 'h':
 	  usage();
 	  return EXIT_SUCCESS;
@@ -357,15 +349,15 @@ int main (int argc, char *argv[]) {
   // stuff for writing data
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
   uint64_t block_out = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
-  uint64_t specs_per_block = NPACKETS;
-  uint64_t specs_per_out = NPACKETS*NOUTBLOCKS;
+  uint64_t specs_per_block = 2048;
+  uint64_t specs_per_out = 2048*NOUTBLOCKS;
   uint64_t current_specnum = 0; // updates with each dada block read
   uint64_t start_byte, bytes_to_copy, bytes_copied=0;
   char * out_data = (char *)malloc(sizeof(char)*block_out);
   char * in_data;
   uint64_t written=0;
   uint64_t block_id, bytes_read=0;
-
+  int dumping = 0;
   
 
 
@@ -381,11 +373,11 @@ int main (int argc, char *argv[]) {
     
       // add delay
       // only proceed if input data block is 80% full
-      while (pc_full < 0.85) {
+      /*while (pc_full < 0.85) {
 	pc_full = ipcio_percent_full(hdu_in->data_block);
 	usleep(100);
       }
-      pc_full = 0.;
+      pc_full = 0.;*/
       
     
       // check for dump_pending
@@ -393,6 +385,8 @@ int main (int argc, char *argv[]) {
 
 	// if this is the first block to dump
 	if (specnum > current_specnum && specnum < current_specnum+specs_per_block) {
+
+	  dumping = 1;
 	  
 	  // find start byte and bytes to copy
 	  start_byte = 4608*NSNAPS*(specnum-current_specnum);
@@ -405,7 +399,7 @@ int main (int argc, char *argv[]) {
 	}
 
 	// if this is one of the middle blocks to dump from
-	if (specnum < current_specnum && specnum + specs_per_out > current_specnum + specs_per_block) {
+	if (specnum < current_specnum && specnum + specs_per_out > current_specnum + specs_per_block && dumping==1) {
 
 	  // do copy
 	  memcpy(out_data + bytes_copied, in_data, block_size);
@@ -414,7 +408,7 @@ int main (int argc, char *argv[]) {
 	}
 
 	// if this is the last block to dump from
-	if (specnum + specs_per_out > current_specnum && specnum + specs_per_out <= current_specnum + specs_per_block) {	  
+	if (specnum + specs_per_out > current_specnum && specnum + specs_per_out <= current_specnum + specs_per_block && dumping==1) {	  
 
 	  // find start byte and bytes to copy
 	  bytes_to_copy = block_out-bytes_copied;
@@ -432,18 +426,18 @@ int main (int argc, char *argv[]) {
 	      return EXIT_FAILURE;
 	    }
 	  syslog(LOG_INFO, "written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s\n", specnum, trignum-1, dumpnum, footer_buf);
-	  fprintf(foutp,"%d %llu %s\n",dumpnum,specnum,footer_buf);
 	  
 	  dumpnum++;
 	  
 	  // reset
 	  bytes_copied = 0;
 	  dump_pending = 0;
+	  dumping=0;
 	  
 	}
 
 	// if trigger arrived too late
-	if (specnum < current_specnum-specs_per_block) {
+	if (specnum < current_specnum-specs_per_block && dumping==0 && dump_pending==1) {
 	  syslog(LOG_INFO, "trigger arrived too late: specnum %llu, current_specnum %llu",specnum,current_specnum);
 
 	  bytes_copied=0;
@@ -451,6 +445,7 @@ int main (int argc, char *argv[]) {
 
 	}
 
+	
       }
 
       // update current spec
@@ -470,7 +465,6 @@ int main (int argc, char *argv[]) {
 
   }
 
-  fclose(foutp);
 
   // close control thread
   syslog(LOG_INFO, "joining control_thread");
