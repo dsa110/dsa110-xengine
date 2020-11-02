@@ -234,7 +234,6 @@ int main (int argc, char *argv[]) {
 
   // startup syslog message
   // using LOG_LOCAL0
-  multilog_t* log = 0;
   openlog ("dsaX_fake", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
   syslog (LOG_NOTICE, "Program started by User %d", getuid ());
   
@@ -251,8 +250,9 @@ int main (int argc, char *argv[]) {
   int useZ = 1;
   char fnam[100];
   int arg = 0;
+  int rhead = 1;
   
-  while ((arg=getopt(argc,argv,"c:f:i:o:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:i:o:n:dh")) != -1)
     {
       switch (arg)
 	{
@@ -316,6 +316,10 @@ int main (int argc, char *argv[]) {
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
 	  break;
+	case 'n':
+	  rhead=0;
+	  syslog (LOG_INFO, "Will not read header");
+	  break;
 	case 'h':
 	  usage();
 	  return EXIT_SUCCESS;
@@ -335,7 +339,7 @@ int main (int argc, char *argv[]) {
   
   syslog (LOG_INFO, "creating in and out hdus");
   
-  hdu_in  = dada_hdu_create (log);
+  hdu_in  = dada_hdu_create ();
   dada_hdu_set_key (hdu_in, in_key);
   if (dada_hdu_connect (hdu_in) < 0) {
     syslog (LOG_ERR,"could not connect to dada buffer in");
@@ -346,7 +350,7 @@ int main (int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  hdu_out  = dada_hdu_create (log);
+  hdu_out  = dada_hdu_create ();
   dada_hdu_set_key (hdu_out, out_key);
   if (dada_hdu_connect (hdu_out) < 0) {
     syslog (LOG_ERR,"could not connect to output  buffer");
@@ -414,7 +418,7 @@ int main (int argc, char *argv[]) {
     }
     else {
 		
-		read_header(fin);
+      if (rhead) read_header(fin);
 //		fread(packet,block_out,1,fin);
 //		fclose(fin);
 
@@ -452,7 +456,7 @@ int main (int argc, char *argv[]) {
 	else{
 		fclose(fin);
 		fin=fopen(fnam,"rb");
-		read_header(fin);
+		if (rhead) read_header(fin);
 		fread(packet,block_out,1,fin);
 	}
 
