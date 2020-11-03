@@ -38,6 +38,7 @@ void usage()
   fprintf (stdout,
 	   "dumpfil [options]\n"
 	   " -d send debug messages to syslog\n"
+	   " -p no header\n"
 	   " -f file to dump to [default none]\n"
 	   " -n blocks to dump [default 30]\n"
 	   " -i in_key [default TEST_BLOCK_KEY]\n"
@@ -130,8 +131,9 @@ int main (int argc, char *argv[]) {
   sprintf(fnam,"/home/ubuntu/dumpfil.fil");
   int nbl = 30;
   int arg = 0;
+  int nhd = 0;
   
-  while ((arg=getopt(argc,argv,"f:i:dh")) != -1)
+  while ((arg=getopt(argc,argv,"f:i:n:pdh")) != -1)
     {
       switch (arg)
 	{
@@ -174,7 +176,10 @@ int main (int argc, char *argv[]) {
 	      usage();
 	      return EXIT_FAILURE;
 	    }
-
+	case 'p':
+	  nhd=1;
+	  syslog (LOG_INFO, "Will not write a header");
+	  break;
 	case 'd':
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
@@ -239,21 +244,22 @@ int main (int argc, char *argv[]) {
       exit(1);
     }
 
-  send_string("HEADER_START");
-  send_string("source_name");
-  send_string("TESTSRC");
-  send_int("machine_id",1);
-  send_int("telescope_id",82);
-  send_int("data_type",1); // filterbank data
-  send_double("fch1",1530.0); // THIS IS CHANNEL 0 :)
-  send_double("foff",-0.244140625);
-  send_int("nchans",48);
-  send_int("nbits",8);
-  send_double("tstart",55000.0);
-  send_double("tsamp",8.192e-6*8.*16.);
-  send_int("nifs",1);
-  send_string("HEADER_END");
-  
+  if (!nhd) {
+    send_string("HEADER_START");
+    send_string("source_name");
+    send_string("TESTSRC");
+    send_int("machine_id",1);
+    send_int("telescope_id",82);
+    send_int("data_type",1); // filterbank data
+    send_double("fch1",1530.0); // THIS IS CHANNEL 0 :)
+    send_double("foff",-0.244140625);
+    send_int("nchans",48);
+    send_int("nbits",8);
+    send_double("tstart",55000.0);
+    send_double("tsamp",8.192e-6*8.*16.);
+    send_int("nifs",1);
+    send_string("HEADER_END");
+  }
   
   int observation_complete=0;
   int blocks = 0, started = 0;

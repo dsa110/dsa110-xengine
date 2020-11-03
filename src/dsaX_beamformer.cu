@@ -445,7 +445,7 @@ int init_weights(char * fnam, float *antpos, float *weights, char *flagants) {
     wnorm = sqrt(weights[2*i]*weights[2*i] + weights[2*i+1]*weights[2*i+1]);
     if (wnorm!=0.0) {
       weights[2*i] /= wnorm;
-      weights[2*i+1] /= wnorm;
+      weights[2*i+1] /= -wnorm;
     }
   }
 	
