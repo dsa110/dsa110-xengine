@@ -61,9 +61,9 @@ routines:
   - name: dada_dbnull
     cmd: dada_dbnull
     args: -k cada
-  - name: dumpfil
-    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dumpfil
-    args: -p -f /home/ubuntu/data/corr.dat -n 30000 -i baba
+  - name: dada_dbnull
+    cmd: dada_dbnull
+    args: -k baba
   - name: dsaX_simplesplit
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_simplesplit
     args: -b -i daba -o bada -j baba
