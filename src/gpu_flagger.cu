@@ -67,7 +67,7 @@
 #define M_P NTIMES_P
 #define N_P 32
 #define HDR_SIZE 4096
-#define BUF_SIZE NTIMES_P*NCHAN_P*NBEAMS_P // size of TCP packet
+#define BUF_SIZE NTIMES_P*NCHAN_P*NBEAMS_P*NSPLIT // size of TCP packet
 #define NTHREADS_GPU 32
 
 // global variables
