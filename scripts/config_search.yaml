@@ -30,7 +30,7 @@ routines:
     args: -c 27 -i 127.0.0.1 -f /home/ubuntu/data/bsfil -k eada
   - name: gpu_flagger
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/gpu_flagger
-    args: -i fada -o bada -t 5.0 -d -f /home/ubuntu/tmp/spectra.dat -v
+    args: -i fada -o bada -t 4.5 -d -f /home/ubuntu/tmp/spectra.dat -v
   - name: dsaX_simplesplit
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_simplesplit
     args: -c 28 -i dada -o eada -j fada -b

@@ -42,6 +42,7 @@ void usage()
 	   " -f file to dump to [default none]\n"
 	   " -n blocks to dump [default 30]\n"
 	   " -i in_key [default TEST_BLOCK_KEY]\n"
+	   " -g ignore first block\n"
 	   " -h print usage\n");
 }
 
@@ -132,8 +133,9 @@ int main (int argc, char *argv[]) {
   int nbl = 30;
   int arg = 0;
   int nhd = 0;
+  int igblock = 0;
   
-  while ((arg=getopt(argc,argv,"f:i:n:pdh")) != -1)
+  while ((arg=getopt(argc,argv,"f:i:n:pdgh")) != -1)
     {
       switch (arg)
 	{
@@ -179,6 +181,10 @@ int main (int argc, char *argv[]) {
 	case 'p':
 	  nhd=1;
 	  syslog (LOG_INFO, "Will not write a header");
+	  break;
+	case 'g':
+	  igblock=1;
+	  syslog (LOG_INFO, "Will ignore first block");
 	  break;
 	case 'd':
 	  DEBUG=1;
@@ -253,7 +259,7 @@ int main (int argc, char *argv[]) {
     send_int("data_type",1); // filterbank data
     send_double("fch1",1530.0); // THIS IS CHANNEL 0 :)
     send_double("foff",-0.244140625);
-    send_int("nchans",48);
+    send_int("nchans",1024);
     send_int("nbits",8);
     send_double("tstart",55000.0);
     send_double("tsamp",8.192e-6*8.*16.);
@@ -272,9 +278,12 @@ int main (int argc, char *argv[]) {
     // open block
     block = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
 
-    fwrite(block, sizeof(char), bytes_read, output);
-    blocks++;
-    
+    if (!igblock || started!=0) {
+      fwrite(block, sizeof(char), bytes_read, output);
+      blocks++;
+    }
+
+    if (started==0) started=1;
     ipcio_close_block_read (hdu_in->data_block, bytes_read);
     
   }

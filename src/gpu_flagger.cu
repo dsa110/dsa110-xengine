@@ -31,6 +31,11 @@
 #include "ascii_header.h"
 #include "dsaX_capture.h"
 */
+#include <iostream>
+#include <algorithm>
+using std::cout;
+using std::cerr;
+using std::endl;
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -44,6 +49,8 @@
 #include <arpa/inet.h>
 #include <sys/syscall.h>
 #include <syslog.h>
+#include <curand.h>
+#include <curand_kernel.h>
 
 #include "sock.h"
 #include "tmutil.h"
@@ -60,15 +67,17 @@
 #include <src/header.h>
 
 
-#define NSPLIT 8 // # of sub-blocks
-#define NTIMES_P 4096/NSPLIT	// # of time samples (assuming 1ms sampling period)
+#define NTIMES_P 4096	// # of time samples (assuming 1ms sampling period)
 #define NCHAN_P 1024	// # of channels on BF node side
 #define NBEAMS_P 64	// # of beams on BF side
 #define M_P NTIMES_P
 #define N_P 32
 #define HDR_SIZE 4096
-#define BUF_SIZE NTIMES_P*NCHAN_P*NBEAMS_P*NSPLIT // size of TCP packet
+#define BUF_SIZE NTIMES_P*NCHAN_P*NBEAMS_P // size of TCP packet
 #define NTHREADS_GPU 32
+#define MN 64.0
+#define SIG 8.0
+#define RMAX 16384
 
 // global variables
 int DEBUG = 0;
@@ -89,12 +98,27 @@ void calc_spectrum(unsigned char *data, float * spectrum) {
   
   // find sum of local times
   int idx0 = bm*NTIMES_P*NCHAN_P + tm0*NCHAN_P + ch;
-  for (int i=idx0;i<idx0+NCHAN_P*(NTIMES_P/NTHREADS_GPU);i+=NCHAN_P)
-    csum[thread_id] += (float)(data[i]);
+  for (int tm=0; tm<NTIMES_P/NTHREADS_GPU; tm++) {    
+    csum[thread_id] += (float)(data[idx0]);
+    idx0 += NCHAN_P;
+  }
 
   __syncthreads();
   
   // sum into shared memory
+  if (thread_id<16) {
+    csum[thread_id] += csum[thread_id+16];
+    __syncthreads();
+    csum[thread_id] += csum[thread_id+8];
+      __syncthreads();
+    csum[thread_id] += csum[thread_id+4];
+      __syncthreads();
+    csum[thread_id] += csum[thread_id+2];
+      __syncthreads();
+    csum[thread_id] += csum[thread_id+1];
+      __syncthreads();
+  }
+  /*  
   int maxn = NTHREADS_GPU/2;
   int act_maxn = maxn;
   if (thread_id<maxn) {
@@ -103,7 +127,8 @@ void calc_spectrum(unsigned char *data, float * spectrum) {
       act_maxn = (int)(act_maxn/2);
     }
   }
-
+  */
+  
   if (thread_id==0) {    
     spectrum[bm*NCHAN_P+ch] = csum[thread_id] / (1.*NTIMES_P);
   }
@@ -128,10 +153,64 @@ void calc_varspec(unsigned char *data, float * spectrum, float * varspec) {
   
   // find sum of local times
   int idx0 = bm*NTIMES_P*NCHAN_P + tm0*NCHAN_P + ch;
-  for (int i=idx0;i<idx0+NCHAN_P*(NTIMES_P/NTHREADS_GPU);i+=NCHAN_P) {
-    val = (float)(data[i]) - spectrum[bm*NCHAN_P + ch];
+  for (int tm=0; tm<NTIMES_P/NTHREADS_GPU; tm++) {    
+    val = (float)(data[idx0]) - spectrum[bm*NCHAN_P + ch];
     csum[thread_id] += val*val;
+    idx0 += NCHAN_P;
   }
+  
+  __syncthreads();
+  
+  // sum into shared memory
+  if (thread_id<16) {
+    csum[thread_id] += csum[thread_id+16];
+    __syncthreads();
+    csum[thread_id] += csum[thread_id+8];
+        __syncthreads();
+    csum[thread_id] += csum[thread_id+4];
+        __syncthreads();
+    csum[thread_id] += csum[thread_id+2];
+        __syncthreads();
+    csum[thread_id] += csum[thread_id+1];
+        __syncthreads();
+  }
+  /*
+  int maxn = NTHREADS_GPU/2;
+  int act_maxn = maxn;
+  if (thread_id<maxn) {
+    while (act_maxn>0) {
+      csum[thread_id] += csum[thread_id+act_maxn];
+      act_maxn = (int)(act_maxn/2);
+    }
+    }*/
+
+  if (thread_id==0) {    
+    varspec[bm*NCHAN_P+ch] = csum[thread_id] / (1.*NTIMES_P);
+  }
+
+}
+
+// kernel to calculate maximum value
+// launch with NBEAMS_P*NCHAN_P blocks of NTHREADS_GPU threads 
+__global__
+void calc_maxspec(unsigned char *data, float * maxspec) {
+
+  int block_id = blockIdx.x;
+  int thread_id = threadIdx.x;
+  __shared__ float csum[NTHREADS_GPU];
+  csum[thread_id] = 0.;
+
+  int bm =(int)( block_id/NCHAN_P);
+  int ch = (int)(block_id % (NCHAN_P));
+  int tm0 = (int)(thread_id*(NTIMES_P/NTHREADS_GPU));
+  float val=0.;
+  
+  // find max of local times
+  int idx0 = bm*NTIMES_P*NCHAN_P + tm0*NCHAN_P + ch;
+  for (int i=idx0;i<idx0+NCHAN_P*(NTIMES_P/NTHREADS_GPU);i+=NCHAN_P) {
+    if ((float)(data[i])>val) val = (float)(data[i]);
+  }
+  csum[thread_id] = val;
   
   __syncthreads();
   
@@ -140,44 +219,86 @@ void calc_varspec(unsigned char *data, float * spectrum, float * varspec) {
   int act_maxn = maxn;
   if (thread_id<maxn) {
     while (act_maxn>0) {
-      csum[thread_id] += csum[thread_id+act_maxn];
+      if (csum[thread_id]<csum[thread_id+act_maxn])
+	csum[thread_id]=csum[thread_id+act_maxn];
       act_maxn = (int)(act_maxn/2);
     }
   }
 
   if (thread_id==0) {    
-    varspec[bm*NCHAN_P+ch] = csum[thread_id] / (1.*NTIMES_P);
+    maxspec[bm*NCHAN_P+ch] = csum[thread_id];
   }
 
 }
 
+// kernel to scale data
+// launch with NBEAMS_P*NTIMES_P*NCHAN_P/NTHREADS_GPU blocks of NTHREADS_GPU threads
+__global__
+void scaley(unsigned char *data, float *spectrum, float *varspec) {
+
+  int idx = blockIdx.x*NTHREADS_GPU + threadIdx.x;
+  int bm = (int)(idx / (NTIMES_P*NCHAN_P));
+  int ch = (int)(idx % NCHAN_P);
+  int spidx = bm*NCHAN_P+ch;
+
+  float val = (float)(data[idx]);
+  val = (val-spectrum[spidx])*(SIG/sqrtf(varspec[spidx])) + MN;
+  data[idx] = (unsigned char)((__float2uint_rn(2.*val))/2);
+  
+
+}
 
 // kernel to do flagging
-// launch with NBEAMS_P*NCHAN_P blocks of NTHREADS_GPU threads 
+// launch with n_mask*NTIMES_P/NTHREADS_GPU blocks of NTHREADS_GPU threads 
 __global__
-void flag(unsigned char *data, int * mask, unsigned char * repval) {
+void flag(unsigned char *data, int * midx, unsigned char *repval) {
 
   int block_id = blockIdx.x;
   int thread_id = threadIdx.x;
+  int midx_idx = (int)(block_id/(NTIMES_P/NTHREADS_GPU));
+  
+  int bm = (int)(midx[midx_idx] / NCHAN_P);
+  int ch = (int)(midx[midx_idx] % NCHAN_P);
+  int tm = ((int)(block_id % (NTIMES_P/NTHREADS_GPU)))*NTHREADS_GPU + thread_id;
+  int idx = bm*NTIMES_P*NCHAN_P + tm*NCHAN_P + ch;  
 
-  int bm =(int)( block_id/NCHAN_P);
-  int ch = (int)(block_id % (NCHAN_P));
-  int tm0 = (int)(thread_id*(NTIMES_P/NTHREADS_GPU));
-  
   // do replacement
-  int mask_idx = bm*NCHAN_P + ch;
-  int idx0 = bm*NTIMES_P*NCHAN_P + tm0*NCHAN_P + ch;
-  int ridx = ch*NTIMES_P + tm0;
-  if (mask[mask_idx]==1) {
-    for (int i=idx0;i<idx0+NCHAN_P*(NTIMES_P/NTHREADS_GPU);i+=NCHAN_P) {
-      data[i] = repval[ridx];
-      ridx++;
-    }
-  }
-  
+  data[idx] = repval[ch*NTIMES_P+tm];
     
 }
 
+// kernel to make random numbers
+// launch with NTIMES_P*NCHAN_P/NTHREADS_GPU blocks of NTHREADS_GPU threads 
+__global__
+void genrand(unsigned char *repval, unsigned int seed) {
+
+  int block_id = blockIdx.x;
+  int thread_id = threadIdx.x;
+  
+  // for random number
+  curandState_t state;
+  float u1, u2, va;
+  curand_init(seed, block_id*NTHREADS_GPU+thread_id, 1, &state);
+  u1 = ((float)(curand(&state) % RMAX))/(1.*RMAX);
+  u2 = ((float)(curand(&state) % RMAX))/(1.*RMAX);
+  va = sqrtf(-2.*logf(u1))*cosf(2.*M_PI*u2);
+
+  // do replacement
+  repval[block_id*NTHREADS_GPU+thread_id] = (unsigned char)(__float2uint_rn(2.*(va*SIG+MN))/2);
+    
+}
+
+
+
+// assumed spec has size NBEAMS_P*NCHAN_P
+// ref is reference value
+void genmask(float *spec, float thresh, float ref, int *mask) {
+
+  for (int i=0;i<NBEAMS_P*NCHAN_P;i++) {
+    if (fabs(spec[i]-ref)>thresh) mask[i] = 1;
+  }
+
+}
 
 
 void swap(float *p,float *q) {
@@ -242,8 +363,7 @@ void channflag(float* spec, float Thr, int * mask) {
     madspec[i] = medval(normspec,NCHAN_P-2*ZeroChannels);
   }
 	
-  // mask
-  memset(mask, 0, NBEAMS_P*NCHAN_P*sizeof(int));
+  // mask  
   for (i = 0; i < NBEAMS_P; i++){    
     for (j = ZeroChannels; j < NCHAN_P-ZeroChannels; j++){
       if (CorrecSpec[i*NCHAN_P+j] > Thr * madspec[i] || CorrecSpec[i*NCHAN_P+j] < - Thr * madspec[i])
@@ -252,8 +372,8 @@ void channflag(float* spec, float Thr, int * mask) {
     
   }
   
-  for (i=0;i<NCHAN_P;i++)
-    printf("%g %g %g\n",CorrecSpec[i],madspec[0]*Thr,spec[i]);
+  //for (i=0;i<NCHAN_P;i++)
+  //  printf("%g %g %g\n",CorrecSpec[i],madspec[0]*Thr,spec[i]);
 
   free(baselinecorrec);
   free(CorrecSpec);
@@ -262,8 +382,20 @@ void channflag(float* spec, float Thr, int * mask) {
   free(normspec);
   
 }
-  
 
+// to gather mask indices
+void gather_mask(int *h_idx, int *h_mask, int *n_mask) {
+
+  (*n_mask) = 0;
+  for (int i=0;i<NBEAMS_P*NCHAN_P;i++) {
+    if (h_mask[i]==1) {      
+      h_idx[(*n_mask)] = i;
+      if (DEBUG) syslog(LOG_INFO,"%d %d %d",i,h_mask[i],(*n_mask));
+      (*n_mask) += 1;
+    }
+  }
+
+}
 
 
 void usage()
@@ -412,7 +544,7 @@ int main(int argc, char**argv)
   // CONNECT AND READ FROM BUFFER
 
   dada_hdu_t* hdu_in = 0;	// header and data unit
-  uint64_t blocksize = NSPLIT*NTIMES_P*NCHAN_P*NBEAMS_P;	// size of buffer
+  uint64_t blocksize = NTIMES_P*NCHAN_P*NBEAMS_P;	// size of buffer
   hdu_in  = dada_hdu_create ();
   dada_hdu_set_key (hdu_in, in_key);
   if (dada_hdu_connect (hdu_in) < 0) {
@@ -476,33 +608,41 @@ int main(int argc, char**argv)
   
   ////////////////		
 
-  // make array of random numbers
-  unsigned char * lookup_rand = (unsigned char *)malloc(sizeof(unsigned char)*NTIMES_P*NCHAN_P);
-  for (int i=0;i<NTIMES_P*NCHAN_P;i++) {
-    if (noise) 
-      lookup_rand[i] = (unsigned char)(20. * rand() / ( (double)RAND_MAX ) + 10.);
-    else
-      lookup_rand[i] = 0;
-  }
-
-  if (DEBUG) syslog(LOG_INFO,"finished with lookup table");
-
   // declare stuff for host and GPU
   unsigned char * d_data;
   cudaMalloc((void **)&d_data, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(unsigned char));
-  unsigned char * h_data = (unsigned char *)malloc(sizeof(unsigned char)*NBEAMS_P*NTIMES_P*NCHAN_P*NSPLIT);
+  unsigned char * h_data = (unsigned char *)malloc(sizeof(unsigned char)*NBEAMS_P*NTIMES_P*NCHAN_P);
   int * h_mask = (int *)malloc(sizeof(int)*NBEAMS_P*NCHAN_P);
   int * d_mask;
   cudaMalloc((void **)&d_mask, NBEAMS_P*NCHAN_P*sizeof(int));
-  float * d_spec;
+  float * d_spec, * d_oldspec;
   cudaMalloc((void **)&d_spec, NBEAMS_P*NCHAN_P*sizeof(float));
+  cudaMalloc((void **)&d_oldspec, NBEAMS_P*NCHAN_P*sizeof(float));
   float * h_spec = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
-  float * d_var;
-  cudaMalloc((void **)&d_var, NBEAMS_P*NCHAN_P*sizeof(float));
+  float * h_subspec = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float * h_var = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
-  unsigned char * d_repval;
+  float * h_max = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
+  float * h_oldspec = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
+  float *d_spec0, *d_var0;
+  cudaMalloc((void **)&d_spec0, NBEAMS_P*NCHAN_P*sizeof(float));
+  cudaMalloc((void **)&d_var0, NBEAMS_P*NCHAN_P*sizeof(float));
+  for (int i=0;i<NBEAMS_P*NCHAN_P;i++) h_oldspec[i] = 0.;
+  cudaMemcpy(d_oldspec, h_oldspec, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyHostToDevice);
+  float * d_var, * d_max;
+  cudaMalloc((void **)&d_var, NBEAMS_P*NCHAN_P*sizeof(float));
+  cudaMalloc((void **)&d_max, NBEAMS_P*NCHAN_P*sizeof(float));
+  int * h_idx = (int *)malloc(sizeof(int)*NBEAMS_P*NCHAN_P);
+  int * d_idx;
+  cudaMalloc((void **)&d_idx, NBEAMS_P*NCHAN_P*sizeof(int));
+  int n_mask = 0;
+
+  // random numbers
+  unsigned char *d_repval;
   cudaMalloc((void **)&d_repval, NTIMES_P*NCHAN_P*sizeof(unsigned char));
-  cudaMemcpy(d_repval, lookup_rand, NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyHostToDevice);
+  genrand<<<NTIMES_P*NCHAN_P/NTHREADS_GPU,NTHREADS_GPU>>>(d_repval,time(NULL));
+  syslog(LOG_INFO,"done with repvals");
+  
+  int started = 0;
   
   // put rest of the code inside while loop
   while (1) {	
@@ -513,40 +653,70 @@ int main(int argc, char**argv)
 
     if (DEBUG) syslog(LOG_INFO,"read block");
 
-    for (int splits=0;splits<NSPLIT;splits++) {
+    /* 
+       if not first block, correct data
+       1 - measure spectrum
+       2 - measure varspec
+       if first block, proceed.
+       else
+       3 - measure maximum value
+       4 - use three spectra to derive channel flags
+       5 - flag
+     */
+
+    // copy data to device
+    cudaMemcpy(d_data, in_data, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyHostToDevice);
+    //cudaMemset(d_data, 8, NBEAMS_P*NTIMES_P*NCHAN_P);
+
+    // if not first block, correct data
+    if (started==1) 
+      scaley<<<NBEAMS_P*NTIMES_P*NCHAN_P/NTHREADS_GPU,NTHREADS_GPU>>>(d_data, d_spec0, d_var0);
+
+    if (DEBUG) syslog(LOG_INFO,"copied data and scaled");
     
-      // compute the mean spectrum
-      if (DEBUG) syslog(LOG_INFO,"starting spectrum calc %d",splits);
-      cudaMemcpy(d_data, in_data + splits*NBEAMS_P*NTIMES_P*NCHAN_P, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyHostToDevice);
-      calc_spectrum<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_spec);
-      calc_varspec<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_spec, d_var);
-      cudaMemcpy(h_spec, d_spec, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
-      cudaMemcpy(h_var, d_var, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
-      if (DEBUG) syslog(LOG_INFO,"finished spectrum calc %d",splits);
+    // measure spectrum and varspec
+    calc_spectrum<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_spec);
+    calc_varspec<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_spec, d_var);
+    cudaMemcpy(h_spec, d_spec, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_var, d_var, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
 
-      // figure out flagging - fill h_mask
-      if (varf)
-	channflag(h_var, thresh, h_mask);
-      else
-	channflag(h_spec, thresh, h_mask);
+    if (DEBUG) syslog(LOG_INFO,"done spec and var");
     
-      // do flagging
-      if (DEBUG) syslog(LOG_INFO,"starting flagging calc %d",splits);
-      cudaMemcpy(d_mask, h_mask, NBEAMS_P*NCHAN_P*sizeof(int), cudaMemcpyHostToDevice);
-      flag<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_mask, d_repval);
-      cudaMemcpy(h_data + splits*NBEAMS_P*NTIMES_P*NCHAN_P, d_data, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyDeviceToHost);
-      if (DEBUG) syslog(LOG_INFO,"finished flagging calc %d",splits);
+    // if not first block
+    if (started==1) {
 
-      for (int i=0;i<NBEAMS_P*NCHAN_P;i++)
-	h_mask[0] += h_mask[i];
-      syslog(LOG_INFO,"FLAG_COUNT %d",h_mask[0]);   		
+      // calc maxspec
+      calc_spectrum<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_max);
 
-    }
+      // derive channel flags
+      cudaMemcpy(h_max, d_max, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
+      for (int i=0;i<NBEAMS_P*NCHAN_P;i++) {
+	h_mask[i] = 0;
+	h_subspec[i] = h_spec[i]-h_oldspec[i];
+      }
+      channflag(h_spec,thresh,h_mask);
+      channflag(h_var,thresh,h_mask);
+      channflag(h_max,thresh,h_mask);      
+
+      // apply mask
+      gather_mask(h_idx, h_mask, &n_mask);
+      if (DEBUG) syslog(LOG_INFO,"FLAG_COUNT %d",n_mask);   		
+      cudaMemcpy(d_idx, h_idx, n_mask*sizeof(int), cudaMemcpyHostToDevice);
+      flag<<<n_mask*NTIMES_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_idx, d_repval);      
+
+      // write out stuff
+      //for (int i=0;i<NBEAMS_P*NCHAN_P;i++)
+      //	h_mask[0] += h_mask[i];
+      //syslog(LOG_INFO,"FLAG_COUNT %d",h_mask[0]);   		
+
       
+    }
+
+    // copy data to host and write to buffer
+    cudaMemcpy(h_data, d_data, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyDeviceToHost);
     // close block after reading
     ipcio_close_block_read (hdu_in->data_block, bytes_read);
-    if (DEBUG) syslog(LOG_DEBUG,"closed read block");		
-    
+    if (DEBUG) syslog(LOG_DEBUG,"closed read block");		    
     written = ipcio_write (hdu_out->data_block, (char *)(h_data), BUF_SIZE);
     if (written < BUF_SIZE)
       {
@@ -554,25 +724,37 @@ int main(int argc, char**argv)
 	return EXIT_FAILURE;
       }
 
-    if (DEBUG) syslog (LOG_INFO,"write flagged data done.");
+    // deal with started and oldspec
+    if (started==0) {
+      cudaMemcpy(d_spec0, d_spec, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToDevice);
+      cudaMemcpy(d_var0, d_var, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToDevice);
+      started=1;
+    }
+    for (int i=0;i<NBEAMS_P*NCHAN_P;i++) {
+      h_oldspec[i] = h_spec[i];
+    }
+    
     if (fwrite) {
       fout=fopen(fnam,"a");
-      for (int i=0;i<NCHAN_P;i++) fprintf(fout,"%d %g %g\n",h_mask[i],h_spec[i],h_var[i]);
+      for (int i=0;i<NCHAN_P;i++) fprintf(fout,"%d %g %g %g\n",h_mask[i],h_spec[i],h_var[i],h_max[i]);
       fclose(fout);
     }
-         
+
+    if (DEBUG) syslog(LOG_INFO,"done with round");
+    
   }
 
-  free(lookup_rand);
   free(fnam);
   free(h_data);
   free(h_mask);
   free(h_spec);
   free(h_var);
+  free(h_max);
   cudaFree(d_data);
   cudaFree(d_spec);
   cudaFree(d_var);
   cudaFree(d_mask);
-  cudaFree(d_repval);
+  cudaFree(d_spec0);
+  cudaFree(d_var0);
   return 0;    
 } 

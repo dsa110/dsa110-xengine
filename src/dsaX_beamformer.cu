@@ -110,6 +110,8 @@ void adder(float *input, unsigned char *output, float *bp) {
     data[tidx+16] += data[tidx+18];
     data[tidx+16] += data[tidx+17];
   }
+
+  __syncthreads();
   
   // store
   if (tidx == 0) {
@@ -312,7 +314,9 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
       for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+2-24];
       for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+1-24];  
     }
-  
+
+    __syncthreads();
+    
     // now summr[beam][0] can go into output
     if (tidx<16) {
       output[(beam_tile*16+tidx)*1536 + oidx] = summr[tidx][0];
