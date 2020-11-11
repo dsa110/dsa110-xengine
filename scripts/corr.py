@@ -72,7 +72,6 @@ def get_capture_stats():
 
     return oarr.tolist()
     
-    
 
 def get_buf_info(buff):
 
@@ -107,14 +106,24 @@ def get_monitor_dict(params):
     """
     
     mon_dict = {}
-    
+
+    # simply insert into flat distribution of buffers
+
+    bct = 0
     for buff in params['buffers']:
 
         infoo = get_buf_info(buff['k'])
         if infoo==-1:
             return -1
-        mon_dict[buff['k']] = infoo
 
+        mon_dict['b'+str(bct)+'_name'] = buff['k']
+        mon_dict['b'+str(bct)+'_full'] = infoo[0]
+        mon_dict['b'+str(bct)+'_clear'] = infoo[1]
+        mon_dict['b'+str(bct)+'_written'] = infoo[2]
+        mon_dict['b'+str(bct)+'_read'] = infoo[3]
+
+        bct += 1
+        
     capstats = get_capture_stats()
     if capstats==-1:
         return -1
@@ -239,7 +248,7 @@ def corr_run(args):
                 my_ds.put_dict(key, md)
             except:
                 my_log.error('COULD NOT CONNECT TO ETCD')
-        sleep(1)
+        sleep(2)
 
                                                         
 
