@@ -390,7 +390,7 @@ void stats_thread(void * arg) {
     gb_rcv_ps /= 1000000000;
 
     /* determine how much memory is free in the receivers */
-    syslog (LOG_NOTICE,"CAPSTATS %6.3f [Gb/s], D %4.1f [MB/s], D %"PRIu64" pkts", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped);
+    syslog (LOG_NOTICE,"CAPSTATS %6.3f [Gb/s], D %4.1f [MB/s], D %"PRIu64" pkts, %"PRIu64"", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, ctx->last_seq);
 
     sleep(1);
   }
@@ -816,15 +816,25 @@ int main (int argc, char *argv[]) {
 
 	  // decode packet header (64 bits)
 	  // 35 bits seq_no (for first spectrum in packet); 13 bits ch_id (for first channel in packet); 16 bits ant ID (for first antenna in packet)
-	  seq_no =  UINT64_C (0);
-	  seq_no |= (unsigned char) (udpdb.sock->buf[4] & 224) >> 5;
-	  seq_no |= (unsigned char) (udpdb.sock->buf[3]) << 3;
-	  seq_no |= (unsigned char) (udpdb.sock->buf[2]) << 11;
-	  seq_no |= (unsigned char) (udpdb.sock->buf[1]) << 19;
-	  seq_no |= (unsigned char) (udpdb.sock->buf[0]) << 27;
+	  seq_no = 0;
+	  seq_no |=  (((uint64_t)(udpdb.sock->buf[4]) & 224) >> 5) & 7;
+	  //seq_no &= 7;
+	  seq_no |=  (((uint64_t)(udpdb.sock->buf[3])) << 3) & 2040;
+	  //seq_no &= 2047;
+	  seq_no |=  (((uint64_t)(udpdb.sock->buf[2])) << 11) & 522240;
+	  //seq_no &= 524287;
+	  seq_no |=  (((uint64_t)(udpdb.sock->buf[1])) << 19) & 133693440;
+	  //seq_no &= 134217727;
+	  seq_no |=  (((uint64_t)(udpdb.sock->buf[0])) << 27) & 34225520640;
+	  //seq_no &= 34359738367;
+	  /*seq_no = 0;
+	  seq_no |= 224 >> 5;
+	  seq_no |= 255 << 3;
+	  seq_no |= 255 << 11;
+	  seq_no |= 255 << 19;*/
 	  
 	  ch_id = 0;
-	  ch_id |= (unsigned char) (udpdb.sock->buf[4] & 31) << 8;
+	  ch_id |= ((unsigned char) (udpdb.sock->buf[4]) & 31) << 8;
 	  ch_id |= (unsigned char) (udpdb.sock->buf[5]);
 
 	  ant_id = 0;
@@ -837,6 +847,8 @@ int main (int argc, char *argv[]) {
 	  // check for starting or stopping condition, using continue
 	  //if (DEBUG) printf("%"PRIu64" %"PRIu64" %d\n",seq_no,act_seq_no,ch_id);//syslog(LOG_DEBUG, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
 	  if (seq_no == UTC_START && ant_id==0) canWrite=1;
+	  udpdb.last_seq = seq_no;
+	  //syslog(LOG_INFO,"SEQ_NO_DBG %"PRIu64"",seq_no);
 	  if (canWrite == 0) continue;
 	  if (seq_no == UTC_STOP) canWrite=0;
 	  if (udpdb.packets->received<100) syslog(LOG_INFO, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);

@@ -6,6 +6,7 @@
 import argparse
 import json
 from time import sleep
+import time
 import yaml
 from os.path import dirname
 from os.path import realpath
@@ -20,9 +21,26 @@ my_log = dsl.DsaSyslogger()
 my_log.subsystem('correlator')
 my_log.app('corr.py')
 
+def time_to_mjd(t):
+    """ converts time.time() to mjd                                                                
+    """
+    tt = time.gmtime(t)
+    Y = tt.tm_year
+    M = tt.tm_mon
+    D = tt.tm_mday + tt.tm_hour/24. + tt.tm_min/24./60. + tt.tm_sec/24./60./60.
+
+    A = np.floor(Y/100.)
+    B = np.floor(A/4.)
+    C = 2.-A-B
+    E = np.floor(365.25*(Y+4716.))
+    F = np.floor(30.6001*(M+1.))
+    MJD = C+D+E+F-1514.5 - 2400000.5
+    
+    return(MJD)
+
 def read_yaml(fname):
     """Read a YAML formatted file
-
+    
     :param fn: YAML formatted filename"                                                                                    
     :type fn: String                                                                                                       
     :return: Dictionary on success. None on error                                                                          
@@ -61,10 +79,10 @@ def get_capture_stats():
     my_log.function('get_capture_stats')
     
     try:
-        result = subprocess.check_output("tail -n 50000 /var/log/syslog | grep CAPSTATS | tail -n 1 | awk '{print $7,$10,$13}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 50000 /var/log/syslog | grep CAPSTATS | tail -n 1 | awk '{print $7,$10,$13,$15}'", shell=True, stderr=subprocess.STDOUT)
         arr = result.decode("utf-8").split(' ')
-        oarr = np.zeros(3)
-        for i in range(3):
+        oarr = np.zeros(4)
+        for i in range(4):
             oarr[i] = float(arr[i])
     except:
         #my_log.warning('buffer not accessible: '+buff)
@@ -99,7 +117,7 @@ def get_buf_info(buff):
 
 # this only reads in buffer information
 # TODO: add outputs from code
-def get_monitor_dict(params):
+def get_monitor_dict(params,corr_num):
     """ prepares monitor dictionary for corr
     
     :param params: corr config params
@@ -130,7 +148,13 @@ def get_monitor_dict(params):
     mon_dict['capture_rate'] = capstats[0]
     mon_dict['drop_rate'] = capstats[1]*8.
     mon_dict['drop_count'] = capstats[2]
-        
+    mon_dict['last_seq'] = capstats[3]
+
+    # stuff Rick wants
+    mon_dict['sim'] = 'false'
+    mon_dict['corr_num'] = corr_num
+    mon_dict['time'] = time_to_mjd(time.time())
+    
     return mon_dict
 
 # this actually processes commands
@@ -149,7 +173,24 @@ def process(params, cmd, val):
         os.system(cmdstr)
         sleep(0.5)
         my_log.info('Successfully issued trigger (I think)')
-    
+
+    # to set UTC_START
+    if cmd=='utc_start':
+        cmdstr = 'echo UTC_START-'+val+' | nc -4u -w1 127.0.0.1 11223 &'
+        my_log.info('running: '+cmdstr)
+        os.system(cmdstr)
+        sleep(0.5)
+        my_log.info('Successfully issued UTC_START (I think)')
+
+    # to set UTC_STOP
+    if cmd=='utc_stop':
+        cmdstr = 'echo UTC_STOP-'+val+' | nc -4u -w1 127.0.0.1 11223 &'
+        my_log.info('running: '+cmdstr)
+        os.system(cmdstr)
+        sleep(0.5)
+        my_log.info('Successfully issued UTC_STOP (I think)')
+        
+        
     # start up stuff
     if cmd=='start':
 
@@ -242,7 +283,7 @@ def corr_run(args):
     while True:
 
         key = '/mon/corr/' + str(args.corr_num)
-        md = get_monitor_dict(params)
+        md = get_monitor_dict(params,args.corr_num)
         if md!=-1:
             try:
                 my_ds.put_dict(key, md)

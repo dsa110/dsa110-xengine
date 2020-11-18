@@ -373,11 +373,11 @@ int main (int argc, char *argv[]) {
     
       // add delay
       // only proceed if input data block is 80% full
-      /*while (pc_full < 0.85) {
+      while (pc_full < 0.80) {
 	pc_full = ipcio_percent_full(hdu_in->data_block);
 	usleep(100);
       }
-      pc_full = 0.;*/
+      pc_full = 0.;
       
     
       // check for dump_pending
