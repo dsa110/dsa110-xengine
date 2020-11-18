@@ -158,9 +158,9 @@ def get_monitor_dict(params,corr_num):
     return mon_dict
 
 # this actually processes commands
-def process(params, cmd, val):
+def process(params, cmd, val, my_ds):
     """ starts and stops correlator pipeline generically according to config file
-    input: params, cmd, val
+    input: params, cmd, val, DsaStore
     """
 
     # start up logger
@@ -179,7 +179,14 @@ def process(params, cmd, val):
         cmdstr = 'echo UTC_START-'+val+' | nc -4u -w1 127.0.0.1 11223 &'
         my_log.info('running: '+cmdstr)
         os.system(cmdstr)
+        #set utc_start
+        try:
+            my_ds.put_dict('/mon/snap/1/utc_start',{'utc_start':int(val)})
+        except:
+            my_log.error("Could not place utc_start into etcd")
+
         sleep(0.5)
+        
         my_log.info('Successfully issued UTC_START (I think)')
 
     # to set UTC_STOP
@@ -214,7 +221,12 @@ def process(params, cmd, val):
             proc = subprocess.Popen(cmdstr, shell = True, stdout=log, stderr=log)
             sleep(0.5)
 
-
+        #zero out utc_start
+        try:
+            my_ds.put_dict('/mon/snap/1/utc_start',{'utc_start':10000})
+        except:
+            my_log.error("Could not place utc_start into etcd")
+            
         my_log.info('Successfully started (I think)')
 
     # stop stuff
@@ -239,7 +251,7 @@ def process(params, cmd, val):
         
         
 # watch callback function for commands
-def cb_func(params):
+def cb_func(params,my_ds):
     """ etcd watch callback function
     """
 
@@ -251,7 +263,7 @@ def cb_func(params):
         cmd = event['cmd']
         value = event['val']
         my_log.info("cmd= {}, value= {}".format(cmd, value))
-        process(params,cmd,value)
+        process(params,cmd,value,my_ds)
     
     return a
                                                                                                 
@@ -276,8 +288,8 @@ def corr_run(args):
     my_ds = ds.DsaStore()
 
     # register watch callback on /cmd/corr/corr_num, and /cmd/corr/0
-    my_ds.add_watch('/cmd/corr/'+str(args.corr_num), cb_func(params))
-    my_ds.add_watch('/cmd/corr/0', cb_func(params))
+    my_ds.add_watch('/cmd/corr/'+str(args.corr_num), cb_func(params,my_ds))
+    my_ds.add_watch('/cmd/corr/0', cb_func(params,my_ds))
 
     # infinite monitoring loop
     while True:
