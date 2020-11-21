@@ -390,7 +390,7 @@ void gather_mask(int *h_idx, int *h_mask, int *n_mask) {
   for (int i=0;i<NBEAMS_P*NCHAN_P;i++) {
     if (h_mask[i]==1) {      
       h_idx[(*n_mask)] = i;
-      if (DEBUG) syslog(LOG_INFO,"%d %d %d",i,h_mask[i],(*n_mask));
+      //if (DEBUG) syslog(LOG_INFO,"%d %d %d",i,h_mask[i],(*n_mask));
       (*n_mask) += 1;
     }
   }
@@ -409,6 +409,8 @@ void usage()
 	   " -n use noise generation rather than zeros\n"
 	   " -t flagging threshold [default 5.0]\n"
 	   " -v variance flagging\n"
+	   "-f output spectra file\n"
+	   "-g output beam power file\n" 
 	   " -h print usage\n");
 }
 
@@ -437,11 +439,16 @@ int main(int argc, char**argv)
   double thresh = 5.0;
   int varf = 0;
   char * fnam;
+  char * fnam2;
   FILE *fout;
-  fnam = (char *)malloc(sizeof(char)*200);
-  int fwrite = 0;
+  FILE *fout2;
   
-  while ((arg=getopt(argc,argv,"c:t:i:o:f:vndh")) != -1)
+  fnam = (char *)malloc(sizeof(char)*200);
+  fnam2 = (char *)malloc(sizeof(char)*200);
+  int fwrite = 0;
+  int fwrite2 = 0;
+  
+  while ((arg=getopt(argc,argv,"c:t:i:o:f:g:vndh")) != -1)
     {
       switch (arg)
 	{
@@ -467,6 +474,19 @@ int main(int argc, char**argv)
 	  else
 	    {
 	      syslog(LOG_ERR,"-f flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'g':
+	  if (optarg)
+	    {
+	      strcpy(fnam2,optarg);
+	      fwrite2 = 1;
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-g flag requires argument");
 	      usage();
 	      return EXIT_FAILURE;
 	    }
@@ -619,6 +639,7 @@ int main(int argc, char**argv)
   cudaMalloc((void **)&d_spec, NBEAMS_P*NCHAN_P*sizeof(float));
   cudaMalloc((void **)&d_oldspec, NBEAMS_P*NCHAN_P*sizeof(float));
   float * h_spec = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
+  float * h_beam = (float *)malloc(sizeof(float)*NBEAMS_P);
   float * h_subspec = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float * h_var = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float * h_max = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
@@ -694,7 +715,7 @@ int main(int argc, char**argv)
 	h_mask[i] = 0;
 	h_subspec[i] = h_spec[i]-h_oldspec[i];
       }
-      channflag(h_spec,thresh,h_mask);
+      channflag(h_subspec,thresh,h_mask);
       channflag(h_var,thresh,h_mask);
       channflag(h_max,thresh,h_mask);      
 
@@ -735,16 +756,28 @@ int main(int argc, char**argv)
     }
     
     if (fwrite) {
-      fout=fopen(fnam,"a");
-      for (int i=0;i<NCHAN_P;i++) fprintf(fout,"%d %g %g %g\n",h_mask[i],h_spec[i],h_var[i],h_max[i]);
+      fout=fopen(fnam,"a");      
+      for (int i=0;i<NCHAN_P;i++) fprintf(fout,"%d %g %g %g\n",h_mask[i],h_subspec[i],h_var[i],h_max[i]);
       fclose(fout);
     }
-
+    if (fwrite2) {
+      fout2=fopen(fnam2,"a");
+      for (int i=0;i<NBEAMS_P;i++) {
+	h_beam[i] = 0.;
+	for (int j=0;j<NCHAN_P;j++) 
+	  h_beam[i] += h_spec[i*NCHAN_P+j];
+	fprintf(fout2,"%g\n",h_beam[i]);
+      }
+      fclose(fout2);
+    }
+	
     if (DEBUG) syslog(LOG_INFO,"done with round");
     
   }
 
   free(fnam);
+  free(fnam2);
+  free(fout2);
   free(h_data);
   free(h_mask);
   free(h_spec);
