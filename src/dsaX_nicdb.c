@@ -104,7 +104,7 @@ void * process(void * ptr)
   if (get_affinity != 0) 
     syslog(LOG_ERR,"thread %d: getaffinity_np fail",thread_id);
   if (CPU_ISSET(core_id, &cpuset))
-    if (DEBUG) syslog(LOG_DEBUG,"thread %d: successfully set thread",thread_id);
+    if (DEBUG) syslog(LOG_INFO,"thread %d: successfully set thread",thread_id);
 
   // set up socket
   int sock = -1, conn = -1;
@@ -112,20 +112,20 @@ void * process(void * ptr)
 
   /* create socket */
   sock = socket(AF_INET, SOCK_STREAM, 0);
-  if (DEBUG) syslog(LOG_DEBUG,"thread %d: opened socket",thread_id);
+  if (DEBUG) syslog(LOG_INFO,"thread %d: opened socket",thread_id);
   memset(&address, 0, sizeof(struct sockaddr_in));
   address.sin_family = AF_INET;
   inet_pton(AF_INET, iP, &(address.sin_addr));
   //address.sin_addr.s_addr = inet_addr("127.0.0.1");
   address.sin_port = htons(tport);
-  if (DEBUG) syslog(LOG_DEBUG,"thread %d: socket ready",thread_id);
+  if (DEBUG) syslog(LOG_INFO,"thread %d: socket ready",thread_id);
   if (bind(sock, (struct sockaddr *)&address, sizeof(struct sockaddr_in)) < 0) {
     syslog(LOG_ERR,"thread %d: cannot bind to port",thread_id);
     exit(1);
   }
-  if (DEBUG) syslog(LOG_DEBUG,"thread %d: socket bound",thread_id);
+  if (DEBUG) syslog(LOG_INFO,"thread %d: socket bound",thread_id);
   listen(sock, 5);
-  if (DEBUG) syslog(LOG_DEBUG,"thread %d: socket listening on port %d",thread_id,tport);
+  if (DEBUG) syslog(LOG_INFO,"thread %d: socket listening on port %d",thread_id,tport);
   
   // accept connection
   socklen_t cli_len=sizeof(struct sockaddr);
@@ -154,7 +154,7 @@ void * process(void * ptr)
       memcpy(buffer+outptr, dblock, len);
       remain_data -= len;
       outptr += len;
-      //syslog(LOG_DEBUG,"Received %d of %d bytes",outptr,8+NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW);
+      //syslog(LOG_INFO,"Received %d of %d bytes",outptr,8+NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW);
     }
     //recvlen = read(sock, buffer, sizeof(buffer));
     ibuf = (int *)(buffer);
@@ -164,7 +164,7 @@ void * process(void * ptr)
       // get channel group and time sequence
       chgroup = ibuf[0]; // from 0-15
       tseq = ibuf[1]; // continuous iterate over transmits
-      if (DEBUG) syslog(LOG_DEBUG,"thread %d: read message with chgroup %d tseq %d blockct %d",thread_id,chgroup,tseq,blockct);
+      if (DEBUG) syslog(LOG_INFO,"thread %d: read message with chgroup %d tseq %d blockct %d",thread_id,chgroup,tseq,blockct);
       tseq = (tseq * 128) % 4096; // place within output
       
       // output order is [beam, time, freq]. input order is [beam, time, freq], but only a subset of freqs
@@ -286,7 +286,7 @@ int main(int argc, char ** argv)
 	    }
 	case 'd':
 	  DEBUG=1;
-	  syslog (LOG_DEBUG, "Will excrete all debug messages");
+	  syslog (LOG_INFO, "Will excrete all debug messages");
 	  break;
 	case 'i':
 	  strcpy(iP,optarg);
@@ -366,7 +366,7 @@ int main(int argc, char ** argv)
     args[i].tport = FIL_PORT0 + (uint16_t)(i);
   }
 
-  if (DEBUG) syslog(LOG_DEBUG,"creating %d threads (one per client)",NCLIENTS);
+  if (DEBUG) syslog(LOG_INFO,"creating %d threads (one per client)",NCLIENTS);
     
   for(int i=0; i<NCLIENTS; i++){
     if (pthread_create(&threads[i], &attr, &process, (void *)(&args[i]))) {
@@ -374,7 +374,7 @@ int main(int argc, char ** argv)
     }
   }
   pthread_attr_destroy(&attr);
-  if (DEBUG) syslog(LOG_DEBUG,"threads kinda running");
+  if (DEBUG) syslog(LOG_INFO,"threads kinda running");
   
   int observation_complete=0;
   int blocks = 0;
@@ -387,7 +387,7 @@ int main(int argc, char ** argv)
 
     // look for complete block
 
-    //if (DEBUG) syslog(LOG_DEBUG,"here with %d",blockct);
+    //if (DEBUG) syslog(LOG_INFO,"here with %d",blockct);
     usleep(10);
 
     if (blockct>=NCLIENTS*NSAMPS_PER_BLOCK/NSAMPS_PER_TRANSMIT) {      
@@ -408,7 +408,7 @@ int main(int argc, char ** argv)
 	  return EXIT_FAILURE;
 	}
 
-      if (DEBUG) syslog(LOG_DEBUG, "written block %d",blocks);      
+      if (DEBUG) syslog(LOG_INFO, "written block %d",blocks);      
       blocks++;
       ctt=0;
     }
@@ -418,7 +418,7 @@ int main(int argc, char ** argv)
   // free stuff
   for(int i=0; i<NCLIENTS; i++){
     pthread_join(threads[i], &result);
-    if (DEBUG) syslog(LOG_DEBUG,"joined thread %d",i);
+    if (DEBUG) syslog(LOG_INFO,"joined thread %d",i);
   }
   free(output1);
   free(output2);
