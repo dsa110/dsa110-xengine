@@ -164,7 +164,7 @@ void * process(void * ptr)
       // get channel group and time sequence
       chgroup = ibuf[0]; // from 0-15
       tseq = ibuf[1]; // continuous iterate over transmits
-      //if (DEBUG) syslog(LOG_DEBUG,"thread %d: read message with chgroup %d tseq %d blockct %d",thread_id,chgroup,tseq,blockct);
+      if (DEBUG) syslog(LOG_DEBUG,"thread %d: read message with chgroup %d tseq %d blockct %d",thread_id,chgroup,tseq,blockct);
       tseq = (tseq * 128) % 4096; // place within output
       
       // output order is [beam, time, freq]. input order is [beam, time, freq], but only a subset of freqs
