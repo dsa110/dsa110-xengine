@@ -21,10 +21,10 @@ routines:
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-mbheimdall/bin/heimdall
     args: -k bada -gpu_id 0 -nsamps_gulp 4096 -output_dir /home/ubuntu/data -dm 10 1000 -dm_tol 1.35 -max_giant_rate 20000000 -nbeams 64
     hostargs:
-      corr17: -coincidencer 10.41.0.109:12345 -beam 0
-      corr18: -coincidencer 10.41.0.109:12346 -beam 64
-      corr19: -coincidencer 10.41.0.109:12347 -beam 128
-      corr20: -coincidencer 10.41.0.109:12348 -beam 192
+      corr17: -coincidencer 10.41.0.126:12345 -beam 0
+      corr18: -coincidencer 10.41.0.126:12346 -beam 64
+      corr19: -coincidencer 10.41.0.126:12347 -beam 128
+      corr20: -coincidencer 10.41.0.126:12348 -beam 192
   - name: dsaX_writeFil
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_writeFil
     args: -c 27 -i 127.0.0.1 -f /home/ubuntu/data/bsfil -k eada
