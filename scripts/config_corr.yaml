@@ -57,7 +57,7 @@ routines:
       corr01: -g 0
       corr02: -g 1
       corr03: -g 2
-      corr04: -g 3
+      corr21: -g 3
       corr05: -g 4
       corr06: -g 5
       corr07: -g 6
@@ -80,7 +80,7 @@ routines:
       corr01: -z 1498.75
       corr02: -z 1487.03125
       corr03: -z 1475.3125
-      corr04: -z 1463.59375
+      corr21: -z 1463.59375
       corr05: -z 1451.875
       corr06: -z 1440.15625
       corr07: -z 1428.4375
@@ -112,7 +112,7 @@ routines:
       corr01: -j 10.41.0.35
       corr02: -j 10.41.0.106
       corr03: -j 10.41.0.110
-      corr04: -j 10.41.0.49
+      corr21: -j 10.41.0.120
       corr05: -j 10.41.0.127
       corr06: -j 10.41.0.36
       corr07: -j 10.41.0.51
