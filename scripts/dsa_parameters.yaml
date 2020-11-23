@@ -45,7 +45,7 @@ ch0:
   corr01: 1024
   corr02: 1408
   corr03: 1792
-  corr04: 2176
+  corr21: 2176
   corr05: 2560
   corr06: 2944
   corr07: 3328
