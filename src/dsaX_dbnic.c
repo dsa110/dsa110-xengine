@@ -108,10 +108,14 @@ void * transmit(void *args) {
   // do transmit
   int remain_data = (int)((8+NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW));
   int sent_bytes = 0, sbytes;
-  while (((sbytes = send(sockfd, op + sent_bytes, remain_data, 0))>0) && (remain_data > 0)) {
+  /*while (((sbytes = send(sockfd, op + sent_bytes, remain_data, 0))>0) && (remain_data > 0)) {
     remain_data -= sbytes;
     sent_bytes += sbytes;
-  }
+    }*/
+  sbytes = send(sockfd, op, remain_data, 0);
+  if (sbytes<remain_data)
+    syslog(LOG_ERROR,"thread %d: only sent %d of %d",thread_id,sbytes,remain_data);
+
   
 
 
