@@ -150,15 +150,22 @@ void * process(void * ptr)
     // read to buffer until all is read
     remain_data =(int)(8+NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW);
     outptr=0;
+
+    /*
     while (((len = recv(conn, dblock, remain_data, 0)) > 0) && (remain_data > 0)) {
-      memcpy(buffer+outptr, dblock, len);
+    memcpy(buffer+outptr, dblock, len);
       remain_data -= len;
       outptr += len;
       //syslog(LOG_INFO,"Received %d of %d bytes",outptr,8+NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW);
-    }
+      }*/
     //recvlen = read(sock, buffer, sizeof(buffer));
     ibuf = (int *)(buffer);
-
+    len = recv(conn, dblock, remain_data, MSG_WAITALL);
+    memcpy(buffer, dblock, len);
+    remain_data -= len;
+    if (remain_data != 0)
+      syslog(LOG_ERR,"thread %d: only received %d of %d",thread_id,len,(int)(8+NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW));
+    
     if (remain_data==0) {
     
       // get channel group and time sequence

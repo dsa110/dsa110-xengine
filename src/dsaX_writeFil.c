@@ -350,10 +350,10 @@ int main (int argc, char *argv[]) {
     if (DEBUG) for (int i=0;i<48;i++) syslog(LOG_INFO,"%hu",((unsigned char *)(block))[i]);
 
     // for writing sum
-    for (int i=0;i<256*48;i++) oblock[i] = 0.;
+    /*    for (int i=0;i<256*48;i++) oblock[i] = 0.;
     for (int i=0;i<128;i++) {
       for (int j=0;j<256*48;j++) oblock[j] += (float)(block[i*256*48+j]);
-    }
+      }*/
     
     syslog(LOG_INFO,"read block %g",nblocks);
         
@@ -365,8 +365,8 @@ int main (int argc, char *argv[]) {
 
 	syslog(LOG_INFO, "beginning file write for SRC %s for %f s",srcnam,reclen);
 	
-	//NINTS = (int)(floor(reclen/(mytsamp*4096.)));
-	NINTS = (int)(floor(reclen/(0.134217728)));
+	NINTS = (int)(floor(reclen/(mytsamp*4096.)));
+	//NINTS = (int)(floor(reclen/(0.134217728)));
 	sprintf(foutnam,"%s_%s_%d.fil",fnam,srcnam,fctr);
 	syslog(LOG_INFO, "main: opening new file %s",foutnam);
 
@@ -383,10 +383,10 @@ int main (int argc, char *argv[]) {
 	send_int("data_type",1); // filterbank data
 	send_double("fch1",1530.0); // THIS IS CHANNEL 0 :)
 	send_double("foff",-0.244140625);
-	send_int("nchans",48);
+	send_int("nchans",1024);
 	send_int("nbits",32);
 	send_double("tstart",55000.0);
-	send_double("tsamp",8.192e-6*8.*16.*128.);
+	send_double("tsamp",8.192e-6*8.*16.);
 	send_int("nifs",1);
 	send_string("HEADER_END");
 	
@@ -399,8 +399,8 @@ int main (int argc, char *argv[]) {
       
       // write data to file
       syslog(LOG_INFO,"writing");      
-      //fwrite((unsigned char *)(block),sizeof(unsigned char),block_size,output);
-      fwrite(oblock,sizeof(float),256*48,output);
+      fwrite((unsigned char *)(block),sizeof(unsigned char),block_size,output);
+      //fwrite(oblock,sizeof(float),256*48,output);
 
       integration++;
       // check if file writing is done
