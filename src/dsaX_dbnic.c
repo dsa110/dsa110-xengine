@@ -114,7 +114,7 @@ void * transmit(void *args) {
     }*/
   sbytes = send(sockfd, op, remain_data, 0);
   if (sbytes<remain_data)
-    syslog(LOG_ERROR,"thread %d: only sent %d of %d",thread_id,sbytes,remain_data);
+    syslog(LOG_ERR,"thread %d: only sent %d of %d",thread_id,sbytes,remain_data);
 
   
 
