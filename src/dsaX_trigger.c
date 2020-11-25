@@ -358,7 +358,10 @@ int main (int argc, char *argv[]) {
   uint64_t written=0;
   uint64_t block_id, bytes_read=0;
   int dumping = 0;
-  
+  FILE *ofile;
+  ofile = fopen("/home/ubuntu/data/dumps.dat","w");
+  fprintf(ofile,"starting...\n");
+  fclose(ofile);
 
 
   // main reading loop
@@ -425,7 +428,10 @@ int main (int argc, char *argv[]) {
 	      dsaX_dbgpu_cleanup (hdu_in, hdu_out);
 	      return EXIT_FAILURE;
 	    }
-	  syslog(LOG_INFO, "written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s\n", specnum, trignum-1, dumpnum, footer_buf);
+	  syslog(LOG_INFO, "written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s", specnum, trignum-1, dumpnum, footer_buf);
+	  ofile = fopen("/home/ubuntu/data/dumps.dat","a");
+	  fprintf(ofile,"written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s\n", specnum, trignum-1, dumpnum, footer_buf);
+	  fclose(ofile);
 	  
 	  dumpnum++;
 	  
