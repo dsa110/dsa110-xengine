@@ -42,7 +42,8 @@ will work on NBMS/NBEAMS_PER_BLOCK writers, ip addresses set in code for now
 // data to pass to threads
 struct data {
   char * out;
-  int sockfd; 
+  int sockfd;
+  struct sockaddr_in si_other;
   int thread_id;
   int chgroup;
   int tseq;
@@ -85,46 +86,62 @@ void * transmit(void *args) {
   // basic stuff
   struct data *d = args;
   int thread_id = d->thread_id;
-  int sockfd = d->sockfd; 
+  int sockfd = d->sockfd;
+  struct sockaddr_in si_other = d->si_other;
   char * output = (char *)(d->out);
-  char * op = (char *)malloc(sizeof(char)*(8+NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW));
-  int * iop = (int *)(op);
   int chgroup = d->chgroup;
   int tseq = d->tseq;
+  char * packet = (char *)malloc(sizeof(char)*P_SIZE);
+  int * ipacket = (int *)(packet);
 
-  // fill op, doing transpose
-  iop[0] = chgroup;
-  iop[1] = tseq;
-  for (int i=0;i<NSAMPS_PER_TRANSMIT;i++) {
-    for (int j=0;j<NBEAMS_PER_BLOCK;j++) {
-      for (int k=0;k<NW;k++) 
-	// op[8+i*NBEAMS_PER_BLOCK*NW+j*NW+k] = output[i*NBMS*NW + thread_id*NBEAMS_PER_BLOCK*NW + j*NW+k]; // no transpose
-	op[8+j*NSAMPS_PER_TRANSMIT*NW+i*NW+k] = output[i*NBMS*NW + thread_id*NBEAMS_PER_BLOCK*NW + j*NW+k]; // yes transpose
-    }
+
+  // for test packet
+  if (tseq==-1) {
+
+    ipacket[0] = chgroup;
+    sendto(sockfd,packet,P_SIZE,0,(struct sockaddr *)&si_other,sizeof(si_other));
+
   }
-
-  if (DEBUG) syslog(LOG_DEBUG,"sending with chgroup %d tseq %d",iop[0],iop[1]);
+  else {
   
-  // do transmit
-  int remain_data = (int)((8+NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW));
-  int sent_bytes = 0, sbytes;
-  /*while (((sbytes = send(sockfd, op + sent_bytes, remain_data, 0))>0) && (remain_data > 0)) {
-    remain_data -= sbytes;
-    sent_bytes += sbytes;
-    }*/
-  sbytes = send(sockfd, op, remain_data, 0);
-  if (sbytes<remain_data)
-    syslog(LOG_ERR,"thread %d: only sent %d of %d",thread_id,sbytes,remain_data);
+    // fill op, doing transpose
+    char * op = (char *)malloc(sizeof(char)*(NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW));
+    //iop[0] = chgroup;
+    //iop[1] = tseq;
+    for (int i=0;i<NSAMPS_PER_TRANSMIT;i++) {
+      for (int j=0;j<NBEAMS_PER_BLOCK;j++) {
+	for (int k=0;k<NW;k++) 
+	  // op[8+i*NBEAMS_PER_BLOCK*NW+j*NW+k] = output[i*NBMS*NW + thread_id*NBEAMS_PER_BLOCK*NW + j*NW+k]; // no transpose
+	  op[j*NSAMPS_PER_TRANSMIT*NW+i*NW+k] = output[i*NBMS*NW + thread_id*NBEAMS_PER_BLOCK*NW + j*NW+k]; // yes transpose
+      }
+    }
 
-  
+    if (DEBUG) syslog(LOG_INFO,"sending with chgroup %d tseq %d",chgroup,tseq);
 
+    // do transmit
+    // each packet is 12 bytes of header plus 8192 bytes of data
+    int val;
+    for (int i=0;i<NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW/(P_SIZE-12);i++) {
 
-  //  write(sockfd, op, sizeof(op));
+      ipacket[0] = chgroup;
+      ipacket[1] = tseq;
+      ipacket[2] = i;
+      memcpy(packet+12,output+i*(P_SIZE-12),P_SIZE-12);
+      sendto(sockfd,packet,P_SIZE,0,(struct sockaddr *)&si_other,sizeof(si_other));
 
-  if (DEBUG) syslog(LOG_DEBUG,"thread %d: written output",thread_id);
+      //for (int ti=0;ti<NWAIT;ti++) val = ti*ti;
+      usleep(200);
+      
+    }
+    
+    if (DEBUG) syslog(LOG_DEBUG,"thread %d: written output",thread_id);
+
+    free(op);
+
+  }
   
   /* return 0 */
-  free(op);
+  free(packet);
   int thread_result = 0;
   pthread_exit((void *) &thread_result);
   
@@ -292,7 +309,47 @@ int main (int argc, char *argv[]) {
   
   // create socket connections
   int sockfd[nthreads];
-  struct sockaddr_in servaddr;
+  struct sockaddr_in servaddr[nthreads];
+
+  for (int i=0;i<nthreads;i++) sockfd[i] = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+  for (int i=0;i<nthreads;i++) {
+    memset((char *) &servaddr[i], 0, sizeof(servaddr[i]));
+    servaddr[i].sin_family = AF_INET;
+    servaddr[i].sin_addr.s_addr = inet_addr(iP[i]);
+    servaddr[i].sin_port = htons(FIL_PORT0+(uint16_t)(chgroup));
+  }
+  if (DEBUG) syslog(LOG_INFO,"sockets created");  
+
+  // send test packets
+
+  // put together args
+  char ** testb = (char **)malloc(sizeof(char *)*nthreads);
+  for (int i=0; i<nthreads; i++) {
+    testb[i] = (char *)(malloc(sizeof(char)*32));
+    testb[i][0] = (char)(i);
+    args[i].out = testb[i];
+    args[i].sockfd = sockfd[i];
+    args[i].si_other = servaddr[i];
+    args[i].thread_id = i;
+    args[i].chgroup = chgroup;
+    args[i].tseq = -1;
+  }
+  
+  for(int i=0; i<nthreads; i++){
+    if (pthread_create(&threads[i], &attr, &transmit, (void *)(&args[i]))) {
+      syslog(LOG_ERR,"Failed to create massage thread %d", i);
+    }
+  }
+  
+  pthread_attr_destroy(&attr);
+  
+  for(int i=0; i<nthreads; i++){
+    pthread_join(threads[i], &result);
+  }
+  
+  syslog(LOG_INFO,"Sent test packets");
+  
+  /*
   for (int i=0;i<nthreads;i++) sockfd[i] = socket(AF_INET, SOCK_STREAM, 0);
   if (DEBUG) syslog(LOG_DEBUG,"sockets created");
   for (int i=0;i<nthreads;i++) {
@@ -305,7 +362,7 @@ int main (int argc, char *argv[]) {
       exit(0);
     }
     if (DEBUG) syslog(LOG_DEBUG,"connected %d",i);
-  }
+    }*/
   
   syslog(LOG_INFO, "starting observation");
 
@@ -342,6 +399,7 @@ int main (int argc, char *argv[]) {
       if (TEST) args[i].out = testblock;
       else args[i].out = block;
       args[i].sockfd = sockfd[i];
+      args[i].si_other = servaddr[i];
       args[i].thread_id = i;
       args[i].chgroup = chgroup;
       args[i].tseq = blocks;
@@ -349,7 +407,7 @@ int main (int argc, char *argv[]) {
     
     for(int i=0; i<nthreads; i++){
       if (pthread_create(&threads[i], &attr, &transmit, (void *)(&args[i]))) {
-	syslog(LOG_ERR,"Failed to create massage thread %d\n", i);
+	syslog(LOG_ERR,"Failed to create massage thread %d", i);
       }
     }
 

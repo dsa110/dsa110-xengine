@@ -107,111 +107,102 @@ void * process(void * ptr)
     if (DEBUG) syslog(LOG_INFO,"thread %d: successfully set thread",thread_id);
 
   // set up socket
-  struct sockaddr_in si_other, si_me;
-  int clientSocket, slen=sizeof(si_other);
-  clientSocket=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-  if (DEBUG) syslog(LOG_INFO,"thread %d: Made socket",thread_id);
-  memset((char *) &si_me, 0, sizeof(si_me));
-  si_me.sin_family = AF_INET;
-  si_me.sin_port = htons(tport);
-  si_me.sin_addr.s_addr = inet_addr(iP);
-  if (bind(clientSocket, (struct sockaddr *)&si_me, sizeof(si_me)) < 0) {
+  int sock = -1, conn = -1;
+  struct sockaddr_in address, cli;
+
+  /* create socket */
+  sock = socket(AF_INET, SOCK_STREAM, 0);
+  if (DEBUG) syslog(LOG_INFO,"thread %d: opened socket",thread_id);
+  memset(&address, 0, sizeof(struct sockaddr_in));
+  address.sin_family = AF_INET;
+  inet_pton(AF_INET, iP, &(address.sin_addr));
+  //address.sin_addr.s_addr = inet_addr("127.0.0.1");
+  address.sin_port = htons(tport);
+  if (DEBUG) syslog(LOG_INFO,"thread %d: socket ready",thread_id);
+  if (bind(sock, (struct sockaddr *)&address, sizeof(struct sockaddr_in)) < 0) {
     syslog(LOG_ERR,"thread %d: cannot bind to port",thread_id);
     exit(1);
   }
-  if (DEBUG) syslog(LOG_INFO,"thread %d: socket bound - waiting for header packet",thread_id);
-
-  char * packet = (char *)malloc(sizeof(char)*P_SIZE);
-  int * ibuf;
-  recvfrom(clientSocket, packet, P_SIZE, 0,(struct sockaddr *)&si_other,&slen);
-  ibuf = (int *)(packet);
-  int chgroup = ibuf[0];
-  syslog(LOG_INFO,"thread %d: accepted connection from chgroup %d",thread_id,chgroup);
+  if (DEBUG) syslog(LOG_INFO,"thread %d: socket bound",thread_id);
+  listen(sock, 5);
+  if (DEBUG) syslog(LOG_INFO,"thread %d: socket listening on port %d",thread_id,tport);
+  
+  // accept connection
+  socklen_t cli_len=sizeof(struct sockaddr);
+  conn = accept(sock, (struct sockaddr *) &cli, &cli_len);
+  if (conn<0) {
+    syslog(LOG_ERR,"thread %d: error accepting connection",thread_id);
+    exit(1);
+  }
+  syslog(LOG_INFO,"thread %d: accepted connection",thread_id);
 
   // data buffer and other variables
-  char * buffer = (char *)malloc((NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW)*sizeof(char));
-  int tseq, oidx, iidx, pseq;
-  int remain_data, outptr, len, pct = 0;
+  char * buffer = (char *)malloc((8+NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW)*sizeof(char));
+  char * dblock = (char *)malloc((8+NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW)*sizeof(char));
+  int *ibuf, chgroup, tseq, oidx, iidx;
+  int remain_data, outptr, len;
   int i0;
-  int lastPacket, nextBuf, current_tseq = 0, act_tseq; 
-
   
   // infinite loop 
   while (1) {
   
     /* read message */
-    // logic is to fill buffer using packet counters
-    lastPacket = 0;
-    nextBuf = 0;
-    while ((lastPacket==0) && (nextBuf==0)) {
+    // read to buffer until all is read
+    remain_data =(int)(8+NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW);
+    outptr=0;
 
-      recvfrom(clientSocket, packet, P_SIZE, 0,(struct sockaddr *)&si_other,&slen);
-      ibuf = (int *)(packet);
-      pseq = ibuf[2];
-      if (chgroup != ibuf[0]) 
-	syslog(LOG_ERR,"thread %d: received chgroup %d is not recorded %d",thread_id,ibuf[0],chgroup);
-      tseq = ibuf[1];
-
-      if (tseq>current_tseq) {
-	nextBuf=1;
-      }
-      else if (tseq==current_tseq) {
-	memcpy(buffer+pseq*(P_SIZE-12),packet+12,P_SIZE-12);
-	pct++;
-      }
-
-      if (pseq==NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW/(P_SIZE-12)-1)
-	lastPacket=1;
-
-    }
-
-    if (pct != NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW/(P_SIZE-12))
-      syslog(LOG_ERR,"thread %d: only received %d of %d",thread_id,pct,NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW/(P_SIZE-12));
+    /*
+    while (((len = recv(conn, dblock, remain_data, 0)) > 0) && (remain_data > 0)) {
+    memcpy(buffer+outptr, dblock, len);
+      remain_data -= len;
+      outptr += len;
+      //syslog(LOG_INFO,"Received %d of %d bytes",outptr,8+NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW);
+      }*/
+    //recvlen = read(sock, buffer, sizeof(buffer));
+    ibuf = (int *)(buffer);
+    len = recv(conn, dblock, remain_data, MSG_WAITALL);
+    memcpy(buffer, dblock, len);
+    remain_data -= len;
+    if (remain_data != 0)
+      syslog(LOG_ERR,"thread %d: only received %d of %d",thread_id,len,(int)(8+NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW));
     
-    if (DEBUG) syslog(LOG_INFO,"thread %d: read message with chgroup %d tseq %d blockct %d",thread_id,chgroup,tseq,blockct);
-    act_tseq = (current_tseq * 128) % 4096; // place within output
+    if (remain_data==0) {
+    
+      // get channel group and time sequence
+      chgroup = ibuf[0]; // from 0-15
+      tseq = ibuf[1]; // continuous iterate over transmits
+      if (DEBUG) syslog(LOG_INFO,"thread %d: read message with chgroup %d tseq %d blockct %d",thread_id,chgroup,tseq,blockct);
+      tseq = (tseq * 128) % 4096; // place within output
       
-    // output order is [beam, time, freq]. input order is [beam, time, freq], but only a subset of freqs
-    i0 = 0;
-    for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
-      for (int j=0;j<NSAMPS_PER_TRANSMIT;j++) {	
-	for (int k=0;k<NW;k++) {
-	  
-	  oidx = i*NSAMPS_PER_BLOCK*NCHAN_FIL + (tseq+j)*NCHAN_FIL + CHOFF/8 + chgroup*NW + k;
-	  //iidx = 8 + i0;
-	  
-	  if (block_switch==0) output1[oidx] = buffer[i0];
-	  if (block_switch==1) output2[oidx] = buffer[i0];
-
-	  i0++;
+      // output order is [beam, time, freq]. input order is [beam, time, freq], but only a subset of freqs
+      i0 = 8;
+      for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
+	for (int j=0;j<NSAMPS_PER_TRANSMIT;j++) {	
+	  for (int k=0;k<NW;k++) {
 	    
+	    oidx = i*NSAMPS_PER_BLOCK*NCHAN_FIL + (tseq+j)*NCHAN_FIL + CHOFF/8 + chgroup*NW + k;
+	    //iidx = 8 + i0;
+	    
+	    if (block_switch==0) output1[oidx] = buffer[i0];
+	    if (block_switch==1) output2[oidx] = buffer[i0];
+
+	    i0++;
+	    
+	  }
 	}
       }
-    }
       
-    // iterate blockct
-    blockct++;
+      // iterate blockct
+      blockct++;
 
-    // deal with packet capture
-    if (lastPacket==1) {
-      current_tseq++;
-      lastPacket=0;
-      nextBuf=0;
-      pct=0;
-    }
-    if (nextBuf==1) {
-      current_tseq++;
-      memcpy(buffer+pseq*(P_SIZE-12),packet+12,P_SIZE-12);
-      pct=1;
-      lastPacket=0;
     }
 
   }
 
   /* close socket and clean up */
-  close(clientSocket);
-  free(packet);
+  close(sock);
   free(buffer);
+  free(dblock);
   pthread_exit(0);
   
 }
@@ -277,7 +268,7 @@ int main(int argc, char ** argv)
 	  if (optarg)
 	    {
 	      if (sscanf (optarg, "%x", &out_key) != 1) {
-		syslog(LOG_ERR, "could not parse key from %s", optarg);
+		syslog(LOG_ERR, "could not parse key from %s\n", optarg);
 		return EXIT_FAILURE;
 	      }
 	      break;

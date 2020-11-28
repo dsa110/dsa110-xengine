@@ -87,6 +87,8 @@
 #define NBEAMS_PER_BLOCK 64 // number of beams to expect
 #define NSAMPS_PER_TRANSMIT 128 // number of samples transmitted at one time
 #define NBMS 256
+#define P_SIZE 8204
+#define NWAIT 100000
 
 #endif 
 
