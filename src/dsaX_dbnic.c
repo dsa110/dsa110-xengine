@@ -323,11 +323,7 @@ int main (int argc, char *argv[]) {
   // send test packets
 
   // put together args
-  char ** testb = (char **)malloc(sizeof(char *)*nthreads);
   for (int i=0; i<nthreads; i++) {
-    testb[i] = (char *)(malloc(sizeof(char)*32));
-    testb[i][0] = (char)(i);
-    args[i].out = testb[i];
     args[i].sockfd = sockfd[i];
     args[i].si_other = servaddr[i];
     args[i].thread_id = i;
