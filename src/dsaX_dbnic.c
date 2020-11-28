@@ -126,11 +126,11 @@ void * transmit(void *args) {
       ipacket[0] = chgroup;
       ipacket[1] = tseq;
       ipacket[2] = i;
-      memcpy(packet+12,output+i*(P_SIZE-12),P_SIZE-12);
+      memcpy(packet+12,op+i*(P_SIZE-12),P_SIZE-12);
       sendto(sockfd,packet,P_SIZE,0,(struct sockaddr *)&si_other,sizeof(si_other));
 
       //for (int ti=0;ti<NWAIT;ti++) val = ti*ti;
-      usleep(200);
+      usleep(300);
       
     }
     
