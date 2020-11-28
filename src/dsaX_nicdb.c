@@ -177,7 +177,7 @@ void * process(void * ptr)
       for (int j=0;j<NSAMPS_PER_TRANSMIT;j++) {	
 	for (int k=0;k<NW;k++) {
 	  
-	  oidx = i*NSAMPS_PER_BLOCK*NCHAN_FIL + (tseq+j)*NCHAN_FIL + CHOFF/8 + chgroup*NW + k;
+	  oidx = i*NSAMPS_PER_BLOCK*NCHAN_FIL + (act_tseq+j)*NCHAN_FIL + CHOFF/8 + chgroup*NW + k;
 	  //iidx = 8 + i0;
 	  
 	  if (block_switch==0) output1[oidx] = buffer[i0];
