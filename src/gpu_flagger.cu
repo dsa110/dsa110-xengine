@@ -640,6 +640,7 @@ int main(int argc, char**argv)
   cudaMalloc((void **)&d_oldspec, NBEAMS_P*NCHAN_P*sizeof(float));
   float * h_spec = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float * h_beam = (float *)malloc(sizeof(float)*NBEAMS_P);
+  float * h_bmask = (float *)malloc(sizeof(float)*NBEAMS_P);
   float * h_subspec = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float * h_var = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float * h_max = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
@@ -764,9 +765,12 @@ int main(int argc, char**argv)
       fout2=fopen(fnam2,"a");
       for (int i=0;i<NBEAMS_P;i++) {
 	h_beam[i] = 0.;
-	for (int j=0;j<NCHAN_P;j++) 
+	h_bmask[i] = 0.;
+	for (int j=0;j<NCHAN_P;j++) {
 	  h_beam[i] += h_spec[i*NCHAN_P+j];
-	fprintf(fout2,"%g\n",h_beam[i]);
+	  h_bmask[i] += 1.*h_mask[i*NCHAN_P+j];
+	}
+	fprintf(fout2,"%g %g\n",h_beam[i],h_bmask[i]);
       }
       fclose(fout2);
     }
@@ -780,6 +784,8 @@ int main(int argc, char**argv)
   free(fout2);
   free(h_data);
   free(h_mask);
+  free(h_beam);
+  free(h_bmask);
   free(h_spec);
   free(h_var);
   free(h_max);
