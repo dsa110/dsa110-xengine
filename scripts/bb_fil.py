@@ -33,10 +33,10 @@ if sys.argv[1]=='start':
     
     
     # start code    
-    junk = 'dada_junkdb -t 1000 -k aada -r 100 /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt'    
-    fake = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/fil2dada -f /home/ubuntu/data/fl_6.out -i aada -o bada'
-    bf = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_beamformer -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out -i bada -o cada -a /home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/flagants.dat -z 1440.15625'
-    dump = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dumpfil -f /home/ubuntu/tmp/test.fil -i cada'
+    junk = 'dada_junkdb -t 1000 -k aada -r 300 /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt'    
+    fake = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/fil2dada -f '+sys.argv[2]+' -i aada -o bada'
+    bf = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_beamformer -c 30 -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/'+sys.argv[3]+' -i bada -o cada -a /home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/flagants.dat -z '+sys.argv[4]
+    dump = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dumpfil -f /home/ubuntu/tmp/test.fil -i cada -n 30'
     
     
     print('Starting dump')
