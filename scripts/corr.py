@@ -20,21 +20,23 @@ import dsautils.dsa_syslog as dsl
 my_log = dsl.DsaSyslogger()
 my_log.subsystem('correlator')
 my_log.app('corr.py')
+from astropy.time import Time
 
 def time_to_mjd(t):
     """ converts time.time() to mjd                                                                
     """
     tt = time.gmtime(t)
-    Y = tt.tm_year
-    M = tt.tm_mon
-    D = tt.tm_mday + tt.tm_hour/24. + tt.tm_min/24./60. + tt.tm_sec/24./60./60.
 
-    A = np.floor(Y/100.)
-    B = np.floor(A/4.)
-    C = 2.-A-B
-    E = np.floor(365.25*(Y+4716.))
-    F = np.floor(30.6001*(M+1.))
-    MJD = C+D+E+F-1514.5 - 2400000.5
+    Y = tt.tm_year
+    MO = tt.tm_mon
+    D = tt.tm_mday
+    H = tt.tm_hour
+    M = tt.tm_min
+    S = tt.tm_sec
+    isot = str(Y)+'-'+str(MO)+'-'+str(D)+'T'+str(H)+':'+str(M)+':'+str(S)
+    #print(isot)
+    t = Time(isot, format='isot', scale='utc')
+    MJD = t.mjd
     
     return(MJD)
 
