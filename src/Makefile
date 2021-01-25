@@ -101,6 +101,9 @@ dsaX_wrangle: dsaX_wrangle.o
 dsaX_writeFil.o: dsaX_writeFil.c $(CDEPS1)
 	$(CC) -c -o $@ $< $(CFLAGS1)
 
+dsaX_splice.o: dsaX_splice.c $(CDEPS1)
+	$(CC) -c -o $@ $< $(CFLAGS1)
+
 dsaX_writeFil: dsaX_writeFil.o
 	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
 
@@ -131,10 +134,13 @@ gpu_flagger: gpu_flagger.cu
 dsaX_beamformer: dsaX_beamformer.cu
 	$(CCU) -o $@ $^ $(CFLAGS2) $(LIBS)
 
+dsaX_beamformer_offline: dsaX_beamformer_offline.cu
+	$(CCU) -o $@ $^ $(CFLAGS2) $(LIBS)
+
 .PHONY: clean all
 
 clean:
-	rm -f *.o *~ dsaX_beamformer dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle fil2dada gpu_flagger dumpfil dsaX_simplesplit dsaX_store dsaX_trigger
+	rm -f *.o *~ dsaX_beamformer dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle fil2dada gpu_flagger dumpfil dsaX_simplesplit dsaX_store dsaX_trigger dsaX_beamformer_offline dsaX_splice
 
 all: dsaX_beamformer dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle fil2dada gpu_flagger dumpfil dsaX_simplesplit dsaX_store dsaX_trigger
 
