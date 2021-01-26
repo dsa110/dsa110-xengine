@@ -10,7 +10,7 @@ samples_per_frame: 1
 samples_per_frame_out: 1
 nint: 24 # Number of samples to integrate together
 fringestop: True
-pt_dec: 0.9040805525 # 0.9512044423 # 0.415388362 # Declination of the Crab
+pt_dec: 0.0358228829 # 0.9040805525 # 0.9512044423 # 0.415388362 # Declination of the Crab
 tsamp: 0.134217728 # Sampling time of data that will be read in
 nfreq_int: 1 # Number of channels to integrate
 antenna_order:
