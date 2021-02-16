@@ -146,11 +146,15 @@ def get_monitor_dict(params,corr_num):
         
     capstats = get_capture_stats()
     if capstats==-1:
-        return -1
-    mon_dict['capture_rate'] = capstats[0]
-    mon_dict['drop_rate'] = capstats[1]*8.
-    mon_dict['drop_count'] = capstats[2]
-    mon_dict['last_seq'] = capstats[3]
+        mon_dict['capture_rate'] = 0.0
+        mon_dict['drop_rate'] = 0.0
+        mon_dict['drop_count'] = 0
+        mon_dict['last_seq'] = 0
+    else:
+        mon_dict['capture_rate'] = capstats[0]
+        mon_dict['drop_rate'] = capstats[1]*8.
+        mon_dict['drop_count'] = capstats[2]
+        mon_dict['last_seq'] = capstats[3]
 
     # stuff Rick wants
     mon_dict['sim'] = 'false'
