@@ -57,7 +57,7 @@ routines:
       corr01: -g 0
       corr02: -g 1
       corr03: -g 2
-      corr21: -g 3
+      corr04: -g 3
       corr05: -g 4
       corr06: -g 5
       corr07: -g 6
@@ -80,7 +80,7 @@ routines:
       corr01: -z 1498.75
       corr02: -z 1487.03125
       corr03: -z 1475.3125
-      corr21: -z 1463.59375
+      corr04: -z 1463.59375
       corr05: -z 1451.875
       corr06: -z 1440.15625
       corr07: -z 1428.4375
@@ -109,19 +109,19 @@ routines:
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_capture
     args: -c 1 -i 127.0.0.1 -o dada -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt
     hostargs:
-      corr01: -j 10.41.0.35
-      corr02: -j 10.41.0.106
-      corr03: -j 10.41.0.110
-      corr21: -j 10.41.0.120
+      corr01: -j 10.41.0.114
+      corr02: -j 10.41.0.87
+      corr03: -j 10.41.0.91
+      corr04: -j 10.41.0.117
       corr05: -j 10.41.0.127
-      corr06: -j 10.41.0.36
-      corr07: -j 10.41.0.51
-      corr08: -j 10.41.0.20
-      corr09: -j 10.41.0.108
-      corr10: -j 10.41.0.53
-      corr11: -j 10.41.0.41
-      corr12: -j 10.41.0.102
-      corr13: -j 10.41.0.44
-      corr14: -j 10.41.0.52
-      corr15: -j 10.41.0.25
-      corr16: -j 10.41.0.45
+      corr06: -j 10.41.0.58
+      corr07: -j 10.41.0.116
+      corr08: -j 10.41.0.99
+      corr09: -j 10.41.0.66
+      corr10: -j 10.41.0.122
+      corr11: -j 10.41.0.121
+      corr12: -j 10.41.0.61
+      corr13: -j 10.41.0.60
+      corr14: -j 10.41.0.115
+      corr15: -j 10.41.0.113
+      corr16: -j 10.41.0.83
