@@ -43,8 +43,8 @@ routines:
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_nicdb
     args: -f /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/spectrometer_header.txt -o dada 
     hostargs:
-      corr17: -i 10.41.0.22
-      corr18: -i 10.41.0.98
-      corr19: -i 10.41.0.105
-      corr20: -i 10.41.0.63
+      corr17: -i 10.41.0.101
+      corr18: -i 10.41.0.92
+      corr19: -i 10.41.0.103
+      corr20: -i 10.41.0.94
       
