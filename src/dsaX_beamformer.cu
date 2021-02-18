@@ -649,8 +649,7 @@ int main (int argc, char *argv[]) {
   float * antpos = (float *)malloc(sizeof(float)*64); // easting
   float * weights = (float *)malloc(sizeof(float)*64*NW*2*2); // complex weights [ant, NW, pol, r/i]
   float * freqs = (float *)malloc(sizeof(float)*384); // freq
-  for (int i=0;i<384;i++) freqs[i] = (fch1 - i*250./8192.)*1e6;
-  init_weights(fnam,antpos,weights,flagants);
+  for (int i=0;i<384;i++) freqs[i] = (fch1 - i*250./8192.)*1e6;  
   
   // Bind to cpu core
   if (core >= 0)
@@ -748,19 +747,12 @@ int main (int argc, char *argv[]) {
   cudaMalloc((void **)&d_bp, 256*sizeof(float)); // bandpass
   cudaMalloc((void **)&d_wr, 48*2*16*4*16*16*sizeof(half)); // real weight
   cudaMalloc((void **)&d_wi, 48*2*16*4*16*16*sizeof(half)); // imag weight
-  cudaMemcpy(d_antpos, antpos, 64*sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_weights, weights, 64*NW*2*2*sizeof(float), cudaMemcpyHostToDevice);
   cudaMemcpy(d_freqs, freqs, 384*sizeof(float), cudaMemcpyHostToDevice);
   
   float *h_transfer = (float *)malloc(sizeof(float)*256*96*16*NSTREAMS);
   char *h_indata = (char *)malloc(sizeof(char)*16*NANT*96*8*2);
   float *bp = (float *)malloc(sizeof(float)*256);
-  unsigned char *tmp_buf = (unsigned char *)malloc(sizeof(unsigned char)*256*48*NSTREAMS);
-
-  // calculate weights on device
-  calc_weights<<<6144, 256>>>(d_antpos, d_weights, d_freqs, d_wr, d_wi);
-  
-  syslog(LOG_INFO,"Finished with weights");
+  unsigned char *tmp_buf = (unsigned char *)malloc(sizeof(unsigned char)*256*48*NSTREAMS);  
   
   // streams and device  
   cudaStream_t stream[NSTREAMS];
@@ -793,6 +785,13 @@ int main (int argc, char *argv[]) {
 
     // DO STUFF
 
+    // calc weights
+    init_weights(fnam,antpos,weights,flagants);
+    cudaMemcpy(d_antpos, antpos, 64*sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_weights, weights, 64*NW*2*2*sizeof(float), cudaMemcpyHostToDevice);  
+    calc_weights<<<6144, 256>>>(d_antpos, d_weights, d_freqs, d_wr, d_wi);
+    if (DEBUG) syslog(LOG_INFO,"Finished with weights");
+    
     if (started==1) {
 
       // loop over ints
