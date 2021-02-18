@@ -20,7 +20,7 @@ import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
 my_log = dsl.DsaSyslogger()
 my_log.subsystem('correlator')
-my_log.app('corr.py')
+my_log.app('look_after_dumps.py')
 from astropy.time import Time
 from os import path
 import re
@@ -38,7 +38,7 @@ def cb_func(my_ds):
         print(event)
         tm = (int(list(event)[0])-477)*16
         my_log.info("specnum = {}".format(tm))
-        with open('/home/user/ubuntu/'+str(tm)+'.json', 'w') as f: #encoding='utf-8'            
+        with open('/home/ubuntu/data/'+str(tm)+'.json', 'w') as f: #encoding='utf-8'            
             json.dump(event, f, ensure_ascii=False, indent=4)
         
     return a
@@ -66,30 +66,33 @@ def ld_run(args):
     while True:
 
         # test for existence of file in data dir
-        if path.exists('/home/ubuntu/data/fl_0.out'):
+        if len(glob.glob('/home/ubuntu/data/fl_0.out*'))>0:
 
-            # find latest out file
+            # find latest out file that hasn't been moved
             lf = glob.glob('/home/ubuntu/data/fl_*.out')
-            llf = max(lf,key=path.getctime)
+            if len(lf)>0:
 
-            # test for existence of associated json file
-            if path.exists(llf+'.json'):
-                sleep(1)
-
-            else:
-
+                llf = max(lf,key=path.getctime)
+            
                 # extract fl number
                 flnum = int(re.findall('[0-9]+', llf)[0])
 
                 # find specnum number
                 os.system("grep specnum /home/ubuntu/data/dumps.dat | awk '{print $5,$6,$7}' | sed 's/NUM/ /' | sed 's/NUM/ /' | awk '{print $1,$5}' > /home/ubuntu/tmp/specnums.dat")
                 specnum,dumpnum = np.loadtxt("/home/ubuntu/tmp/specnums.dat").transpose()
-                cur_specnum = specnum[dumpnum==flnum]
+                cur_specnum = int(specnum[dumpnum==flnum])
 
-                # simply copy associated json file
-                os.sysem("cp /home/ubuntu/data/"+str(cur_specnum)+".json /home/ubuntu/data/"+llf+".json")
+                # test for existence of associated json file
+                if path.exists(llf+"."+str(cur_specnum)+".json"):
+                    sleep(1)
 
-                sleep(1)
+                else:
+                
+                    # simply copy associated json file, and copy llf file
+                    os.system("cp /home/ubuntu/data/"+str(cur_specnum)+".json "+llf+"."+str(cur_specnum)+".json")
+                    os.system("mv "+llf+" "+llf+"."+str(cur_specnum))
+
+                    sleep(1)
 
         else:
 
