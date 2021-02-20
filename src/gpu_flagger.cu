@@ -480,7 +480,8 @@ int main(int argc, char**argv)
 	case 'g':
 	  if (optarg)
 	    {
-	      strcpy(fnam2,optarg);
+	      //strcpy(fnam2,optarg);
+	      sprintf(fnam2,"%s_%f.out",optarg,40587.0+time(NULL)/86400.0);
 	      fwrite2 = 1;
 	      break;
 	    }
