@@ -32,10 +32,10 @@ routines:
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/gpu_flagger
     args: -i fada -o bada -t 4.5 -v
     hostargs:
-      corr17: -g /home/ubuntu/data/beams_corr17.dat
-      corr18: -g /home/ubuntu/data/beams_corr18.dat
-      corr19: -g /home/ubuntu/data/beams_corr19.dat
-      corr20: -g /home/ubuntu/data/beams_corr20.dat
+      corr17: -g /home/ubuntu/data/beams_corr17
+      corr18: -g /home/ubuntu/data/beams_corr18
+      corr19: -g /home/ubuntu/data/beams_corr19
+      corr20: -g /home/ubuntu/data/beams_corr20
   - name: dsaX_simplesplit
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_simplesplit
     args: -c 28 -i dada -o eada -j fada -b
