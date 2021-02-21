@@ -386,6 +386,13 @@ int main (int argc, char *argv[]) {
       // check for dump_pending
       if (dump_pending) {
 
+	// look after hand trigger
+	if (specnum==0) {
+
+	  specnum = current_specnum + 100;
+	  
+	}
+	
 	// if this is the first block to dump
 	if (specnum > current_specnum && specnum < current_specnum+specs_per_block) {
 
