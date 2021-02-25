@@ -18,6 +18,7 @@ import socket
 import numpy as np
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
+from dsacalib.utils import exception_logger
 my_log = dsl.DsaSyslogger()
 my_log.subsystem('correlator')
 my_log.app('look_after_dumps.py')
@@ -79,20 +80,28 @@ def ld_run(args):
 
                 # find specnum number
                 os.system("grep specnum /home/ubuntu/data/dumps.dat | awk '{print $5,$6,$7}' | sed 's/NUM/ /' | sed 's/NUM/ /' | awk '{print $1,$5}' > /home/ubuntu/tmp/specnums.dat")
-                specnum,dumpnum = np.loadtxt("/home/ubuntu/tmp/specnums.dat").transpose()
-                cur_specnum = int(specnum[dumpnum==flnum])
-
-                # test for existence of associated json file
-                if path.exists(llf+"."+str(cur_specnum)+".json"):
-                    sleep(1)
-
+                try:
+                    specnum,dumpnum = np.loadtxt("/home/ubuntu/tmp/specnums.dat").transpose()
+                    cur_specnum = int(specnum[dumpnum==flnum])
+                except ValueError as exc:
+                    exception_logger(
+                        my_log,
+                        'reading current specnum from specnums.dat',
+                        exc,
+                        throw=False
+                    )
                 else:
-                
-                    # simply copy associated json file, and copy llf file
-                    os.system("cp /home/ubuntu/data/"+str(cur_specnum)+".json "+llf+"."+str(cur_specnum)+".json")
-                    os.system("mv "+llf+" "+llf+"."+str(cur_specnum))
+                    # test for existence of associated json file
+                    if path.exists(llf+"."+str(cur_specnum)+".json"):
+                        sleep(1)
 
-                    sleep(1)
+                    else:
+                
+                        # simply copy associated json file, and copy llf file
+                        os.system("cp /home/ubuntu/data/"+str(cur_specnum)+".json "+llf+"."+str(cur_specnum)+".json")
+                        os.system("mv "+llf+" "+llf+"."+str(cur_specnum))
+
+                        sleep(1)
 
         else:
 
