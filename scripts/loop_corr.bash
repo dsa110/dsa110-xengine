@@ -1,6 +1,6 @@
 #!/bin/bash
 
-dir="20feb21"
+dir="1mar21"
 
 while true; do
 
@@ -13,6 +13,11 @@ while true; do
     
     echo "Sleeping 3600s"
     sleep 3600
+
+    echo "sending dummy trigger"
+    python /home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/send_trig.py 0
+    sleep 120
+
     echo "Stopping..."
     dsacon corr stop
     sleep 30

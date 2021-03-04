@@ -6,7 +6,7 @@ buffers:
     c: 0
   - k: eada
     b: 268435456
-    n: 4
+    n: 16
     c: 0
   - k: fada
     b: 268435456
@@ -26,8 +26,13 @@ routines:
       corr19: -coincidencer 10.41.0.69:12347 -beam 128
       corr20: -coincidencer 10.41.0.69:12348 -beam 192
   - name: dsaX_writeFil
-    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_writeFil
-    args: -c 27 -i 127.0.0.1 -f /home/ubuntu/data/bsfil -k eada
+    cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_filTrigger
+    args: -c 27 -i 127.0.0.1 -n /home/ubuntu/data/fil -j eada
+    hostargs:
+      corr17: -n 0
+      corr18: -n 64
+      corr19: -n 128
+      corr20: -n 192
   - name: gpu_flagger
     cmd: /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/gpu_flagger
     args: -i fada -o bada -t 4.5 -v
