@@ -374,7 +374,7 @@ int main (int argc, char *argv[]) {
   
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
   unsigned char * extData = (unsigned char *)malloc(sizeof(unsigned char)*NSAMPS_PER_BLOCK*NCHAN_FIL*NBEAMS_PER_BLOCK);
-  int specs_per_block = NSAMPS_PER_BLOCK;
+  uint64_t specs_per_block = NSAMPS_PER_BLOCK;
   uint64_t current_specnum = 0; // updates with each dada block read
   uint64_t start_byte, bytes_to_copy, bytes_copied=0;
   char * in_data;
@@ -393,126 +393,126 @@ int main (int argc, char *argv[]) {
   syslog(LOG_INFO, "main: starting observation");
 
   while (!observation_complete) {
-
-       // read a DADA block
-      in_data = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
     
-      // add delay
-      // only proceed if input data block is 80% full
-      while (pc_full < 0.8) {
-	pc_full = ipcio_percent_full(hdu_in->data_block);
-	usleep(100);
-      }
-      pc_full = 0.;
+    // read a DADA block
+    in_data = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
+    
+    // add delay
+    // only proceed if input data block is 80% full
+    while (pc_full < 0.8) {
+      pc_full = ipcio_percent_full(hdu_in->data_block);
+      usleep(100);
+    }
+    pc_full = 0.;
+    
+    
+    // check for dump_pending
+    if (dump_pending) {
       
-    
-      // check for dump_pending
-      if (dump_pending) {
-
-	// look after hand trigger
-	if (specnum==0) {
-
-	  specnum = current_specnum + 100;
+      // look after hand trigger
+      if (specnum==0) {
+	
+	specnum = current_specnum + 100;
+	
+      }
+      
+      // if this is the first block to dump
+      if (specnum > current_specnum && specnum < current_specnum+specs_per_block) {
+	
+	dumping = 1;
+	
+	// loop over beams
+	bytes_to_copy = (NSAMPS_PER_BLOCK-specnum)*NCHAN_FIL;
+	bytes_copied = bytes_to_copy;
+	for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
+	  
+	  start_byte = i*NSAMPS_PER_BLOCK*NCHAN_FIL + (specnum-current_specnum)*NCHAN_FIL;
+	  memcpy(extData + i*NSAMPS_PER_BLOCK*NCHAN_FIL, in_data + start_byte, bytes_to_copy);
 	  
 	}
 	
-	// if this is the first block to dump
-	if (specnum > current_specnum && specnum < current_specnum+specs_per_block) {
-
-	  dumping = 1;
+      }
+      
+      // if this is the last block to dump from
+      if (specnum + NSAMPS_PER_BLOCK > current_specnum && specnum + NSAMPS_PER_BLOCK <= current_specnum + specs_per_block && dumping==1) {	  
+	
+	// loop over beams
+	bytes_to_copy = (specnum-current_specnum)*NCHAN_FIL;
+	for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
 	  
-	  // loop over beams
-	  bytes_to_copy = (NSAMPS_PER_BLOCK-specnum)*NCHAN_FIL;
-	  bytes_copied = bytes_to_copy;
-	  for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
-
-	    start_byte = i*NSAMPS_PER_BLOCK*NCHAN_FIL + (specnum-current_specnum)*NCHAN_FIL;
-	    memcpy(extData + i*NSAMPS_PER_BLOCK*NCHAN_FIL, in_data + start_byte, bytes_to_copy);
-
-	  }
-
-	}
-
-	// if this is the last block to dump from
-	if (specnum + NSAMPS_PER_BLOCK > current_specnum && specnum + NSAMPS_PER_BLOCK <= current_specnum + specs_per_block && dumping==1) {	  
-
-	  // loop over beams
-	  bytes_to_copy = (specnum-current_specnum)*NCHAN_FIL;
-	  for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
-
-	    start_byte = i*NSAMPS_PER_BLOCK*NCHAN_FIL;
-	    memcpy(extData + i*NSAMPS_PER_BLOCK*NCHAN_FIL + bytes_copied, in_data + start_byte, bytes_to_copy);
-
-	  }
-
-	  // DO THE WRITING
-
-	  for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
-
-	    sprintf(foutnam,"%s_%d_%d.fil",of,beamn+i,dumpnum);
-	    output = fopen(foutnam,"wb");
-
-	    send_string("HEADER_START");
-	    send_string("source_name");
-	    send_string(foutnam);
-	    send_int("machine_id",1);
-	    send_int("telescope_id",82);
-	    send_int("data_type",1); // filterbank data
-	    send_double("fch1",1530.0); // THIS IS CHANNEL 0 :)
-	    send_double("foff",-0.244140625);
-	    send_int("nchans",1024);
-	    send_int("nbits",8);
-	    send_double("tstart",55000.0);
-	    send_double("tsamp",8.192e-6*8.*16.);
-	    send_int("nifs",1);
-	    send_string("HEADER_END");
-
-	    fwrite(extData + i*NSAMPS_PER_BLOCK*NCHAN_FIL,sizeof(unsigned char),NSAMPS_PER_BLOCK*NCHAN_FIL,output);
-
-	    fclose(output);
-	    
-	  }
-	  
-	  syslog(LOG_INFO, "written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s", specnum, trignum-1, dumpnum, footer_buf);
-	  ofile = fopen("/home/ubuntu/data/dumps.dat","a");
-	  fprintf(ofile,"written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s\n", specnum, trignum-1, dumpnum, footer_buf);
-	  fclose(ofile);
-	  
-	  dumpnum++;
-	  
-	  // reset
-	  bytes_copied = 0;
-	  dump_pending = 0;
-	  dumping=0;
+	  start_byte = i*NSAMPS_PER_BLOCK*NCHAN_FIL;
+	  memcpy(extData + i*NSAMPS_PER_BLOCK*NCHAN_FIL + bytes_copied, in_data + start_byte, bytes_to_copy);
 	  
 	}
-
-	// if trigger arrived too late
-	if (specnum < current_specnum-specs_per_block && dumping==0 && dump_pending==1) {
-	  syslog(LOG_INFO, "trigger arrived too late: specnum %llu, current_specnum %llu",specnum,current_specnum);
-
-	  bytes_copied=0;
-	  dump_pending=0;
-
+	
+	// DO THE WRITING
+	
+	for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
+	  
+	  sprintf(foutnam,"%s_%d_%d.fil",of,beamn+i,dumpnum);
+	  output = fopen(foutnam,"wb");
+	  
+	  send_string("HEADER_START");
+	  send_string("source_name");
+	  send_string(foutnam);
+	  send_int("machine_id",1);
+	  send_int("telescope_id",82);
+	  send_int("data_type",1); // filterbank data
+	  send_double("fch1",1530.0); // THIS IS CHANNEL 0 :)
+	  send_double("foff",-0.244140625);
+	  send_int("nchans",1024);
+	  send_int("nbits",8);
+	  send_double("tstart",55000.0);
+	  send_double("tsamp",8.192e-6*8.*16.);
+	  send_int("nifs",1);
+	  send_string("HEADER_END");
+	  
+	  fwrite(extData + i*NSAMPS_PER_BLOCK*NCHAN_FIL,sizeof(unsigned char),NSAMPS_PER_BLOCK*NCHAN_FIL,output);
+	  
+	  fclose(output);
+	  
 	}
-
+	
+	syslog(LOG_INFO, "written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s", specnum, trignum-1, dumpnum, footer_buf);
+	ofile = fopen("/home/ubuntu/data/dumps.dat","a");
+	fprintf(ofile,"written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s\n", specnum, trignum-1, dumpnum, footer_buf);
+	fclose(ofile);
+	
+	dumpnum++;
+	
+	// reset
+	bytes_copied = 0;
+	dump_pending = 0;
+	dumping=0;
 	
       }
-
-      // update current spec
-      if (DEBUG) syslog(LOG_INFO,"current_specnum %llu",current_specnum);
-      current_specnum += specs_per_block;
       
-
-      // for exiting
-      if (bytes_read < block_size) {
-	observation_complete = 1;
-	syslog(LOG_INFO, "main: finished, with bytes_read %llu < expected %llu\n", bytes_read, block_size);
+      // if trigger arrived too late
+      if (specnum < current_specnum-specs_per_block && dumping==0 && dump_pending==1) {
+	syslog(LOG_INFO, "trigger arrived too late: specnum %llu, current_specnum %llu",specnum,current_specnum);
+	
+	bytes_copied=0;
+	dump_pending=0;
+	
       }
-
-      // close block for reading
-      ipcio_close_block_read (hdu_in->data_block, bytes_read);
-
+      
+      
+    }
+    
+    // update current spec
+    if (DEBUG) syslog(LOG_INFO,"current_specnum %llu",current_specnum);
+    current_specnum += specs_per_block;
+    
+    
+    // for exiting
+    if (bytes_read < block_size) {
+      observation_complete = 1;
+      syslog(LOG_INFO, "main: finished, with bytes_read %llu < expected %llu\n", bytes_read, block_size);
+    }
+    
+    // close block for reading
+    ipcio_close_block_read (hdu_in->data_block, bytes_read);
+    
 
   }
 
