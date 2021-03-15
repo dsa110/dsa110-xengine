@@ -73,54 +73,47 @@ int DEBUG = 0;
 
 // kernel for summing and requantizing
 // input array has order [beam, 48 frequency, 2 pol, 16 time]
-// need to output to [beam, 48 frequency]
+// need to output to [4 time, beam, 48 frequency]
 // bp is scale factor for each beam 
-// run with 256*24=6144 blocks and 32 threads
+// run with 256*48=12288 blocks and 32 threads
 __global__
 void adder(float *input, unsigned char *output, float *bp) {
 
   // get block and thread ids
-  int bidx = blockIdx.x; // assume 256*24=6144
+  int bidx = blockIdx.x; // assume 256*48=12288
   int tidx = threadIdx.x; // assume 32
   //int fidx = 2*(bidx % 24);
-  int beamidx = (int)(bidx / 24);
+  int beamidx = (int)(bidx / 48);
   
   // declare shared mem
-  __shared__ float data[64]; // data block to be summed  
+  __shared__ float data[32]; // data block to be summed  
 
   // transfer from input to shared mem
-  data[2*tidx] = input[bidx*64+tidx*2];
-  data[2*tidx+1] = input[bidx*64+tidx*2+1];
+  data[tidx] = input[bidx*32];
 
   // sync
   __syncthreads();
-  
-  // do sum into data[0] and data[32]
+
+  // complete sum
   if (tidx<16) {
-    data[tidx] += data[tidx+16];
-    data[tidx] += data[tidx+8];
-    data[tidx] += data[tidx+4];
+    data[tidx] += data[tidx+16]; // over pols
+
     data[tidx] += data[tidx+2];
     data[tidx] += data[tidx+1];
   }
-  if (tidx>=16) {
-    data[tidx+16] += data[tidx+32];
-    data[tidx+16] += data[tidx+24];
-    data[tidx+16] += data[tidx+20];
-    data[tidx+16] += data[tidx+18];
-    data[tidx+16] += data[tidx+17];
-  }
+  // now tidx = 0, 4, 8, 12 are what we want! 
 
   __syncthreads();
   
   // store
-  if (tidx == 0) {
-    //output[bidx*2] = (unsigned char)(__float2int_rn(3.6));
-    //output[bidx*2+1] = (unsigned char)(__float2int_rn(12.5));    
-    output[bidx*2] = (unsigned char)(__float2int_rn(data[0]*bp[beamidx])/2);
-    output[bidx*2+1] = (unsigned char)(__float2int_rn(data[32]*bp[beamidx])/2);
-    //if (beamidx==BEAM_OUT) printf("%hu %hu\n",output[bidx*2],output[bidx*2+1]);
-  }
+  if (tidx == 0) 
+    output[bidx] = (unsigned char)(__float2int_rn(data[0]*bp[beamidx])/2);
+  if (tidx == 4) 
+    output[bidx + 12288] = (unsigned char)(__float2int_rn(data[4]*bp[beamidx])/2);
+  if (tidx == 8) 
+    output[bidx + 2*12288] = (unsigned char)(__float2int_rn(data[8]*bp[beamidx])/2);
+  if (tidx == 12) 
+    output[bidx + 3*12288] = (unsigned char)(__float2int_rn(data[12]*bp[beamidx])/2);
       
 }
 
@@ -464,7 +457,7 @@ int init_weights(char * fnam, float *antpos, float *weights, char *flagants) {
       
   fclose(fants);
   fclose(fin);
-  syslog(LOG_INFO,"Loaded antenna positions and weights");
+  if (DEBUG) syslog(LOG_INFO,"Loaded antenna positions and weights");
   return 0;
 
 }
@@ -752,14 +745,14 @@ int main (int argc, char *argv[]) {
   float *h_transfer = (float *)malloc(sizeof(float)*256*96*16*NSTREAMS);
   char *h_indata = (char *)malloc(sizeof(char)*16*NANT*96*8*2);
   float *bp = (float *)malloc(sizeof(float)*256);
-  unsigned char *tmp_buf = (unsigned char *)malloc(sizeof(unsigned char)*256*48*NSTREAMS);  
+  unsigned char *tmp_buf = (unsigned char *)malloc(sizeof(unsigned char)*256*48*4*NSTREAMS);  
   
   // streams and device  
   cudaStream_t stream[NSTREAMS];
   for (int st=0;st<NSTREAMS;st++) {
     cudaStreamCreate(&stream[st]);
     cudaMalloc((void **)&d_indata[st], 16*96*NANT*8*2*sizeof(char)); // data input to bf kernel
-    cudaMalloc((void **)&d_outdata[st], 256*48*sizeof(unsigned char)); // data output from adder
+    cudaMalloc((void **)&d_outdata[st], 256*48*4*sizeof(unsigned char)); // data output from adder
     cudaMalloc((void **)&d_transfer[st], 256*96*16*sizeof(float)); // output from beamformer
     cudaMalloc((void **)&d_inr[st], 16*48*2*64*16*sizeof(half)); // real data
     cudaMalloc((void **)&d_ini[st], 16*48*2*64*16*sizeof(half)); // real data
@@ -818,12 +811,12 @@ int main (int argc, char *argv[]) {
 	  beamformer<<<24576, 32, 0, stream[st]>>>(d_inr[st], d_ini[st], d_wr, d_wi, d_transfer[st], stuffants);
 	  	  
 	  // run adder kernel
-	  adder<<<6144, 32, 0, stream[st]>>>(d_transfer[st], d_outdata[st], d_bp);
+	  adder<<<12288, 32, 0, stream[st]>>>(d_transfer[st], d_outdata[st], d_bp);
 	  
 	  // copy to host
-	  cudaMemcpyAsync(tmp_buf + 256*48*st, d_outdata[st], 256*48*sizeof(unsigned char), cudaMemcpyDeviceToHost, stream[st]);
-	  for (int j=0;j<12288;j++)
-	    output_buffer[(bst*NSTREAMS+st)*12288+j] = tmp_buf[j+256*48*st];
+	  cudaMemcpyAsync(tmp_buf + 256*48*4*st, d_outdata[st], 256*48*4*sizeof(unsigned char), cudaMemcpyDeviceToHost, stream[st]);
+	  for (int j=0;j<12288*4;j++)
+	    output_buffer[(bst*NSTREAMS+st)*12288*4+j] = tmp_buf[j+256*48*4*st];
 
 	  if (DEBUG && bst*NSTREAMS+st==10) {
 	    for (int j=0;j<48;j++) syslog(LOG_DEBUG,"%hu",output_buffer[(bst*NSTREAMS+st)*12288+BEAM_OUT*48+j]);
@@ -886,7 +879,7 @@ int main (int argc, char *argv[]) {
 	syslog(LOG_INFO,"coeff %d %g",i,bp[i]);
 	if (bp[i]!=0.) {
 	  bp[i] /= 48.*nints; 
-	  bp[i] = 128./bp[i];
+	  bp[i] = 128./bp[i]/4.;
 	}
       }
       cudaMemcpy(d_bp, bp, sizeof(float)*256, cudaMemcpyHostToDevice);

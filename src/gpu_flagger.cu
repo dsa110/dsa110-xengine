@@ -67,7 +67,7 @@ using std::endl;
 #include <src/header.h>
 
 
-#define NTIMES_P 4096	// # of time samples (assuming 1ms sampling period)
+#define NTIMES_P 16384  // # of time samples (assuming 1ms sampling period)
 #define NCHAN_P 1024	// # of channels on BF node side
 #define NBEAMS_P 64	// # of beams on BF side
 #define M_P NTIMES_P

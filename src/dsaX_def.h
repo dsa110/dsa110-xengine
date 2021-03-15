@@ -53,7 +53,7 @@
 #define NCHANG 1
 
 // number of SNAPs to expect
-#define NSNAPS 8
+#define NSNAPS 10
 
 /* expect consecutive channel groups */
 #define CHOFF 1024 // offset in channels of first group
@@ -70,22 +70,22 @@
 #define NPACKETS_PER_FIL 2
 #define NPACKETS 2048
 #define NOUTBLOCKS 30 // number of input blocks stored by trigger
-#define NANTS 24
+#define NANTS 30
 
 // for beamformer
 #define sep 1.4 // arcmin
 #define NW 48 // number of weights per 384 chans. Also the number of channels formed
-#define NANT 24
+#define NANT 30
 #define BEAM_OUT 23
 #define NSTREAMS 4
 
 // for second corner turn
 #define FIL_PORT0 6625 // port for first chan group
 #define NCLIENTS 16 // number of client dbnic processes to expect
-#define NSAMPS_PER_BLOCK 4096 // number of samples per block
+#define NSAMPS_PER_BLOCK 16384 // number of samples per block
 #define NCHAN_FIL 1024 // final number of filterband chans
 #define NBEAMS_PER_BLOCK 64 // number of beams to expect
-#define NSAMPS_PER_TRANSMIT 128 // number of samples transmitted at one time
+#define NSAMPS_PER_TRANSMIT 512 // number of samples transmitted at one time
 #define NBMS 256
 #define P_SIZE 4108
 #define NWAIT 100000

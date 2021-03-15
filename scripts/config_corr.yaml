@@ -1,27 +1,27 @@
 # configuration for correlator and beamformer
 buffers:
   - k: dada
-    b: 75497472
+    b: 94371840
     n: 8
     c: 0    
   - k: dbda
-    b: 75497472 
+    b: 94371840 
     n: 8
     c: 1
   - k: dcda
-    b: 75497472 
+    b: 94371840 
     n: 8
     c: 1
   - k: ddda
-    b: 75497472 
+    b: 94371840 
     n: 8
     c: 1
   - k: eaea
-    b: 75497472 
+    b: 94371840 
     n: 300
     c: 1
   - k: fafa
-    b: 2264924160
+    b: 2831155200
     n: 2
     c: 1
   - k: eada
@@ -37,7 +37,7 @@ buffers:
     n: 40
     c: 0
   - k: cada
-    b: 1572864
+    b: 6291456
     n: 4
     c: 1
 routines:
