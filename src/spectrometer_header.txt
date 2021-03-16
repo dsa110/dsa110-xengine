@@ -29,7 +29,7 @@ RESOLUTION   4096
 SOURCE       DSATEST                   
 STATE        Coherence              
 TELESCOPE    DSA110                 
-TSAMP        1048.576                    
+TSAMP        262.144                     
 TSCRUNCH     1                      
 TRANSFER_SIZE 256000000            
 NANT         5                     
