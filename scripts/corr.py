@@ -23,8 +23,6 @@ my_log.subsystem('correlator')
 my_log.app('corr.py')
 from astropy.time import Time
 
-params = []
-
 def time_to_mjd(t):
     """ converts time.time() to mjd                                                                
     """
@@ -122,7 +120,7 @@ def get_buf_info(buff):
 
 # this only reads in buffer information
 # TODO: add outputs from code
-def get_monitor_dict(corr_num):
+def get_monitor_dict(params, corr_num):
     """ prepares monitor dictionary for corr
     
     :param params: corr config params
@@ -167,7 +165,7 @@ def get_monitor_dict(corr_num):
     return mon_dict
 
 # this actually processes commands
-def process(cmd, val, my_ds):
+def process(params, cmd, val, my_ds):
     """ starts and stops correlator pipeline generically according to config file
     input: params, cmd, val, DsaStore
     """
@@ -260,7 +258,7 @@ def process(cmd, val, my_ds):
         
         
 # watch callback function for commands
-def cb_func(my_ds):
+def cb_func(params,my_ds):
     """ etcd watch callback function
     """
 
@@ -272,7 +270,7 @@ def cb_func(my_ds):
         cmd = event['cmd']
         value = event['val']
         my_log.info("cmd= {}, value= {}".format(cmd, value))
-        process(cmd,value,my_ds)
+        process(params,cmd,value,my_ds)
     
     return a
                                                                                                 
