@@ -16,6 +16,7 @@ import os
 import socket
 import numpy as np
 import dsautils.dsa_store as ds
+from dsautils import cnf
 import dsautils.dsa_syslog as dsl
 my_log = dsl.DsaSyslogger()
 my_log.subsystem('correlator')
@@ -284,15 +285,21 @@ def corr_run(args):
     my_log.function('corr_run')
 
     # parse argument
-    my_log.debug('config file '+args.corr_config_file)
+    my_log.debug('instance: '+args.instance)
     my_log.debug('corr node num '+str(args.corr_num))
-    params = read_yaml(args.corr_config_file)
-    if params is not None:
-        my_log.debug('read params from config file')
 
     # connect to etcd
     my_ds = ds.DsaStore()
+    my_cnf = cnf.Conf(use_etcd=True)
 
+    # get params
+    if instance=='corr':
+        params = my_cnf.get('pipeline')
+    if instance=='search':
+        params = my_cnf.get('search')
+    my_log.debug('read params from config file')
+    my_log.debug(params)
+    
     # register watch callback on /cmd/corr/corr_num, and /cmd/corr/0
     my_ds.add_watch('/cmd/corr/'+str(args.corr_num), cb_func(params,my_ds))
     my_ds.add_watch('/cmd/corr/0', cb_func(params,my_ds))
@@ -313,7 +320,8 @@ def corr_run(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-cf', '--corr_config_file', type=str, default='corrConfig.yaml', help='correlator config')
+    #parser.add_argument('-cf', '--corr_config_file', type=str, default='corrConfig.yaml', help='correlator config')
+    parser.add_argument('-in', '--instance', type=str, default='corr', help='corr or search node')
     parser.add_argument('-cn', '--corr_num', type=int, default='1', help='corr node number')
     the_args = parser.parse_args()
     corr_run(the_args)
