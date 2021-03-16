@@ -23,6 +23,8 @@ my_log.subsystem('correlator')
 my_log.app('corr.py')
 from astropy.time import Time
 
+params = []
+
 def time_to_mjd(t):
     """ converts time.time() to mjd                                                                
     """
@@ -120,7 +122,7 @@ def get_buf_info(buff):
 
 # this only reads in buffer information
 # TODO: add outputs from code
-def get_monitor_dict(params,corr_num):
+def get_monitor_dict(corr_num):
     """ prepares monitor dictionary for corr
     
     :param params: corr config params
@@ -165,7 +167,7 @@ def get_monitor_dict(params,corr_num):
     return mon_dict
 
 # this actually processes commands
-def process(params, cmd, val, my_ds):
+def process(cmd, val, my_ds):
     """ starts and stops correlator pipeline generically according to config file
     input: params, cmd, val, DsaStore
     """
@@ -258,7 +260,7 @@ def process(params, cmd, val, my_ds):
         
         
 # watch callback function for commands
-def cb_func(params,my_ds):
+def cb_func(my_ds):
     """ etcd watch callback function
     """
 
@@ -270,11 +272,17 @@ def cb_func(params,my_ds):
         cmd = event['cmd']
         value = event['val']
         my_log.info("cmd= {}, value= {}".format(cmd, value))
-        process(params,cmd,value,my_ds)
+        process(cmd,value,my_ds)
     
     return a
                                                                                                 
 
+def params_cbfunc(dct):
+    params=dct
+    my_log.info('Changed params')
+    my_log.info(params)
+    
+    return 0
 
 def corr_run(args):
 
@@ -293,12 +301,12 @@ def corr_run(args):
     my_cnf = cnf.Conf(use_etcd=True)
 
     # get params
-    if instance=='corr':
-        params = my_cnf.get('pipeline')
-    if instance=='search':
-        params = my_cnf.get('search')
-    my_log.debug('read params from config file')
-    my_log.debug(params)
+    params = my_cnf.get(args.instance)
+    my_log.info('read params from config file')
+    my_log.info(params)
+
+    #register watch callback on cnf
+    my_cnf.add_watch(args.instance,params_cbfunc)
     
     # register watch callback on /cmd/corr/corr_num, and /cmd/corr/0
     my_ds.add_watch('/cmd/corr/'+str(args.corr_num), cb_func(params,my_ds))
@@ -321,7 +329,7 @@ def corr_run(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     #parser.add_argument('-cf', '--corr_config_file', type=str, default='corrConfig.yaml', help='correlator config')
-    parser.add_argument('-in', '--instance', type=str, default='corr', help='corr or search node')
+    parser.add_argument('-in', '--instance', type=str, default='pipeline', help='pipeline or search node')
     parser.add_argument('-cn', '--corr_num', type=int, default='1', help='corr node number')
     the_args = parser.parse_args()
     corr_run(the_args)
