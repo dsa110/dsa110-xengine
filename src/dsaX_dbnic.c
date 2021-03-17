@@ -130,7 +130,7 @@ void * transmit(void *args) {
       sendto(sockfd,packet,P_SIZE,0,(struct sockaddr *)&si_other,sizeof(si_other));
 
       //for (int ti=0;ti<NWAIT;ti++) val = ti*ti;
-      usleep(300);
+      usleep(30);
       
     }
     
