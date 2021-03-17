@@ -246,7 +246,7 @@ void * massage(void *args) {
   if (dbg || DEBUG) syslog(LOG_DEBUG,"thread %d: ready to transpose",thread_id);
 
   // do block transpose - https://codereview.stackexchange.com/questions/229876/fast-matrix-transpose
-  int tile_size = 4; // set by benchmarking
+  int tile_size = 5; // set by benchmarking
   for (int i_packet=0;i_packet<NPACKETS/nthreads;i_packet++) {
 
     for (int i=0;i<NANTS;i+=tile_size) {
