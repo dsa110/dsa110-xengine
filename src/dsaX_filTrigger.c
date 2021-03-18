@@ -423,7 +423,7 @@ int main (int argc, char *argv[]) {
 	syslog(LOG_INFO,"dumping is 1 -- first block");
 	
 	// loop over beams
-	bytes_to_copy = (NSAMPS_PER_BLOCK-specnum)*NCHAN_FIL;
+	bytes_to_copy = (NSAMPS_PER_BLOCK-(specnum-current_specnum))*NCHAN_FIL;
 	bytes_copied = bytes_to_copy;
 	for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
 	  
