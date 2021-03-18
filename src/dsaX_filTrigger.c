@@ -463,7 +463,7 @@ int main (int argc, char *argv[]) {
 	  send_int("nchans",1024);
 	  send_int("nbits",8);
 	  send_double("tstart",55000.0);
-	  send_double("tsamp",8.192e-6*8.*16.);
+	  send_double("tsamp",8.192e-6*8.*4.);
 	  send_int("nifs",1);
 	  send_string("HEADER_END");
 	  
