@@ -181,7 +181,7 @@ void control_thread (void * arg) {
     
     if (!dump_pending) {
       //specnum = (uint64_t)(strtoull(buffer,&endptr,0)*16);
-      specnum = tmps/16;
+      specnum = tmps/4;
       strcpy(footer_buf,tbuf);
       syslog(LOG_INFO, "control_thread: received command to dump at %llu",specnum);
     }
@@ -412,7 +412,7 @@ int main (int argc, char *argv[]) {
       // look after hand trigger
       if (specnum==0) {
 	
-	specnum = current_specnum + 100;
+	specnum = current_specnum + 40000;
 	
       }
       
@@ -420,6 +420,7 @@ int main (int argc, char *argv[]) {
       if (specnum > current_specnum && specnum < current_specnum+specs_per_block) {
 	
 	dumping = 1;
+	syslog(LOG_INFO,"dumping is 1 -- first block");
 	
 	// loop over beams
 	bytes_to_copy = (NSAMPS_PER_BLOCK-specnum)*NCHAN_FIL;
@@ -435,15 +436,19 @@ int main (int argc, char *argv[]) {
       
       // if this is the last block to dump from
       if (specnum + NSAMPS_PER_BLOCK > current_specnum && specnum + NSAMPS_PER_BLOCK <= current_specnum + specs_per_block && dumping==1) {	  
+
+	syslog(LOG_INFO,"in second block");
 	
 	// loop over beams
-	bytes_to_copy = (specnum-current_specnum)*NCHAN_FIL;
+	bytes_to_copy = NSAMPS_PER_BLOCK*NCHAN_FIL-bytes_copied;
 	for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
 	  
 	  start_byte = i*NSAMPS_PER_BLOCK*NCHAN_FIL;
 	  memcpy(extData + i*NSAMPS_PER_BLOCK*NCHAN_FIL + bytes_copied, in_data + start_byte, bytes_to_copy);
 	  
 	}
+
+	syslog(LOG_INFO,"finished copying");
 	
 	// DO THE WRITING
 	
