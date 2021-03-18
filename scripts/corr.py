@@ -17,6 +17,7 @@ import socket
 import numpy as np
 import dsautils.dsa_store as ds
 from dsautils import cnf
+from dsautils import dsa_functions36
 import dsautils.dsa_syslog as dsl
 my_log = dsl.DsaSyslogger()
 my_log.subsystem('correlator')
@@ -320,6 +321,13 @@ def corr_run(args):
                 my_ds.put_dict(key, md)
             except:
                 my_log.error('COULD NOT CONNECT TO ETCD')
+        key = '/mon/service/corr/' + str(args.corr_num)
+        value = {'cadence': 2, 'time': dsa_functions36.current_mjd()}
+        try:
+            my_ds.put_dict(key, md)
+        except:
+            my_log.error('COULD NOT CONNECT TO ETCD')
+        
         sleep(2)
 
                                                         
