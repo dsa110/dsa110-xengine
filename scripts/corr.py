@@ -324,7 +324,7 @@ def corr_run(args):
         key = '/mon/service/corr/' + str(args.corr_num)
         value = {'cadence': 2, 'time': dsa_functions36.current_mjd()}
         try:
-            my_ds.put_dict(key, md)
+            my_ds.put_dict(key, value)
         except:
             my_log.error('COULD NOT CONNECT TO ETCD')
         
