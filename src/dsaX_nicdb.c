@@ -169,7 +169,7 @@ void * process(void * ptr)
       syslog(LOG_ERR,"thread %d: only received %d of %d",thread_id,pct,NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW/(P_SIZE-12));
     
     if (DEBUG) syslog(LOG_INFO,"thread %d: read message with chgroup %d tseq %d blockct %d",thread_id,chgroup,tseq,blockct);
-    act_tseq = (current_tseq * 128) % NSAMPS_PER_BLOCK; // place within output
+    act_tseq = (current_tseq * NSAMPS_PER_TRANSMIT) % NSAMPS_PER_BLOCK; // place within output
       
     // output order is [beam, time, freq]. input order is [beam, time, freq], but only a subset of freqs
     i0 = 0;
