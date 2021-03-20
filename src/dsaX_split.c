@@ -37,7 +37,7 @@
 /* global variables */
 int DEBUG = 0;
 int STATS = 0;
-const int nth = 8;
+const int nth = 4;
 
 // data to pass to threads
 struct data {
