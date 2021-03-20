@@ -234,6 +234,7 @@ int main (int argc, char *argv[]) {
   int beamn = 0;
   char of[200];
   char foutnam[300];
+  char dirnam[300];
   int arg=0;
 
   while ((arg=getopt(argc,argv,"i:c:j:d:b:n:h")) != -1)
@@ -451,10 +452,13 @@ int main (int argc, char *argv[]) {
 	syslog(LOG_INFO,"finished copying");
 	
 	// DO THE WRITING
+
+	sprintf(dirnam,"mkdir -p %s_%d",of,dumpnum);
+	system(dirnam);
 	
 	for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
 	  
-	  sprintf(foutnam,"%s_%d_%d.fil",of,beamn+i,dumpnum);
+	  sprintf(foutnam,"%s_%d/%d_%d.fil",of,dumpnum,dumpnum,beamn+i);
 	  output = fopen(foutnam,"wb");
 	  
 	  send_string("HEADER_START");
