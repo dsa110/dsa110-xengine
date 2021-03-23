@@ -36,7 +36,7 @@ def cb_func(my_ds):
         my_log.function('cb_func')        
         my_log.debug("received event= {}".format(event))
         print(event)
-        tm = (int(list(event)[0])-477)*16
+        tm = (int(list(event)[0])-1907)*4
         my_log.info("specnum = {}".format(tm))
         with open('/home/ubuntu/data/'+str(tm)+'.json', 'w') as f: #encoding='utf-8'            
             json.dump(event, f, ensure_ascii=False, indent=4)

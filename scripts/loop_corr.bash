@@ -1,6 +1,6 @@
 #!/bin/bash
 
-dir="1mar21"
+dir="23mar21"
 
 while true; do
 

@@ -115,13 +115,14 @@ void dsaX_dbgpu_cleanup (dada_hdu_t * in)
 void usage()
 {
   fprintf (stdout,
-	   "dsaX_correlator_trigger [options]\n"
+	   "dsaX_filTrigger [options]\n"
 	   " -c core   bind process to CPU core\n"
 	   " -i IP to listen to [no default]\n"
 	   " -j in_key [default eaea]\n"
 	   " -d debug\n"
 	   " -n output file name base [no default]\n"
 	   " -b beam number of first beam [default 0]\n"
+	   " -z respond to zero specnum\n"
 	   " -h print usage\n");
 }
 
@@ -235,9 +236,10 @@ int main (int argc, char *argv[]) {
   char of[200];
   char foutnam[300];
   char dirnam[300];
+  int rz=0;
   int arg=0;
 
-  while ((arg=getopt(argc,argv,"i:c:j:d:b:n:h")) != -1)
+  while ((arg=getopt(argc,argv,"i:c:j:db:n:hz")) != -1)
     {
       switch (arg)
 	{
@@ -280,6 +282,10 @@ int main (int argc, char *argv[]) {
 	case 'd':
 	  DEBUG=1;
 	  syslog (LOG_INFO, "Will excrete all debug messages");
+	  break;
+	case 'z':
+	  rz=1;
+	  syslog (LOG_INFO, "Will respond to zero trigger");
 	  break;
 	case 'j':
 	  if (optarg)
@@ -383,7 +389,7 @@ int main (int argc, char *argv[]) {
   uint64_t block_id, bytes_read=0;
   int dumping = 0;
   FILE *ofile;
-  ofile = fopen("/home/ubuntu/data/dumps.dat","w");
+  ofile = fopen("/home/ubuntu/data/dumps.dat","a");
   fprintf(ofile,"starting...\n");
   fclose(ofile);
 
@@ -411,7 +417,7 @@ int main (int argc, char *argv[]) {
     if (dump_pending) {
       
       // look after hand trigger
-      if (specnum==0) {
+      if (specnum==0 && rz==1) {
 	
 	specnum = current_specnum + 40000;
 	
@@ -453,12 +459,12 @@ int main (int argc, char *argv[]) {
 	
 	// DO THE WRITING
 
-	sprintf(dirnam,"mkdir -p %s_%d",of,dumpnum);
+	sprintf(dirnam,"mkdir -p %s_%llu",of,specnum*4);
 	system(dirnam);
 	
 	for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
 	  
-	  sprintf(foutnam,"%s_%d/%d_%d.fil",of,dumpnum,dumpnum,beamn+i);
+	  sprintf(foutnam,"%s_%llu/%llu_%d.fil",of,specnum*4,specnum*4,beamn+i);
 	  output = fopen(foutnam,"wb");
 	  
 	  send_string("HEADER_START");
