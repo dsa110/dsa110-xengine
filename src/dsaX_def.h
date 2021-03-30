@@ -73,7 +73,7 @@
 #define NANTS 30
 
 // for beamformer
-#define sep 1.4 // arcmin
+#define sep 1.0 // arcmin
 #define NW 48 // number of weights per 384 chans. Also the number of channels formed
 #define NANT 30
 #define BEAM_OUT 23

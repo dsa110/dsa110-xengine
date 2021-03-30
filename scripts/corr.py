@@ -186,6 +186,7 @@ def process(params, cmd, val, my_ds):
     if cmd=='utc_start':
         cmdstr = 'echo UTC_START-'+val+' | nc -4u -w1 127.0.0.1 11223 &'
         my_log.info('running: '+cmdstr)
+        os.system('pkill nc')
         os.system(cmdstr)
         #set utc_start
         try:
