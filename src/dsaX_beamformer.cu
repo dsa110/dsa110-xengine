@@ -492,6 +492,7 @@ void usage()
 	   " -z fch1 in MHz [default 1530]\n"
 	   " -a flagants file\n"
 	   " -s stuffants \n"
+	   " -t test pattern \n"
 	   " -h print usage\n");
 }
 
@@ -529,6 +530,7 @@ int main (int argc, char *argv[]) {
   int core = -1;
   int arg = 0;
   int stuffants=0;
+  int test_pattern = 0;
   float fch1 = 1530.0;
   char * fnam;
   fnam=(char *)malloc(sizeof(char)*100);
@@ -622,6 +624,10 @@ int main (int argc, char *argv[]) {
 	case 'd':
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
+	  break;
+	case 't':
+	  test_pattern=1;
+	  syslog (LOG_INFO, "Will execute test pattern");
 	  break;
 	case 's':
 	  stuffants=1;
@@ -768,6 +774,7 @@ int main (int argc, char *argv[]) {
 
   int observation_complete=0;
   int blocks = 0, started = 0;
+  int blockct = 0;
   
   syslog(LOG_INFO, "starting observation");
 
@@ -775,6 +782,7 @@ int main (int argc, char *argv[]) {
 
     // open block
     block = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
+    blockct ++;
 
     // DO STUFF
 
@@ -815,8 +823,13 @@ int main (int argc, char *argv[]) {
 	  
 	  // copy to host
 	  cudaMemcpyAsync(tmp_buf + 256*48*4*st, d_outdata[st], 256*48*4*sizeof(unsigned char), cudaMemcpyDeviceToHost, stream[st]);
-	  for (int j=0;j<12288*4;j++)
-	    output_buffer[(bst*NSTREAMS+st)*12288*4+j] = tmp_buf[j+256*48*4*st];
+
+	  // copy to output
+	  for (int j=0;j<12288*4;j++) {
+	    if (test_pattern) 
+	      output_buffer[(bst*NSTREAMS+st)*12288*4+j] = (unsigned char)((blockct % 128) + 32);
+	    else
+	      output_buffer[(bst*NSTREAMS+st)*12288*4+j] = tmp_buf[j+256*48*4*st];
 
 	  if (DEBUG && bst*NSTREAMS+st==10) {
 	    for (int j=0;j<48;j++) syslog(LOG_DEBUG,"%hu",output_buffer[(bst*NSTREAMS+st)*12288+BEAM_OUT*48+j]);
