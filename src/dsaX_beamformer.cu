@@ -830,7 +830,7 @@ int main (int argc, char *argv[]) {
 	      output_buffer[(bst*NSTREAMS+st)*12288*4+j] = (unsigned char)((blockct % 128) + 32);
 	    else
 	      output_buffer[(bst*NSTREAMS+st)*12288*4+j] = tmp_buf[j+256*48*4*st];
-
+	  }
 	  if (DEBUG && bst*NSTREAMS+st==10) {
 	    for (int j=0;j<48;j++) syslog(LOG_DEBUG,"%hu",output_buffer[(bst*NSTREAMS+st)*12288+BEAM_OUT*48+j]);
 	  }        
