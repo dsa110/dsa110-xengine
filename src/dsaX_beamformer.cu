@@ -539,7 +539,7 @@ int main (int argc, char *argv[]) {
   flagants=(char *)malloc(sizeof(char)*100);
   sprintf(flagants,"nofile");  
 
-  while ((arg=getopt(argc,argv,"c:f:i:o:z:a:sdh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:i:o:z:a:tsdh")) != -1)
     {
       switch (arg)
 	{
