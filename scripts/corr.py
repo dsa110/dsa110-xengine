@@ -182,6 +182,15 @@ def process(params, cmd, val, my_ds):
         sleep(0.5)
         my_log.info('Successfully issued trigger (I think)')
 
+    # to record filterbank
+    # val is e.g. 30-TONE-
+    if cmd=='record':
+        cmdstr = 'echo '+val+' | nc -4u -w1 127.0.0.1 11226 &'
+        my_log.info('running: '+cmdstr)
+        os.system(cmdstr)
+        sleep(0.5)
+        my_log.info('Successfully issued record (I think)')
+        
     # to set UTC_START
     if cmd=='utc_start':
         cmdstr = 'echo UTC_START-'+val+' | nc -4u -w1 127.0.0.1 11223 &'
@@ -196,7 +205,7 @@ def process(params, cmd, val, my_ds):
             
         sleep(0.5)
 
-        ret_time = ds.get_dict('/mon/snap/1/armed_mjd')['armed_mjd']+float(ds.get_dict('/mon/snap/1/utc_start')['utc_start'])*4.*8.192e-6/86400.
+        ret_time = my_ds.get_dict('/mon/snap/1/armed_mjd')['armed_mjd']+float(my_ds.get_dict('/mon/snap/1/utc_start')['utc_start'])*4.*8.192e-6/86400.
         f = open("/home/ubuntu/tmp/mjd.dat","w")
         f.write(str(ret_time))
         f.close()
