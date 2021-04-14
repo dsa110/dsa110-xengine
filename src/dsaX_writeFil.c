@@ -329,7 +329,7 @@ int main (int argc, char *argv[]) {
   double mjd=0.;
   int rownum = 1;
   int dfwrite = 0;
-  float mytsamp = 16.*8.*8.192e-6;
+  float mytsamp = 4.*8.*8.192e-6;
   int NINTS;
   
   // data stuff
@@ -341,7 +341,7 @@ int main (int argc, char *argv[]) {
   // start things
 
   syslog(LOG_INFO, "dsaX_writespec: starting observation");
-  double nblocks = 0;
+  int nblocks = 0;
   
   while (!observation_complete) {
 
@@ -355,7 +355,7 @@ int main (int argc, char *argv[]) {
       for (int j=0;j<256*48;j++) oblock[j] += (float)(block[i*256*48+j]);
       }*/
     
-    syslog(LOG_INFO,"read block %g",nblocks);
+    syslog(LOG_INFO,"read block %d",nblocks);
         
     // check for dump_pending
     if (dump_pending) {
@@ -365,9 +365,9 @@ int main (int argc, char *argv[]) {
 
 	syslog(LOG_INFO, "beginning file write for SRC %s for %f s",srcnam,reclen);
 	
-	NINTS = (int)(floor(reclen/(mytsamp*4096.)));
+	NINTS = (int)(floor(reclen/(mytsamp*16384.)));
 	//NINTS = (int)(floor(reclen/(0.134217728)));
-	sprintf(foutnam,"%s_%s_%d.fil",fnam,srcnam,fctr);
+	sprintf(foutnam,"%s_%s_%d_%d.fil",fnam,srcnam,fctr,nblocks);
 	syslog(LOG_INFO, "main: opening new file %s",foutnam);
 
 	if (!(output = fopen(foutnam,"wb"))) {
@@ -386,7 +386,7 @@ int main (int argc, char *argv[]) {
 	send_int("nchans",1024);
 	send_int("nbits",32);
 	send_double("tstart",55000.0);
-	send_double("tsamp",8.192e-6*8.*16.);
+	send_double("tsamp",8.192e-6*8.*4.);
 	send_int("nifs",1);
 	send_string("HEADER_END");
 	
@@ -422,7 +422,7 @@ int main (int argc, char *argv[]) {
       observation_complete = 1;
 
     ipcio_close_block_read (hdu_in->data_block, bytes_read);
-    nblocks += 1.;
+    nblocks += 1;
     
   }
 
