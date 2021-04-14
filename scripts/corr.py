@@ -192,9 +192,14 @@ def process(params, cmd, val, my_ds):
         try:
             my_ds.put_dict('/mon/snap/1/utc_start',{'utc_start':int(val)})
         except:
-            my_log.error("Could not place utc_start into etcd")
-
+            my_log.error("Could not place utc_start into etcd")        
+            
         sleep(0.5)
+
+        ret_time = ds.get_dict('/mon/snap/1/armed_mjd')['armed_mjd']+float(ds.get_dict('/mon/snap/1/utc_start')['utc_start'])*4.*8.192e-6/86400.
+        f = open("/home/ubuntu/tmp/mjd.dat","w")
+        f.write(str(ret_time))
+        f.close()
         
         my_log.info('Successfully issued UTC_START (I think)')
 

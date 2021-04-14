@@ -106,6 +106,7 @@ void usage()
 	   " -f filename base [default test.fil]\n"
 	   " -k in_key [BF_BLOCK_KEY]\n"
 	   " -i IP to listen to [no default]\n"
+	   " -m get mjd from file\n"
 	   " -d DEBUG\n"
 	   " -h        print usage\n");
 }
@@ -220,8 +221,12 @@ int main (int argc, char *argv[]) {
   float fch1 = 1530.0;
   char fnam[300], foutnam[400];
   sprintf(fnam,"/home/dsa/alltest");
+
+  // for getting MJD
+  FILE *fmjd;
+  int get_mjd = 0;
   
-  while ((arg=getopt(argc,argv,"c:f:o:i:k:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:o:i:k:mdh")) != -1)
     {
       switch (arg)
 	{
@@ -326,7 +331,7 @@ int main (int argc, char *argv[]) {
   // set up
   int fctr = 0, integration = 0;
   char tstamp[100];
-  double mjd=0.;
+  double mjd=55000.;
   int rownum = 1;
   int dfwrite = 0;
   float mytsamp = 4.*8.*8.192e-6;
@@ -372,8 +377,18 @@ int main (int argc, char *argv[]) {
 
 	if (!(output = fopen(foutnam,"wb"))) {
 	  printf("Couldn't open output file\n");
-	  return 0;
+	  return 0;	  
 	}
+
+	if (get_mjd==1) {
+	  if (!(fmjd = fopen("/home/ubuntu/tmp/mjd.dat","r"))) {
+	    syslog(LOG_ERR,"could not open fmjd");
+	  }
+	  fscanf(fmjd,"%lf",&mjd);
+	  mjd += nblocks*4.294967296/86400.;
+	  fclose(fmjd);
+	}
+	  
 
 	send_string("HEADER_START");
 	send_string("source_name");
@@ -384,8 +399,8 @@ int main (int argc, char *argv[]) {
 	send_double("fch1",1530.0); // THIS IS CHANNEL 0 :)
 	send_double("foff",-0.244140625);
 	send_int("nchans",1024);
-	send_int("nbits",32);
-	send_double("tstart",55000.0);
+	send_int("nbits",8);
+	send_double("tstart",mjd);
 	send_double("tsamp",8.192e-6*8.*4.);
 	send_int("nifs",1);
 	send_string("HEADER_END");
