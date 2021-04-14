@@ -265,6 +265,9 @@ int main (int argc, char *argv[]) {
 	case 'd':
 	  DEBUG=1;
 	  break;
+	case 'm':
+	  get_mjd=1;
+	  break;
 	case 'h':
 	  usage();
 	  return EXIT_SUCCESS;
