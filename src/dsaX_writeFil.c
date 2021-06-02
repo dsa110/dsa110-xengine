@@ -106,6 +106,7 @@ void usage()
 	   " -f filename base [default test.fil]\n"
 	   " -k in_key [BF_BLOCK_KEY]\n"
 	   " -i IP to listen to [no default]\n"
+	   " -s integrate N ints MUST BE FACTOR OF 16384 [default 1]\n"
 	   " -m get mjd from file\n"
 	   " -d DEBUG\n"
 	   " -h        print usage\n");
@@ -225,8 +226,9 @@ int main (int argc, char *argv[]) {
   // for getting MJD
   FILE *fmjd;
   int get_mjd = 0;
+  int sumi=1;
   
-  while ((arg=getopt(argc,argv,"c:f:o:i:k:mdh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:o:i:k:s:mdh")) != -1)
     {
       switch (arg)
 	{
@@ -267,6 +269,9 @@ int main (int argc, char *argv[]) {
 	  break;
 	case 'm':
 	  get_mjd=1;
+	  break;
+	case 's':
+	  sumi = atoi(optarg);
 	  break;
 	case 'h':
 	  usage();
@@ -338,13 +343,13 @@ int main (int argc, char *argv[]) {
   int rownum = 1;
   int dfwrite = 0;
   float mytsamp = 4.*8.*8.192e-6;
-  int NINTS;
+  int NINTS, midx;
   
   // data stuff
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
   uint64_t bytes_read = 0, block_id;
   char *block;
-  float *oblock = (float *)malloc(sizeof(float)*256*48);
+  float *hoblock = (float *)malloc(sizeof(float)*64*1024*16384/sumi);  
   
   // start things
 
@@ -357,6 +362,8 @@ int main (int argc, char *argv[]) {
     block = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
     if (DEBUG) for (int i=0;i<48;i++) syslog(LOG_INFO,"%hu",((unsigned char *)(block))[i]);
 
+    for (int i=0;i<64*1024*16384/sumi;i++) hoblock[i] = 0.;
+    
     // for writing sum
     /*    for (int i=0;i<256*48;i++) oblock[i] = 0.;
     for (int i=0;i<128;i++) {
@@ -402,9 +409,10 @@ int main (int argc, char *argv[]) {
 	send_double("fch1",1530.0); // THIS IS CHANNEL 0 :)
 	send_double("foff",-0.244140625);
 	send_int("nchans",1024);
-	send_int("nbits",8);
+	if (sumi==1) send_int("nbits",8);
+	else send_int("nbits",32);	
 	send_double("tstart",mjd);
-	send_double("tsamp",8.192e-6*8.*4.);
+	send_double("tsamp",8.192e-6*8.*4.*sumi);
 	send_int("nifs",1);
 	send_string("HEADER_END");
 	
@@ -416,8 +424,22 @@ int main (int argc, char *argv[]) {
       }      
       
       // write data to file
-      syslog(LOG_INFO,"writing");      
-      fwrite((unsigned char *)(block),sizeof(unsigned char),block_size,output);
+      syslog(LOG_INFO,"writing");
+
+      
+      for (int i=0;i<64;i++) {
+	for (int j=0;j<16384/sumi;j++) {
+	  for (int k=0;k<sumi;k++) {
+	    for (int l=0;l<1024;l++) {
+	      hoblock[i*16384*1024/sumi + j*1024 + l] += 1.*((unsigned char *)(block))[i*16384*1024 + (j*sumi+k)*1024 + l];
+	    }
+	  }
+	}
+      }
+	      
+      
+      if (sumi==1) fwrite((unsigned char *)(block),sizeof(unsigned char),block_size,output);
+      else fwrite(hoblock,sizeof(float),block_size/sumi,output);
       //fwrite(oblock,sizeof(float),256*48,output);
 
       integration++;
@@ -450,6 +472,7 @@ int main (int argc, char *argv[]) {
   void* result=0;
   pthread_join (control_thread_id, &result);
 
+  free(hoblock);
   dsaX_dbgpu_cleanup(hdu_in);
  
 }

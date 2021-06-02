@@ -231,7 +231,27 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
   wmma::fill_fragment(wi_inr_frag, 0.0f);
   wmma::fill_fragment(wi_ini_frag, 0.0f);
 
-  if (stuffants) {        
+  // IB
+  if (stuffants==2) {
+
+    wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::col_major> c_frag;
+    wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> d_frag;
+    
+    for (int ant_tile=0; ant_tile<4; ant_tile++) {
+
+      wmma::load_matrix_sync(c_frag, inr + data_offset + ant_tile*256, 16);
+      wmma::load_matrix_sync(d_frag, inr + data_offset + ant_tile*256, 16);
+      wmma::mma_sync(wr_inr_frag, c_frag, d_frag, wr_inr_frag);
+      wmma::load_matrix_sync(c_frag, ini + data_offset + ant_tile*256, 16);
+      wmma::load_matrix_sync(d_frag, ini + data_offset + ant_tile*256, 16);
+      wmma::mma_sync(wr_inr_frag, c_frag, d_frag, wr_inr_frag);
+
+    }
+
+  }
+
+  // one ant per beam
+  if (stuffants==1) {        
 
     wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> c_frag;
     wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::col_major> d_frag;
@@ -492,6 +512,7 @@ void usage()
 	   " -z fch1 in MHz [default 1530]\n"
 	   " -a flagants file\n"
 	   " -s stuffants \n"
+	   " -q do incoherent beam \n"
 	   " -t test pattern \n"
 	   " -h print usage\n");
 }
@@ -539,7 +560,7 @@ int main (int argc, char *argv[]) {
   flagants=(char *)malloc(sizeof(char)*100);
   sprintf(flagants,"nofile");  
 
-  while ((arg=getopt(argc,argv,"c:f:i:o:z:a:tsdh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:i:o:z:a:tsqdh")) != -1)
     {
       switch (arg)
 	{
@@ -632,6 +653,10 @@ int main (int argc, char *argv[]) {
 	case 's':
 	  stuffants=1;
 	  syslog (LOG_INFO, "Will place antennas in output");
+	  break;
+	case 'q':
+	  stuffants=2;
+	  syslog (LOG_INFO, "Will place IB in output");
 	  break;
 	case 'h':
 	  usage();
