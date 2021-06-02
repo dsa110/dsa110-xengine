@@ -296,7 +296,7 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
   // at this stage the matrices are [beam, chunnel], and need to be summed over columns
     
   // copy back to shared mem
-  float *p1;
+  float *p1, tmp;
   p1 = &summr[0][0];
   wmma::store_matrix_sync(p1, wr_inr_frag, 16, wmma::mem_row_major);
 
@@ -338,10 +338,18 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
   }
   else {
 
-    if (tidx<16) {
-      output[(beam_tile*16+tidx)*1536 + oidx] = summr[tidx][tidx];
+    if (stuffants==1) {
+      if (tidx<16) {
+	output[(beam_tile*16+tidx)*1536 + oidx] = summr[tidx][tidx];
+      }
     }
-
+    if (stuffants==2) {
+      if (tidx<16) {
+	tmp = 0.;
+	for (int i=0;i<16;i++) tmp += summr[i][i];
+	output[(beam_tile*16+tidx)*1536 + oidx] = tmp;
+      }
+    }      
 
   }
 
