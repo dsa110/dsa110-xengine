@@ -103,6 +103,7 @@ void usage()
   fprintf (stdout,
 	   "dsaX_image [options]\n"
 	   " -c core   bind process to CPU core\n"
+	   " -b write one beam\n"
 	   " -f filename base [default test.fil]\n"
 	   " -k in_key [BF_BLOCK_KEY]\n"
 	   " -i IP to listen to [no default]\n"
@@ -227,8 +228,9 @@ int main (int argc, char *argv[]) {
   FILE *fmjd;
   int get_mjd = 0;
   int sumi=1;
+  int onebeam=0;
   
-  while ((arg=getopt(argc,argv,"c:f:o:i:k:s:mdh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:o:i:k:s:bmdh")) != -1)
     {
       switch (arg)
 	{
@@ -266,6 +268,9 @@ int main (int argc, char *argv[]) {
 	  break;
 	case 'd':
 	  DEBUG=1;
+	  break;
+	case 'b':
+	  onebeam=1;
 	  break;
 	case 'm':
 	  get_mjd=1;
@@ -439,7 +444,10 @@ int main (int argc, char *argv[]) {
 	      
       
       if (sumi==1) fwrite((unsigned char *)(block),sizeof(unsigned char),block_size,output);
-      else fwrite(hoblock,sizeof(float),block_size/sumi/64,output);
+      else {
+	if (onebeam==1) fwrite(hoblock,sizeof(float),block_size/sumi/64,output);
+	else fwrite(hoblock,sizeof(float),block_size/sumi,output);
+      }
       //fwrite(oblock,sizeof(float),256*48,output);
 
       integration++;
