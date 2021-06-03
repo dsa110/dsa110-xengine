@@ -631,6 +631,7 @@ int main(int argc, char**argv)
 
   // declare stuff for host and GPU
   unsigned char * d_data;
+  unsigned char * h_bm0 = (unsigned char *)malloc(sizeof(unsigned char)*NTIMES_P*NCHAN_P);
   cudaMalloc((void **)&d_data, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(unsigned char));
   unsigned char * h_data = (unsigned char *)malloc(sizeof(unsigned char)*NBEAMS_P*NTIMES_P*NCHAN_P);
   int * h_mask = (int *)malloc(sizeof(int)*NBEAMS_P*NCHAN_P);
@@ -673,6 +674,11 @@ int main(int argc, char**argv)
     // read a DADA block
     cin_data = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
     in_data = (unsigned char *)(cin_data);
+
+    // deal with bm0
+    memcpy(h_data+NTIMES_P*NCHAN_P,in_data+NTIMES_P*NCHAN_P,(NBEAMS_P-1)*NTIMES_P*NCHAN_P);
+    memcpy(h_bm0,in_data,NTIMES_P*NCHAN_P);
+    memcpy(h_data,h_data+NTIMES_P*NCHAN_P,NTIMES_P*NCHAN_P);
 
     if (DEBUG) syslog(LOG_INFO,"read block");
 
@@ -737,6 +743,10 @@ int main(int argc, char**argv)
 
     // copy data to host and write to buffer
     cudaMemcpy(h_data, d_data, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+
+    // deal with bm0
+    memcpy(h_data,h_bm0,NTIMES_P*NCHAN_P);
+    
     // close block after reading
     ipcio_close_block_read (hdu_in->data_block, bytes_read);
     if (DEBUG) syslog(LOG_DEBUG,"closed read block");		    
@@ -790,6 +800,7 @@ int main(int argc, char**argv)
   free(h_spec);
   free(h_var);
   free(h_max);
+  free(h_bm0);
   cudaFree(d_data);
   cudaFree(d_spec);
   cudaFree(d_var);
