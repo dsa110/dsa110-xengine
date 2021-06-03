@@ -224,12 +224,14 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
   wmma::fragment<wmma::accumulator, 16, 16, 16, float> wr_ini_frag;
   wmma::fragment<wmma::accumulator, 16, 16, 16, float> wi_inr_frag;
   wmma::fragment<wmma::accumulator, 16, 16, 16, float> wi_ini_frag;
+  wmma::fragment<wmma::accumulator, 16, 16, 16, float> ib_frag;
   
   // zero out accumulators
   wmma::fill_fragment(wr_inr_frag, 0.0f);
   wmma::fill_fragment(wr_ini_frag, 0.0f);
   wmma::fill_fragment(wi_inr_frag, 0.0f);
   wmma::fill_fragment(wi_ini_frag, 0.0f);
+  wmma::fill_fragment(ib_frag, 0.0f);
 
   // IB
   if (stuffants==2) {
@@ -241,10 +243,10 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
 
       wmma::load_matrix_sync(c_frag, inr + data_offset + ant_tile*256, 16);
       wmma::load_matrix_sync(d_frag, inr + data_offset + ant_tile*256, 16);
-      wmma::mma_sync(wr_inr_frag, c_frag, d_frag, wr_inr_frag);
+      wmma::mma_sync(ib_frag, c_frag, d_frag, ib_frag);
       wmma::load_matrix_sync(c_frag, ini + data_offset + ant_tile*256, 16);
       wmma::load_matrix_sync(d_frag, ini + data_offset + ant_tile*256, 16);
-      wmma::mma_sync(wr_inr_frag, c_frag, d_frag, wr_inr_frag);
+      wmma::mma_sync(ib_frag, c_frag, d_frag, ib_frag);
 
     }
 
@@ -263,7 +265,7 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
     wmma::mma_sync(wr_inr_frag, c_frag, d_frag, wr_inr_frag);
     
   }
-  else {
+  if (stuffants!=1) {
   
     // loop over ant tiles
     for (int ant_tile=0; ant_tile<4; ant_tile++) {
@@ -296,11 +298,11 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
   // at this stage the matrices are [beam, chunnel], and need to be summed over columns
     
   // copy back to shared mem
-  float *p1, tmp;
+  float *p1, *p2, tmp;
   p1 = &summr[0][0];
   wmma::store_matrix_sync(p1, wr_inr_frag, 16, wmma::mem_row_major);
 
-  if (!stuffants) {
+  if (stuffants!=1) {
   
     // do thread reduction for each beam
     if (tidx<8) {
@@ -336,23 +338,22 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
     }
 
   }
-  else {
 
-    if (stuffants==1) {
-      if (tidx<16) {
-	output[(beam_tile*16+tidx)*1536 + oidx] = summr[tidx][tidx];
-      }
+  if (stuffants==1) {
+    if (tidx<16) {
+      output[(beam_tile*16+tidx)*1536 + oidx] = summr[tidx][tidx];
     }
-    if (stuffants==2) {
-      if (tidx<16) {
-	tmp = 0.;
-	for (int i=0;i<16;i++) tmp += summr[i][i];
-	output[(beam_tile*16+tidx)*1536 + oidx] = tmp;
-      }
-    }      
-
   }
+  if (stuffants==2) {
 
+    p2 = &summi[0][0];
+    wmma::store_matrix_sync(p2, ib_frag, 16, wmma::mem_row_major);      
+    tmp = 0.;
+    for (int i=0;i<16;i++) tmp += summi[i][i];
+    if (tidx==0 && beam_tile==0) 
+      output[(beam_tile*16+tidx)*1536 + oidx] = tmp;
+
+  }      
   
 }
 
