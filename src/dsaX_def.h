@@ -53,7 +53,7 @@
 #define NCHANG 1
 
 // number of SNAPs to expect
-#define NSNAPS 10
+#define NSNAPS 22
 
 /* expect consecutive channel groups */
 #define CHOFF 1024 // offset in channels of first group
