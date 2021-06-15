@@ -353,7 +353,7 @@ int main (int argc, char *argv[]) {
   uint64_t specs_per_out = 2048*NOUTBLOCKS;
   uint64_t current_specnum = 0; // updates with each dada block read
   uint64_t start_byte, bytes_to_copy, bytes_copied=0;
-  char * out_data = (char *)malloc(sizeof(char)*block_out);
+  //char * out_data = (char *)malloc(sizeof(char)*block_out);
   char * in_data;
   uint64_t written=0;
   uint64_t block_id, bytes_read=0;
@@ -403,7 +403,8 @@ int main (int argc, char *argv[]) {
 	  bytes_to_copy = block_size-start_byte;
 	  
 	  // do copy
-	  memcpy(out_data, in_data+start_byte, bytes_to_copy);
+	  //memcpy(out_data, in_data+start_byte, bytes_to_copy);
+	  written = ipcio_write (hdu_out->data_block, in_data+start_byte, bytes_to_copy);
 	  bytes_copied = bytes_to_copy;
 	  
 	}
@@ -412,7 +413,8 @@ int main (int argc, char *argv[]) {
 	if (specnum < current_specnum && specnum + specs_per_out > current_specnum + specs_per_block && dumping==1) {
 
 	  // do copy
-	  memcpy(out_data + bytes_copied, in_data, block_size);
+	  //memcpy(out_data + bytes_copied, in_data, block_size);
+	  written = ipcio_write (hdu_out->data_block, in_data, block_size);
 	  bytes_copied += block_size;
 
 	}
@@ -424,10 +426,11 @@ int main (int argc, char *argv[]) {
 	  bytes_to_copy = block_out-bytes_copied;
 
 	  // do copy
-	  memcpy(out_data+bytes_copied, in_data, bytes_to_copy);
+	  //memcpy(out_data+bytes_copied, in_data, bytes_to_copy);
+	  written = ipcio_write (hdu_out->data_block, in_data, bytes_to_copy);
 
 	  // DO THE WRITING
-	  written = ipcio_write (hdu_out->data_block, out_data, block_out);
+	  /*written = ipcio_write (hdu_out->data_block, out_data, block_out);
 
 	  if (written < block_out)
 	    {
@@ -435,6 +438,7 @@ int main (int argc, char *argv[]) {
 	      dsaX_dbgpu_cleanup (hdu_in, hdu_out);
 	      return EXIT_FAILURE;
 	    }
+	  */
 	  syslog(LOG_INFO, "written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s", specnum, trignum-1, dumpnum, footer_buf);
 	  ofile = fopen("/home/ubuntu/data/dumps.dat","a");
 	  fprintf(ofile,"written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s\n", specnum, trignum-1, dumpnum, footer_buf);
@@ -485,7 +489,7 @@ int main (int argc, char *argv[]) {
   void* result=0;
   pthread_join (control_thread_id, &result);
 
-  free(out_data);
+  //free(out_data);
   dsaX_dbgpu_cleanup (hdu_in, hdu_out);
 
 }

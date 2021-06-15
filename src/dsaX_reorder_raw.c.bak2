@@ -134,12 +134,12 @@ void * massage(void *args) {
 
   // input and output index and extracted data
   int idx = thread_id; // PACKET idx for input and output
-  //char * proc_data = (char *)malloc(sizeof(char)*(NPACKETS/nthreads)*NANTS*(384*2)*2); // for 4-bit data
+  char * proc_data = (char *)malloc(sizeof(char)*(NPACKETS/nthreads)*NANTS*(384*2)*2); // for 4-bit data
   //char * fluffed_data = (char *)malloc(sizeof(char)*(NPACKETS/nthreads)*NANTS*(384*2)*2*2); // for 8-bit data
-  //char * out_data = (char *)malloc(sizeof(char)*(NPACKETS/nthreads)*(384*2)*na*2*2); // for output 8-bit data
+  char * out_data = (char *)malloc(sizeof(char)*(NPACKETS/nthreads)*(384*2)*na*2*2); // for output 8-bit data
   
   // extract data
-  //memcpy(proc_data,in+idx*(NPACKETS/nthreads)*NANTS*(384*2)*2,(NPACKETS/nthreads)*NANTS*(384*2)*2);
+  memcpy(proc_data,in+idx*(NPACKETS/nthreads)*NANTS*(384*2)*2,(NPACKETS/nthreads)*NANTS*(384*2)*2);
   if (DEBUG || dbg) syslog(LOG_INFO,"thread %d: extracted data",thread_id);
   
   // do fluffing in dumbest possible way
@@ -148,8 +148,6 @@ void * massage(void *args) {
   
   // let's do it!
   int in_idx, out_idx, a1, a2, a3, a4, a5, a6;
-  int in_offset = idx*(NPACKETS/nthreads)*NANTS*(384*2)*2;
-  int out_offset = idx*(NPACKETS/nthreads)*(384*2)*na*2*2;
   for (int i=0;i<(NPACKETS/nthreads);i++) {
     a1 = i*NANTS*1536;
     a2 = i*na*1536;
@@ -160,8 +158,8 @@ void * massage(void *args) {
 	  in_idx = a1+j*1536+k*2+l;
 	  out_idx = a2+k*na*2+j*2+l;
 
-	  d->ipc->curbuf[out_offset+out_idx] = in[in_offset+in_idx];
-	  //d->ipc->curbuf[out_offset+2*out_idx+1] = in[in_offset+in_idx] >> 4;
+	  out_data[2*out_idx] = ((proc_data[in_idx]<<4) & 240) >> 4;
+	  out_data[2*out_idx+1] = proc_data[in_idx] >> 4;
 
 	}
       }
@@ -200,17 +198,17 @@ void * massage(void *args) {
   if (dbg || DEBUG) syslog(LOG_INFO,"thread %d: transposed",thread_id);
   
   // place in out
-  /*  if (d->write)
+  if (d->write)
     memcpy (d->ipc->curbuf + idx*(NPACKETS/nthreads)*(384*2)*na*2*2,out_data,(NPACKETS/nthreads)*(384*2)*na*2*2);
   else
     memcpy(out + idx*(NPACKETS/nthreads)*(384*2)*na*2*2,out_data,(NPACKETS/nthreads)*(384*2)*na*2*2);
-  */
+  
   if (dbg || DEBUG) syslog(LOG_INFO,"thread %d: done - freeing",thread_id);
   
   // free stuff
-  //free(proc_data);
+  free(proc_data);
   //free(fluffed_data);
-  //free(out_data);
+  free(out_data);
   
   /* return 0 */
   int thread_result = 0;
@@ -239,19 +237,19 @@ int main (int argc, char *argv[]) {
 
   // run test with single thread
 
-  /*syslog(LOG_INFO,"Running TEST...\n");
+  syslog(LOG_INFO,"Running TEST...\n");
   
   // set up data structure
   char * test_block = (char *)malloc(sizeof(char)*NPACKETS*NANTS*(384*2)*2);
   char * test_output = (char *)malloc(sizeof(char)*NPACKETS*64*(384*2)*2*2);
   memset(test_block,0,sizeof(test_block));
   
-   TEST CODE 
+  /* TEST CODE 
   FILE *fin;
   fin=fopen("../utils/packet.out","rb");
   fread(test_block, 96768, 1, fin);
   fclose(fin);
-   END TEST CODE 
+   END TEST CODE */
   
   args[0].in = test_block;
   args[0].out = test_output;
@@ -270,17 +268,17 @@ int main (int argc, char *argv[]) {
   pthread_join(threads[0], &result);
   syslog(LOG_INFO,"joined TEST thread");
 
-   TEST CODE 
+  /* TEST CODE 
   fin=fopen("../utils/test.out","wb");
   fwrite(test_output, 1, 196608, fin);
   fclose(fin);
-  END TEST CODE 
+  END TEST CODE */
   
   // clean up
   free(test_block);
   free(test_output);
 
-  syslog(LOG_INFO,"TEST COMPLETE");*/
+  syslog(LOG_INFO,"TEST COMPLETE");
   
   /* DADA Header plus Data Unit */
   dada_hdu_t* hdu_in = 0;

@@ -163,7 +163,7 @@ if tone is True:
 if noise is True:
 
     # defaults
-    rms = 2.0 # 4-bit
+    rms = 1.5 # 4-bit
     erms = rms*16.
 
     # make real and imag parts

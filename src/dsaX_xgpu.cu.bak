@@ -63,18 +63,6 @@ void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out)
 
 } 
 
-// kernel for fluffing
-// run with 6291456 blocks of 32 threads
-__global__ void promoter(char *input, char *output) {
-
-  int idx = blockIdx.x*32 + threadIdx.x;
-  char v = input[idx];
-  
-  output[2*idx] = ((v<<4) & 240) >> 4;
-  output[2*idx+1] = v >> 4;
-
-}
-
 void usage()
 {
 fprintf (stdout,
@@ -345,13 +333,6 @@ int main (int argc, char *argv[]) {
   memset((char *)array_h,0,2*context.array_len);
 
   syslog(LOG_INFO,"Set up xgpu with input size %d output size %d",context.array_len,context.matrix_len);
-
-  // set up data input for fluffing
-  char * h_din = (char *)malloc(sizeof(char)*context.array_len);
-  char *d_din, *d_dout;
-  cudaMalloc((void **)&d_din, context.array_len*sizeof(char));
-  cudaMalloc((void **)&d_dout, 2*context.array_len*sizeof(char)); 
-
   
   // get things started
   bool observation_complete=0;
@@ -372,7 +353,7 @@ int main (int argc, char *argv[]) {
 
     // set up data structure
     for (int i=0; i<nthreads; i++) {
-      args[i].data = (char *)(h_din);
+      args[i].data = (char *)(array_h);
       args[i].n_threads = nthreads;
       args[i].thread_id = i;
       args[i].debug = 0;
@@ -397,11 +378,6 @@ int main (int argc, char *argv[]) {
       pthread_join(threads[i], &result);
       if (DEBUG) syslog(LOG_DEBUG,"joined thread %d",i);
     }
-
-    // do fluff
-    cudaMemcpy(d_din,h_din,context.array_len*sizeof(char),cudaMemcpyHostToDevice);
-    promoter<<<6291456,32>>>(d_din,d_dout);
-    cudaMemcpy((char *)(array_h),d_dout,2*context.array_len*sizeof(char),cudaMemcpyDeviceToHost);        
     
     // run xgpu
     xgpu_error = xgpuCudaXengine(&context, syncOp);
@@ -475,9 +451,6 @@ int main (int argc, char *argv[]) {
 
   // finish up
   free(output_buffer);
-  free(h_din);
-  cudaFree(d_din);
-  cudaFree(d_dout);
   //dada_cuda_dbunregister(hdu_in);
   dsaX_dbgpu_cleanup (hdu_in, hdu_out);
   

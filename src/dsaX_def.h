@@ -53,7 +53,7 @@
 #define NCHANG 1
 
 // number of SNAPs to expect
-#define NSNAPS 22
+#define NSNAPS 21
 
 /* expect consecutive channel groups */
 #define CHOFF 1024 // offset in channels of first group
@@ -70,12 +70,12 @@
 #define NPACKETS_PER_FIL 2
 #define NPACKETS 2048
 #define NOUTBLOCKS 30 // number of input blocks stored by trigger
-#define NANTS 30
+#define NANTS 63
 
 // for beamformer
 #define sep 1.0 // arcmin
 #define NW 48 // number of weights per 384 chans. Also the number of channels formed
-#define NANT 30
+#define NANT 63
 #define BEAM_OUT 23
 #define NSTREAMS 4
 
