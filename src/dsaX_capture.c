@@ -757,7 +757,7 @@ int main (int argc, char *argv[]) {
   uint64_t seq_byte = 0; // offset of current packet in bytes from start of obs
   // for "saving" out of order packets near edges of blocks
   unsigned int temp_idx = 0;
-  unsigned int temp_max = 43000;
+  unsigned int temp_max = 1000;
   char ** temp_buffers; //[temp_max][UDP_DATA];
   uint64_t * temp_seq_byte;
   temp_buffers = (char **)malloc(sizeof(char *)*temp_max);
@@ -844,11 +844,11 @@ int main (int argc, char *argv[]) {
 	  
 	  //act_seq_no = seq_no*NCHANG*NSNAPS/2 + ant_id*NCHANG/3 + (ch_id-CHOFF)/384; // actual seq no
 	  act_seq_no = seq_no*NCHANG*NSNAPS/2 + ant_id*NCHANG/3 + chgroup; // actual seq no
-	  block_seq_no = seq_no*NCHANG*NSNAPS/2 + chgroup; // seq no corresponding to ant 0
+	  block_seq_no = UTC_START*NCHANG*NSNAPS/2 + chgroup; // seq no corresponding to ant 0 and start of block
 
 	  // check for starting or stopping condition, using continue
 	  //if (DEBUG) printf("%"PRIu64" %"PRIu64" %d\n",seq_no,act_seq_no,ch_id);//syslog(LOG_DEBUG, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
-	  if (seq_no == UTC_START) canWrite=1;
+	  if (seq_no >= UTC_START) canWrite=1;
 	  udpdb.last_seq = seq_no;
 	  //syslog(LOG_INFO,"SEQ_NO_DBG %"PRIu64"",seq_no);
 	  if (canWrite == 0) continue;
