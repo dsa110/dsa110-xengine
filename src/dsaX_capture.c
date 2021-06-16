@@ -746,6 +746,7 @@ int main (int argc, char *argv[]) {
   // DEFINITIONS
 
   uint64_t act_seq_no = 0;
+  uint64_t block_seq_no = 0;
   uint64_t seq_no = 0;
   uint64_t ch_id = 0;
   uint64_t ant_id = 0;
@@ -843,10 +844,11 @@ int main (int argc, char *argv[]) {
 	  
 	  //act_seq_no = seq_no*NCHANG*NSNAPS/2 + ant_id*NCHANG/3 + (ch_id-CHOFF)/384; // actual seq no
 	  act_seq_no = seq_no*NCHANG*NSNAPS/2 + ant_id*NCHANG/3 + chgroup; // actual seq no
+	  block_seq_no = seq_no*NCHANG*NSNAPS/2 + chgroup; // seq no corresponding to ant 0
 
 	  // check for starting or stopping condition, using continue
 	  //if (DEBUG) printf("%"PRIu64" %"PRIu64" %d\n",seq_no,act_seq_no,ch_id);//syslog(LOG_DEBUG, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
-	  if (seq_no == UTC_START && ant_id==0) canWrite=1;
+	  if (seq_no == UTC_START) canWrite=1;
 	  udpdb.last_seq = seq_no;
 	  //syslog(LOG_INFO,"SEQ_NO_DBG %"PRIu64"",seq_no);
 	  if (canWrite == 0) continue;
@@ -856,7 +858,8 @@ int main (int argc, char *argv[]) {
 	  // if first packet
 	  if (!udpdb.capture_started)
 	    {
-	      udpdb.block_start_byte = act_seq_no * UDP_DATA;
+	      //udpdb.block_start_byte = act_seq_no * UDP_DATA;
+	      udpdb.block_start_byte = block_seq_no * UDP_DATA;
 	      udpdb.block_end_byte   = (udpdb.block_start_byte + udpdb.hdu_bufsz) - UDP_DATA;
 	      udpdb.capture_started = 1;
 
