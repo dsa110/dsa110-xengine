@@ -45,6 +45,7 @@ uint64_t specnum = 0;
 uint64_t procnum = 0;
 int trignum = 0;
 int dumpnum = 0;
+char srcnam[1024];
 char iP[100];
 char footer_buf[1024];
 int DEBUG = 0;
@@ -136,13 +137,15 @@ void control_thread (void * arg) {
 
     // interpret buffer string
     char * rest = buffer;
-    tmps = (uint64_t)(strtoull(strtok_r(rest, "-", &rest),&endptr,0));
+    tmps = (uint64_t)(strtoull(strtok(rest, "-"),&endptr,0));
+    char * tmp_srcnam = strtok(NULL, "-");
     
     if (!dump_pending) {
       //specnum = (uint64_t)(strtoull(buffer,&endptr,0)*16);
       specnum = tmps;
+      strcpy(srcnam,tmp_srcnam);
       strcpy(footer_buf,tbuf);
-      syslog(LOG_INFO, "control_thread: received command to dump at %llu",specnum);
+      syslog(LOG_INFO, "control_thread: received command to dump at %llu with name ",specnum,srcnam);
     }
 	
     if (dump_pending)
@@ -435,9 +438,9 @@ int main (int argc, char *argv[]) {
 	      dsaX_dbgpu_cleanup (hdu_in, hdu_out);
 	      return EXIT_FAILURE;
 	    }
-	  syslog(LOG_INFO, "written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s", specnum, trignum-1, dumpnum, footer_buf);
+	  syslog(LOG_INFO, "written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s", specnum, trignum-1, dumpnum, srcnam);
 	  ofile = fopen("/home/ubuntu/data/dumps.dat","a");
-	  fprintf(ofile,"written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s\n", specnum, trignum-1, dumpnum, footer_buf);
+	  fprintf(ofile,"written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s\n", specnum, trignum-1, dumpnum, srcnam);
 	  fclose(ofile);
 	  
 	  dumpnum++;

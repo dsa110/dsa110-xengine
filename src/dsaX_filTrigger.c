@@ -45,6 +45,7 @@ uint64_t specnum = 0;
 uint64_t procnum = 0;
 int trignum = 0;
 int dumpnum = 0;
+char srcnam[1024];
 char iP[100];
 char footer_buf[1024];
 int DEBUG = 0;
@@ -160,6 +161,7 @@ void control_thread (void * arg) {
   char cmpstr = 'p';
   char *endptr;
   uint64_t tmps;
+  
   char * token;
   
   syslog(LOG_INFO, "control_thread: created socket on port %d", port);
@@ -178,11 +180,13 @@ void control_thread (void * arg) {
 
     // interpret buffer string
     char * rest = buffer;
-    tmps = (uint64_t)(strtoull(strtok_r(rest, "-", &rest),&endptr,0));
+    tmps = (uint64_t)(strtoull(strtok(rest, "-"),&endptr,0));
+    char * tmp_srcnam = strtok(NULL, "-");
     
     if (!dump_pending) {
       //specnum = (uint64_t)(strtoull(buffer,&endptr,0)*16);
       specnum = tmps/4;
+      strcpy(srcnam,tmp_srcnam);
       strcpy(footer_buf,tbuf);
       syslog(LOG_INFO, "control_thread: received command to dump at %llu",specnum);
     }
@@ -459,17 +463,17 @@ int main (int argc, char *argv[]) {
 	
 	// DO THE WRITING
 
-	sprintf(dirnam,"mkdir -p %s_%llu",of,specnum*4);
+	sprintf(dirnam,"mkdir -p %s_%s",of,srcnam);
 	system(dirnam);
 	
 	for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
 	  
-	  sprintf(foutnam,"%s_%llu/%llu_%d.fil",of,specnum*4,specnum*4,beamn+i);
+	  sprintf(foutnam,"%s_%s/%s_%d.fil",of,srcnam,srcnam,beamn+i);
 	  output = fopen(foutnam,"wb");
 	  
 	  send_string("HEADER_START");
 	  send_string("source_name");
-	  send_string(foutnam);
+	  send_string(srcnam);
 	  send_int("machine_id",1);
 	  send_int("telescope_id",82);
 	  send_int("data_type",1); // filterbank data
@@ -488,9 +492,9 @@ int main (int argc, char *argv[]) {
 	  
 	}
 	
-	syslog(LOG_INFO, "written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s", specnum, trignum-1, dumpnum, footer_buf);
+	syslog(LOG_INFO, "written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s", specnum, trignum-1, dumpnum, srcnam);
 	ofile = fopen("/home/ubuntu/data/dumps.dat","a");
-	fprintf(ofile,"written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s\n", specnum, trignum-1, dumpnum, footer_buf);
+	fprintf(ofile,"written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s\n", specnum, trignum-1, dumpnum, srcnam);
 	fclose(ofile);
 	
 	dumpnum++;

@@ -36,9 +36,10 @@ def cb_func(my_ds):
         my_log.function('cb_func')        
         my_log.debug("received event= {}".format(event))
         print(event)
-        tm = (int(list(event)[0])-1907)*4
-        my_log.info("specnum = {}".format(tm))
-        with open('/home/ubuntu/data/'+str(tm)+'.json', 'w') as f: #encoding='utf-8'            
+        tm=list(event)[0]
+        #tm = (int(list(event)[0])-1907)*4
+        my_log.info("name = {}".format(tm))
+        with open('/home/ubuntu/data/'+tm+'.json', 'w') as f: #encoding='utf-8'            
             json.dump(event, f, ensure_ascii=False, indent=4)
         
     return a
@@ -78,9 +79,10 @@ def ld_run(args):
                 flnum = int(re.findall('[0-9]+', llf)[0])
 
                 # find specnum number
-                os.system("grep specnum /home/ubuntu/data/dumps.dat | awk '{print $5,$6,$7}' | sed 's/NUM/ /' | sed 's/NUM/ /' | awk '{print $1,$5}' > /home/ubuntu/tmp/specnums.dat")
-                specnum,dumpnum = np.loadtxt("/home/ubuntu/tmp/specnums.dat").transpose()
-                cur_specnum = int(specnum[dumpnum==flnum])
+                os.system("grep specnum /home/ubuntu/data/dumps.dat | awk '{print $6,$7,$8}' | sed 's/NUM/ /' | sed 's/NUM/ /' | awk '{print $5,$4}' > /home/ubuntu/tmp/specnums.dat")
+                specnum,dumpnum = np.genfromtxt("/home/ubuntu/tmp/specnums.dat",dtype='str').transpose()
+                dumpnum=dumpnum.astype('int')
+                cur_specnum = specnum[dumpnum==flnum][0]
 
                 # test for existence of associated json file
                 if path.exists(llf+"."+str(cur_specnum)+".json"):
