@@ -894,7 +894,7 @@ int main (int argc, char *argv[]) {
 		  // packet belongs in subsequent block
 		  else
 		    {
-		      if (DEBUG) syslog (LOG_INFO, "receive_obs: received packet for subsequent buffer: temp_idx=%d, ant_id=%d, ch_id=%d, seq_no=%"PRIu64"",temp_idx,ant_id,ch_id,seq_no);
+		      syslog (LOG_INFO, "receive_obs: received packet for subsequent buffer: temp_idx=%d, ant_id=%d, ch_id=%d, seq_no=%"PRIu64"",temp_idx,ant_id,ch_id,seq_no);
 		      
 		      if (temp_idx < temp_max)
 			{
