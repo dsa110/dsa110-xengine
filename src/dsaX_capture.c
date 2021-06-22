@@ -853,7 +853,7 @@ int main (int argc, char *argv[]) {
 	  //syslog(LOG_INFO,"SEQ_NO_DBG %"PRIu64"",seq_no);
 	  if (canWrite == 0) continue;
 	  if (seq_no == UTC_STOP) canWrite=0;
-	  if (udpdb.packets->received<100) syslog(LOG_INFO, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
+	  //if (udpdb.packets->received<100) syslog(LOG_INFO, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
 	  
 	  // if first packet
 	  if (!udpdb.capture_started)
@@ -876,7 +876,7 @@ int main (int argc, char *argv[]) {
 	      // if packet arrived too late, ignore
 	      if (seq_byte < udpdb.block_start_byte)
 		{
-		  syslog (LOG_INFO, "receive_obs: seq_byte < block_start_byte: %"PRIu64", %"PRIu64", %"PRIu64"", seq_no, ant_id, ch_id);
+		  syslog (LOG_INFO, "receive_obs: seq_byte < block_start_byte: %"PRIu64", %"PRIu64"", seq_no, ant_id);
 		  udpdb.packets->dropped++;
 		  udpdb.bytes->dropped += UDP_DATA;
 		}
@@ -894,7 +894,7 @@ int main (int argc, char *argv[]) {
 		  // packet belongs in subsequent block
 		  else
 		    {
-		      syslog (LOG_INFO, "receive_obs: received packet for subsequent buffer: temp_idx=%d, ant_id=%d, ch_id=%d, seq_no=%"PRIu64"",temp_idx,ant_id,ch_id,seq_no);
+		      syslog (LOG_INFO, "receive_obs: received packet for subsequent buffer: temp_idx=%d, ant_id=%d, seq_no=%"PRIu64"",temp_idx,ant_id,seq_no);
 		      
 		      if (temp_idx < temp_max)
 			{
