@@ -767,6 +767,7 @@ int main (int argc, char *argv[]) {
   uint64_t timeouts = 0;
   uint64_t timeout_max = 1000000000;
   int canWrite = 0;
+  int ct_snaps=0;
 
   // infinite loop to receive packets
   // use stats thread to monitor STATE at this stage, to save resources here
@@ -849,7 +850,11 @@ int main (int argc, char *argv[]) {
 	  // check for starting or stopping condition, using continue
 	  //if (DEBUG) printf("%"PRIu64" %"PRIu64" %d\n",seq_no,act_seq_no,ch_id);//syslog(LOG_DEBUG, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
 	  //if (seq_no == UTC_START && UTC_START != 10000 && ant_id == 0) canWrite=1;
-	  if (seq_no > UTC_START && UTC_START != 10000) canWrite=1;
+	  if (canWrite==0) {
+	    if (seq_no >= UTC_START && UTC_START != 10000) ct_snaps++;
+	  }
+	  //if (seq_no > UTC_START && UTC_START != 10000) canWrite=1;
+	  if (ct_snaps == NSNAPS) canWrite=1;
 	  udpdb.last_seq = seq_no;
 	  //syslog(LOG_INFO,"SEQ_NO_DBG %"PRIu64"",seq_no);
 	  if (canWrite == 0) continue;
