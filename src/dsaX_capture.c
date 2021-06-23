@@ -851,7 +851,7 @@ int main (int argc, char *argv[]) {
 	  //if (DEBUG) printf("%"PRIu64" %"PRIu64" %d\n",seq_no,act_seq_no,ch_id);//syslog(LOG_DEBUG, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
 	  //if (seq_no == UTC_START && UTC_START != 10000 && ant_id == 0) canWrite=1;
 	  if (canWrite==0) {
-	    if (seq_no >= UTC_START && UTC_START != 10000) ct_snaps++;
+	    if (seq_no >= UTC_START-50 && UTC_START != 10000) ct_snaps++;
 	  }
 	  //if (seq_no > UTC_START && UTC_START != 10000) canWrite=1;
 	  if (ct_snaps == NSNAPS) canWrite=1;
