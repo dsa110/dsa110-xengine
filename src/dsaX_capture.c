@@ -5,7 +5,9 @@ control_thread: deals with control commands
 
 */
 
-
+#define __USE_GNU
+#define _GNU_SOURCE
+#include <sched.h>
 #include <time.h>
 #include <sys/socket.h>
 #include <math.h>
@@ -348,6 +350,22 @@ int udpdb_stop_function (udpdb_t* ctx)
  */
 void stats_thread(void * arg) {
 
+  // set affinity
+  const pthread_t pid = pthread_self();
+  const int core_id = 4;
+  cpu_set_t cpuset;
+  CPU_ZERO(&cpuset);
+  CPU_SET(core_id, &cpuset);
+  const int set_result = pthread_setaffinity_np(pid, sizeof(cpu_set_t), &cpuset);
+  if (set_result != 0)
+    syslog(LOG_ERR,"thread %d: setaffinity_np fail",core_id);
+  const int get_affinity = pthread_getaffinity_np(pid, sizeof(cpu_set_t), &cpuset);
+  if (get_affinity != 0) 
+    syslog(LOG_ERR,"thread %d: getaffinity_np fail",core_id);
+  if (CPU_ISSET(core_id, &cpuset))
+    syslog(LOG_INFO,"thread %d: successfully set thread",core_id);
+
+  
   udpdb_t * ctx = (udpdb_t *) arg;
   uint64_t b_rcv_total = 0;
   uint64_t b_rcv_1sec = 0;
@@ -757,7 +775,7 @@ int main (int argc, char *argv[]) {
   uint64_t seq_byte = 0; // offset of current packet in bytes from start of obs
   // for "saving" out of order packets near edges of blocks
   unsigned int temp_idx = 0;
-  unsigned int temp_max = 5;
+  unsigned int temp_max = 1000;
   char ** temp_buffers; //[temp_max][UDP_DATA];
   uint64_t * temp_seq_byte;
   temp_buffers = (char **)malloc(sizeof(char *)*temp_max);
@@ -835,9 +853,9 @@ int main (int argc, char *argv[]) {
 	  seq_no |= 255 << 11;
 	  seq_no |= 255 << 19;*/
 	  
-	  ch_id = 0;
+	  /*ch_id = 0;
 	  ch_id |= ((unsigned char) (udpdb.sock->buf[4]) & 31) << 8;
-	  ch_id |= (unsigned char) (udpdb.sock->buf[5]);
+	  ch_id |= (unsigned char) (udpdb.sock->buf[5]);*/
 
 	  ant_id = 0;
 	  ant_id |= (unsigned char) (udpdb.sock->buf[6]) << 8;
@@ -882,7 +900,7 @@ int main (int argc, char *argv[]) {
 	      // if packet arrived too late, ignore
 	      if (seq_byte < udpdb.block_start_byte)
 		{
-		  syslog (LOG_INFO, "receive_obs: seq_byte < block_start_byte: %"PRIu64", %"PRIu64"", seq_no, ant_id);
+		  //syslog (LOG_INFO, "receive_obs: seq_byte < block_start_byte: %"PRIu64", %"PRIu64"", seq_no, ant_id);
 		  udpdb.packets->dropped++;
 		  udpdb.bytes->dropped += UDP_DATA;
 		}
@@ -900,7 +918,7 @@ int main (int argc, char *argv[]) {
 		  // packet belongs in subsequent block
 		  else
 		    {
-		      syslog (LOG_INFO, "receive_obs: received packet for subsequent buffer: temp_idx=%d, ant_id=%d, seq_no=%"PRIu64"",temp_idx,ant_id,seq_no);
+		      //syslog (LOG_INFO, "receive_obs: received packet for subsequent buffer: temp_idx=%d, ant_id=%d, seq_no=%"PRIu64"",temp_idx,ant_id,seq_no);
 		      
 		      if (temp_idx < temp_max)
 			{
@@ -962,10 +980,6 @@ int main (int argc, char *argv[]) {
 		}
 	      temp_idx = 0;
 	    }
-	  if (temp_idx >= temp_max) {
-	    temp_max += temp_max;
-	    syslog(LOG_INFO, "receive_obs: added to temp_max: %"PRIu64"",temp_max);
-	  }
 	}
 
       // packet has been inserted or saved by this point
