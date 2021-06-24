@@ -42,7 +42,7 @@ control_thread: deals with control commands
 //#include "multilog.h"
 
 #define unhappies 10
-#define skips 2
+#define skips 4
 #define sleeps 1.0
 
 /* global variables */
@@ -882,7 +882,7 @@ int main (int argc, char *argv[]) {
 	  if (ct_snaps == NSNAPS) canWrite=1;
 	  udpdb.last_seq = seq_no;
 	  //syslog(LOG_INFO,"SEQ_NO_DBG %"PRIu64"",seq_no);
-	  if (act_seq_no * UDP_DATA >= udpdb.block_start_byte) unhappy = 0; 
+	  if (act_seq_no * UDP_DATA >= udpdb.block_start_byte-1000*UDP_DATA) unhappy = 0; 
 	  if (canWrite == 0 || unhappy == 1) continue;
 	  if (seq_no == UTC_STOP) canWrite=0;
 	  //if (udpdb.packets->received<100) syslog(LOG_INFO, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
@@ -997,6 +997,8 @@ int main (int argc, char *argv[]) {
 
       // deal with unhappy receiver
       if (unhappies_ct > unhappies) {
+
+	syslog(LOG_INFO, "Skipping some blocks...");
 
 	for (int i=0;i<skips;i++) {
 
