@@ -160,7 +160,7 @@ int dsaX_udpdb_prepare (udpdb_t * ctx)
 
   
   // set the socket size to 256 MB
-  int sock_buf_size = 256*1024*1024;
+  int sock_buf_size = 2048*1024*1024;
   syslog(LOG_INFO, "prepare: setting buffer size to %d", sock_buf_size);
   dada_udp_sock_set_buffer_size (ctx->log, ctx->sock->fd, ctx->verbose, sock_buf_size);
 

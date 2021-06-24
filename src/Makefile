@@ -92,6 +92,12 @@ dsaX_fake.o: dsaX_fake.c $(CDEPS1)
 dsaX_fake: dsaX_fake.o
 	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
 
+dsaX_splitup.o: dsaX_splitup.c $(CDEPS1)
+	$(CC) -c -o $@ $< $(CFLAGS1)
+
+dsaX_splitup: dsaX_splitup.o
+	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
+
 dsaX_writevis.o: dsaX_writevis.c $(CDEPS1)
 	$(CC) -c -o $@ $< $(CFLAGS1)
 
