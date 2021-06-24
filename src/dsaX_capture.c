@@ -41,6 +41,10 @@ control_thread: deals with control commands
 #include "dsaX_def.h"
 //#include "multilog.h"
 
+#define unhappies 10
+#define skips 2
+#define sleeps 1.0
+
 /* global variables */
 int quit_threads = 0;
 char STATE[20];
@@ -130,6 +134,7 @@ int dsaX_udpdb_init_receiver (udpdb_t * ctx)
   ctx->capture_started = 0;
   ctx->last_seq = 0;
   ctx->last_byte = 0;
+  ctx->block_start_byte = 0;
 
   // allocate required memory strucutres
   ctx->packets = init_stats_t();
@@ -763,6 +768,8 @@ int main (int argc, char *argv[]) {
 
   // DEFINITIONS
 
+  int unhappies_ct = 0;
+  int unhappy = 0;
   uint64_t act_seq_no = 0;
   uint64_t block_seq_no = 0;
   uint64_t seq_no = 0;
@@ -875,7 +882,8 @@ int main (int argc, char *argv[]) {
 	  if (ct_snaps == NSNAPS) canWrite=1;
 	  udpdb.last_seq = seq_no;
 	  //syslog(LOG_INFO,"SEQ_NO_DBG %"PRIu64"",seq_no);
-	  if (canWrite == 0) continue;
+	  if (act_seq_no * UDP_DATA >= udpdb.block_start_byte) unhappy = 0; 
+	  if (canWrite == 0 || unhappy == 1) continue;
 	  if (seq_no == UTC_STOP) canWrite=0;
 	  //if (udpdb.packets->received<100) syslog(LOG_INFO, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
 	  
@@ -951,6 +959,8 @@ int main (int argc, char *argv[]) {
 		  udpdb.bytes->dropped += (dropped * UDP_DATA);
 		}
 
+	      if (dropped>500) unhappies_ct++;
+
 	      // get a new buffer and write any temp packets saved 
 	      if (dsaX_udpdb_new_buffer (&udpdb) < 0)
 		{
@@ -958,7 +968,7 @@ int main (int argc, char *argv[]) {
 		  return EXIT_FAILURE;
 		}
 
-	      if (DEBUG) syslog(LOG_DEBUG, "block bytes: %"PRIu64" - %"PRIu64"\n", udpdb.block_start_byte, udpdb.block_end_byte);
+	      if (DEBUG) syslog(LOG_INFO, "block bytes: %"PRIu64" - %"PRIu64"\n", udpdb.block_start_byte, udpdb.block_end_byte);
   
 	      // include any futuristic packets we saved
 	      for (i=0; i < temp_idx; i++)
@@ -985,6 +995,26 @@ int main (int argc, char *argv[]) {
       // packet has been inserted or saved by this point
       udpdb.sock->have_packet = 0;
 
+      // deal with unhappy receiver
+      if (unhappies_ct > unhappies) {
+
+	for (int i=0;i<skips;i++) {
+
+	  udpdb.packets->dropped += udpdb.packets_per_buffer;
+	  udpdb.bytes->dropped += (udpdb.packets_per_buffer * UDP_DATA);
+
+	  if (dsaX_udpdb_new_buffer (&udpdb) < 0)
+	    {
+	      syslog(LOG_ERR, "receive_obs: dsaX_udpdb_new_buffer failed");
+	      return EXIT_FAILURE;
+	    }
+
+	}
+	  
+	unhappies_ct = 0;
+
+      }
+      
     }
 
   /* END WHAT WAS IN RECV THREAD */
