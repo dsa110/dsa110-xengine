@@ -1012,7 +1012,8 @@ int main (int argc, char *argv[]) {
 	    }
 
 	}
-	  
+
+	dada_sock_clear_buffered_packets(udpdb.sock->fd, UDP_PAYLOAD);
 	unhappies_ct = 0;
 
       }
