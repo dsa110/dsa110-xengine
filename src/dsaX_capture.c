@@ -160,7 +160,7 @@ int dsaX_udpdb_prepare (udpdb_t * ctx)
 
   
   // set the socket size to 256 MB
-  int sock_buf_size = 2048*1024*1024;
+  int sock_buf_size = 1024*1024*1024;
   syslog(LOG_INFO, "prepare: setting buffer size to %d", sock_buf_size);
   dada_udp_sock_set_buffer_size (ctx->log, ctx->sock->fd, ctx->verbose, sock_buf_size);
 
@@ -1000,6 +1000,8 @@ int main (int argc, char *argv[]) {
 
 	syslog(LOG_INFO, "Skipping some blocks...");
 
+	close(udpdb.sock->fd);
+
 	for (int i=0;i<skips;i++) {
 
 	  udpdb.packets->dropped += udpdb.packets_per_buffer;
@@ -1013,7 +1015,14 @@ int main (int argc, char *argv[]) {
 
 	}
 
-	dada_sock_clear_buffered_packets(udpdb.sock->fd, UDP_PAYLOAD);
+	// prepare the socket
+	syslog(LOG_INFO, "re-preparing the socket dsaX_udpdb_prepare()");
+	if (dsaX_udpdb_prepare (&udpdb) < 0)
+	  {
+	    syslog(LOG_ERR, "could allocate required resources (prepare)");
+	    return EXIT_FAILURE;
+	  }	
+	
 	unhappies_ct = 0;
 
       }
