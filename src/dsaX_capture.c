@@ -355,7 +355,7 @@ int udpdb_stop_function (udpdb_t* ctx)
  */
 void stats_thread(void * arg) {
 
-  // set affinity
+  /*  // set affinity
   const pthread_t pid = pthread_self();
   const int core_id = 4;
   cpu_set_t cpuset;
@@ -369,7 +369,7 @@ void stats_thread(void * arg) {
     syslog(LOG_ERR,"thread %d: getaffinity_np fail",core_id);
   if (CPU_ISSET(core_id, &cpuset))
     syslog(LOG_INFO,"thread %d: successfully set thread",core_id);
-
+  */
   
   udpdb_t * ctx = (udpdb_t *) arg;
   uint64_t b_rcv_total = 0;
@@ -782,7 +782,7 @@ int main (int argc, char *argv[]) {
   uint64_t seq_byte = 0; // offset of current packet in bytes from start of obs
   // for "saving" out of order packets near edges of blocks
   unsigned int temp_idx = 0;
-  unsigned int temp_max = 1000;
+  unsigned int temp_max = 5;
   char ** temp_buffers; //[temp_max][UDP_DATA];
   uint64_t * temp_seq_byte;
   temp_buffers = (char **)malloc(sizeof(char *)*temp_max);
@@ -869,22 +869,22 @@ int main (int argc, char *argv[]) {
 	  ant_id |= (unsigned char) (udpdb.sock->buf[7]);
 	  
 	  //act_seq_no = seq_no*NCHANG*NSNAPS/2 + ant_id*NCHANG/3 + (ch_id-CHOFF)/384; // actual seq no
-	  act_seq_no = seq_no*NCHANG*NSNAPS/2 + ant_id*NCHANG/3 + chgroup; // actual seq no
-	  block_seq_no = UTC_START*NCHANG*NSNAPS/2 + chgroup; // seq no corresponding to ant 0 and start of block
+	  act_seq_no = seq_no*NCHANG*NSNAPS/2 + ant_id*NCHANG/3; // actual seq no
+	  block_seq_no = UTC_START*NCHANG*NSNAPS/2; // seq no corresponding to ant 0 and start of block
 
 	  // check for starting or stopping condition, using continue
 	  //if (DEBUG) printf("%"PRIu64" %"PRIu64" %d\n",seq_no,act_seq_no,ch_id);//syslog(LOG_DEBUG, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
 	  //if (seq_no == UTC_START && UTC_START != 10000 && ant_id == 0) canWrite=1;
 	  if (canWrite==0) {
 	    if (seq_no >= UTC_START-50 && UTC_START != 10000) ct_snaps++;
+	    if (ct_snaps == NSNAPS) canWrite=1;
 	  }
-	  //if (seq_no > UTC_START && UTC_START != 10000) canWrite=1;
-	  if (ct_snaps == NSNAPS) canWrite=1;
+	  //if (seq_no > UTC_START && UTC_START != 10000) canWrite=1;	  
 	  udpdb.last_seq = seq_no;
 	  //syslog(LOG_INFO,"SEQ_NO_DBG %"PRIu64"",seq_no);
 	  if (act_seq_no * UDP_DATA >= udpdb.block_start_byte-1000*UDP_DATA) unhappy = 0; 
 	  if (canWrite == 0 || unhappy == 1) continue;
-	  if (seq_no == UTC_STOP) canWrite=0;
+	  //if (seq_no == UTC_STOP) canWrite=0;
 	  //if (udpdb.packets->received<100) syslog(LOG_INFO, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
 	  
 	  // if first packet
@@ -959,7 +959,7 @@ int main (int argc, char *argv[]) {
 		  udpdb.bytes->dropped += (dropped * UDP_DATA);
 		}
 
-	      if (dropped>500) unhappies_ct++;
+	      if (dropped>1000) unhappies_ct++;
 
 	      // get a new buffer and write any temp packets saved 
 	      if (dsaX_udpdb_new_buffer (&udpdb) < 0)
