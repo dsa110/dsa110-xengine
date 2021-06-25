@@ -41,7 +41,7 @@ control_thread: deals with control commands
 #include "dsaX_def.h"
 //#include "multilog.h"
 
-#define unhappies 10
+#define unhappies 50
 #define skips 4
 #define sleeps 1.0
 
@@ -160,7 +160,7 @@ int dsaX_udpdb_prepare (udpdb_t * ctx)
 
   
   // set the socket size to 256 MB
-  int sock_buf_size = 1024*1024*1024;
+  int sock_buf_size = 256*1024*1024;
   syslog(LOG_INFO, "prepare: setting buffer size to %d", sock_buf_size);
   dada_udp_sock_set_buffer_size (ctx->log, ctx->sock->fd, ctx->verbose, sock_buf_size);
 
@@ -173,9 +173,9 @@ int dsaX_udpdb_prepare (udpdb_t * ctx)
   size_t cleared = dada_sock_clear_buffered_packets(ctx->sock->fd, UDP_PAYLOAD);
 
   // setup the next_seq to the initial value
-  ctx->last_seq = 0;
-  ctx->last_byte = 0;
-  ctx->n_sleeps = 0;
+  //ctx->last_seq = 0;
+  //ctx->last_byte = 0;
+  //ctx->n_sleeps = 0;
 
   return 0;
 }
@@ -877,7 +877,7 @@ int main (int argc, char *argv[]) {
 	  //if (seq_no == UTC_START && UTC_START != 10000 && ant_id == 0) canWrite=1;
 	  if (canWrite==0) {
 	    if (seq_no >= UTC_START-50 && UTC_START != 10000) ct_snaps++;
-	    if (ct_snaps == NSNAPS) canWrite=1;
+	    if (ct_snaps >= 10) canWrite=1;
 	  }
 	  //if (seq_no > UTC_START && UTC_START != 10000) canWrite=1;	  
 	  udpdb.last_seq = seq_no;
