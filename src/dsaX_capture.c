@@ -41,7 +41,7 @@ control_thread: deals with control commands
 #include "dsaX_def.h"
 //#include "multilog.h"
 
-#define unhappies 50
+#define unhappies 30
 #define skips 6
 #define sleeps 1.5
 
