@@ -42,8 +42,8 @@ control_thread: deals with control commands
 //#include "multilog.h"
 
 #define unhappies 50
-#define skips 4
-#define sleeps 1.0
+#define skips 6
+#define sleeps 1.5
 
 /* global variables */
 int quit_threads = 0;
@@ -1014,6 +1014,8 @@ int main (int argc, char *argv[]) {
 	    }
 
 	}
+
+	sleep(sleeps);
 
 	// prepare the socket
 	syslog(LOG_INFO, "re-preparing the socket dsaX_udpdb_prepare()");
