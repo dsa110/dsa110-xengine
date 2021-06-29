@@ -74,7 +74,8 @@ typedef struct {
   uint64_t          block_start_byte;  // seq_byte of first byte for the block
   uint64_t          block_end_byte;    // seq_byte of first byte of final packet of the block
   uint64_t          block_count;       // number of packets in this block
-
+  char            * tblock;            // area of memory to write to
+  
   // packets
   unsigned          capture_started;      // flag for start of UDP data
   uint64_t          packets_per_buffer;   // number of UDP packets per datablock buffer
