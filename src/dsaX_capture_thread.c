@@ -776,7 +776,7 @@ void write_thread(void * arg) {
   {
 
     if (doWrite==1) {
-
+      
       memcpy(udpdb->block, udpdb->tblock + lWriteBlock*udpdb->hdu_bufsz, udpdb->hdu_bufsz);
       
       if (dsaX_udpdb_new_buffer (udpdb) < 0)
