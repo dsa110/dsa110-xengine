@@ -39,7 +39,6 @@ control_thread: deals with control commands
 #include "ascii_header.h"
 #include "dsaX_capture.h"
 #include "dsaX_def.h"
-//#include "multilog.h"
 
 /* global variables */
 int quit_threads = 0;
@@ -397,6 +396,10 @@ void stats_thread(void * arg) {
   float mb_rcv_ps = 0;
   float mb_drp_ps = 0;
 
+  syslog(LOG_INFO,"starting stats thread...");
+  sleep(2);
+  syslog(LOG_INFO,"started stats thread...");
+  
   while (!quit_threads)
   {
 
@@ -418,7 +421,7 @@ void stats_thread(void * arg) {
     mb_rcv_ps = (double) b_rcv_1sec / 1000000;
     mb_drp_ps = (double) b_drp_1sec / 1000000;
     gb_rcv_ps = b_rcv_1sec * 8;
-    gb_rcv_ps /= 1000000000;
+    gb_rcv_ps /= 1000000000;    
 
     /* determine how much memory is free in the receivers */
     syslog (LOG_NOTICE,"CAPSTATS %6.3f [Gb/s], D %4.1f [MB/s], D %"PRIu64" pkts, %"PRIu64"", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, ctx->last_seq);
@@ -1020,13 +1023,16 @@ int main (int argc, char *argv[]) {
      data are captured on iface:CAPTURE_PORT 
   */
 
+  printf("here\n");
+  
   
   // put information in udpdb struct
   udpdb.hdu = hdu_out;
   udpdb.port = CAPTURE_PORT;
   udpdb.interface = strdup(iface);
-  udpdb.hdu_bufsz = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
-  udpdb.tblock = (char *)malloc(sizeof(char)*udpdb.hdu_bufsz);
+  udpdb.hdu_bufsz = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);  
+  char * tblock = (char *)malloc(sizeof(char)*udpdb.hdu_bufsz);
+  udpdb.tblock = tblock;
   // determine number of packets per block, must 
   if (udpdb.hdu_bufsz % UDP_DATA != 0)
   {
@@ -1077,6 +1083,10 @@ int main (int argc, char *argv[]) {
   }
   syslog(LOG_NOTICE, "started write_thread()");  
 
+  while (!quit_threads) {
+    sleep(1);
+  }
+  
   // close threads
   syslog(LOG_INFO, "joining all threads");
   quit_threads = 1;
@@ -1086,7 +1096,7 @@ int main (int argc, char *argv[]) {
   pthread_join (recv_thread_id, &result);
   pthread_join (write_thread_id, &result);
   
-  free(udpdb.tblock);
+  free(tblock);
   
   dsaX_dbgpu_cleanup (hdu_out);
 
