@@ -50,7 +50,7 @@ char iP[100];
 int DEBUG = 0;
 int HISTOGRAM[16];
 int writeBlock = 0;
-int doWrite = 0;
+volatile int doWrite = 0;
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * out);
 int dada_bind_thread_to_core (int core);
@@ -276,7 +276,6 @@ int dsaX_udpdb_increment (udpdb_t * ctx)
   ctx->block_count = 0;
   if (writeBlock==0) writeBlock=1;
   else writeBlock=0;
-  doWrite=1;
 
 }
 
@@ -555,7 +554,7 @@ void recv_thread(void * arg) {
   uint64_t seq_byte = 0; // offset of current packet in bytes from start of obs
   // for "saving" out of order packets near edges of blocks
   unsigned int temp_idx = 0;
-  unsigned int temp_max = 5;
+  unsigned int temp_max = 1000;
   char ** temp_buffers; //[temp_max][UDP_DATA];
   uint64_t * temp_seq_byte;
   temp_buffers = (char **)malloc(sizeof(char *)*temp_max);
@@ -699,8 +698,8 @@ void recv_thread(void * arg) {
 		      "temp_idx=%d\n", seq_no, ant_id,  udpdb->block_count, 
 		      temp_idx);
 
-	      // increment counters
-	      dsaX_udpdb_increment(udpdb);
+	      // write block
+	      doWrite=1;
 	      
 	      uint64_t dropped = udpdb->packets_per_buffer - udpdb->block_count;
 	      if (dropped)
@@ -708,6 +707,9 @@ void recv_thread(void * arg) {
 		  udpdb->packets->dropped += dropped;
 		  udpdb->bytes->dropped += (dropped * UDP_DATA);
 		}
+
+	      // increment counters
+	      dsaX_udpdb_increment(udpdb);
 
 	      // write any temp packets saved
 
@@ -771,27 +773,29 @@ void write_thread(void * arg) {
   
   udpdb_t * udpdb = (udpdb_t *) arg;
   int lWriteBlock = 0;
-
+  int a;
+  
   while (!quit_threads)
   {
 
-    if (doWrite==1) {
-      
-      memcpy(udpdb->block, udpdb->tblock + lWriteBlock*udpdb->hdu_bufsz, udpdb->hdu_bufsz);
-      
-      if (dsaX_udpdb_new_buffer (udpdb) < 0)
-	{
-	  syslog(LOG_ERR, "receive_obs: dsaX_udpdb_new_buffer failed");
-	  return EXIT_FAILURE;
-	}
-
-      doWrite=0;
-      if (lWriteBlock==0) lWriteBlock=1;
-      else lWriteBlock=0;
-			    
-      
+    while (!doWrite) {
+      a=1;
     }
     
+    syslog(LOG_INFO,"writing block...");
+    
+    memcpy(udpdb->block, udpdb->tblock + lWriteBlock*udpdb->hdu_bufsz, udpdb->hdu_bufsz);
+    
+    if (dsaX_udpdb_new_buffer (udpdb) < 0)
+      {
+	syslog(LOG_ERR, "receive_obs: dsaX_udpdb_new_buffer failed");
+	return EXIT_FAILURE;
+      }
+    
+    doWrite=0;
+    if (lWriteBlock==0) lWriteBlock=1;
+    else lWriteBlock=0;
+     
   }
 
 }
