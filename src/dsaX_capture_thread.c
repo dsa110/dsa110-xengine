@@ -545,7 +545,7 @@ void recv_thread(void * arg) {
   uint64_t seq_no = 0;
   uint64_t ch_id = 0;
   uint64_t ant_id = 0;
-  unsigned char * b = (unsigned char *) udpdb.sock->buf;
+  unsigned char * b = (unsigned char *) udpdb->sock->buf;
   size_t got = 0; // data received from a recv_from call
   int errsv; // determine the sequence number boundaries for curr and next buffers
   int64_t byte_offset = 0; // offset of current packet in bytes from start of block
@@ -570,26 +570,26 @@ void recv_thread(void * arg) {
   while (!quit_threads)
     {
 
-      udpdb.sock->have_packet = 0; 
+      udpdb->sock->have_packet = 0; 
 
       // incredibly tight loop to try and get a packet
-      while (!udpdb.sock->have_packet)
+      while (!udpdb->sock->have_packet)
 	{
 	 
 	  // receive 1 packet into the socket buffer
-	  got = recvfrom ( udpdb.sock->fd, udpdb.sock->buf, UDP_PAYLOAD, 0, NULL, NULL );
+	  got = recvfrom ( udpdb->sock->fd, udpdb->sock->buf, UDP_PAYLOAD, 0, NULL, NULL );
 
 	  if (got == UDP_PAYLOAD) 
 	    {
-	      udpdb.sock->have_packet = 1;
+	      udpdb->sock->have_packet = 1;
 	    } 
 	  else if (got == -1) 
 	    {
 	      errsv = errno;
 	      if (errsv == EAGAIN) 
 		{
-		  udpdb.n_sleeps++;
-		  if (udpdb.capture_started)
+		  udpdb->n_sleeps++;
+		  if (udpdb->capture_started)
 		    timeouts++;
 		  if (timeouts > timeout_max)
 		    syslog(LOG_INFO, "timeouts[%"PRIu64"] > timeout_max[%"PRIu64"]\n",timeouts, timeout_max);		  
@@ -608,20 +608,20 @@ void recv_thread(void * arg) {
       timeouts = 0;
 
       // we have a valid packet within the timeout
-      if (udpdb.sock->have_packet) 
+      if (udpdb->sock->have_packet) 
 	{
 
 	  // decode packet header (64 bits)
 	  // 35 bits seq_no (for first spectrum in packet); 13 bits ch_id (for first channel in packet); 16 bits ant ID (for first antenna in packet)
 	  seq_no = 0;
-	  seq_no |=  (((uint64_t)(udpdb.sock->buf[4]) & 224) >> 5) & 7;
-	  seq_no |=  (((uint64_t)(udpdb.sock->buf[3])) << 3) & 2040;
-	  seq_no |=  (((uint64_t)(udpdb.sock->buf[2])) << 11) & 522240;
-	  seq_no |=  (((uint64_t)(udpdb.sock->buf[1])) << 19) & 133693440;
-	  seq_no |=  (((uint64_t)(udpdb.sock->buf[0])) << 27) & 34225520640;
+	  seq_no |=  (((uint64_t)(udpdb->sock->buf[4]) & 224) >> 5) & 7;
+	  seq_no |=  (((uint64_t)(udpdb->sock->buf[3])) << 3) & 2040;
+	  seq_no |=  (((uint64_t)(udpdb->sock->buf[2])) << 11) & 522240;
+	  seq_no |=  (((uint64_t)(udpdb->sock->buf[1])) << 19) & 133693440;
+	  seq_no |=  (((uint64_t)(udpdb->sock->buf[0])) << 27) & 34225520640;
 	  ant_id = 0;
-	  ant_id |= (unsigned char) (udpdb.sock->buf[6]) << 8;
-	  ant_id |= (unsigned char) (udpdb.sock->buf[7]);
+	  ant_id |= (unsigned char) (udpdb->sock->buf[6]) << 8;
+	  ant_id |= (unsigned char) (udpdb->sock->buf[7]);
 	  
 	  act_seq_no = seq_no*NCHANG*NSNAPS/2 + ant_id*NCHANG/3; // actual seq no
 	  block_seq_no = UTC_START*NCHANG*NSNAPS/2; // seq no corresponding to ant 0 and start of block
@@ -631,42 +631,42 @@ void recv_thread(void * arg) {
 	    if (seq_no >= UTC_START-50 && UTC_START != 10000) ct_snaps++;
 	    if (ct_snaps >= 10) canWrite=1;
 	  }
-	  udpdb.last_seq = seq_no;
+	  udpdb->last_seq = seq_no;
 	  if (canWrite == 0) continue;
 	  
 	  // if first packet
-	  if (!udpdb.capture_started)
+	  if (!udpdb->capture_started)
 	    {
-	      udpdb.block_start_byte = block_seq_no * UDP_DATA;
-	      udpdb.block_end_byte   = (udpdb.block_start_byte + udpdb.hdu_bufsz) - UDP_DATA;
-	      udpdb.capture_started = 1;
+	      udpdb->block_start_byte = block_seq_no * UDP_DATA;
+	      udpdb->block_end_byte   = (udpdb->block_start_byte + udpdb->hdu_bufsz) - UDP_DATA;
+	      udpdb->capture_started = 1;
 
-	      syslog (LOG_INFO, "receive_obs: START [%"PRIu64" - %"PRIu64"]", udpdb.block_start_byte, udpdb.block_end_byte);
+	      syslog (LOG_INFO, "receive_obs: START [%"PRIu64" - %"PRIu64"]", udpdb->block_start_byte, udpdb->block_end_byte);
 	    }
 
 	  // if capture running
-	  if (udpdb.capture_started)
+	  if (udpdb->capture_started)
 	    {
 	      seq_byte = (act_seq_no * UDP_DATA);	      
 
-	      udpdb.last_byte = seq_byte;
+	      udpdb->last_byte = seq_byte;
 	      
 	      // if packet arrived too late, ignore
-	      if (seq_byte < udpdb.block_start_byte)
+	      if (seq_byte < udpdb->block_start_byte)
 		{
-		  udpdb.packets->dropped++;
-		  udpdb.bytes->dropped += UDP_DATA;
+		  udpdb->packets->dropped++;
+		  udpdb->bytes->dropped += UDP_DATA;
 		}
 	      else
 		{
 		  // packet belongs in this block
-		  if (seq_byte <= udpdb.block_end_byte)
+		  if (seq_byte <= udpdb->block_end_byte)
 		    {
-		      byte_offset = seq_byte - udpdb.block_start_byte;
-		      memcpy (udpdb.tblock + byte_offset + writeBlock*udpdb.hdu_bufsz, udpdb.sock->buf + UDP_HEADER, UDP_DATA);
-		      udpdb.packets->received++;
-		      udpdb.bytes->received += UDP_DATA;
-		      udpdb.block_count++;
+		      byte_offset = seq_byte - udpdb->block_start_byte;
+		      memcpy (udpdb->tblock + byte_offset + writeBlock*udpdb->hdu_bufsz, udpdb->sock->buf + UDP_HEADER, UDP_DATA);
+		      udpdb->packets->received++;
+		      udpdb->bytes->received += UDP_DATA;
+		      udpdb->block_count++;
 		    }
 		  // packet belongs in subsequent block
 		  else
@@ -675,57 +675,57 @@ void recv_thread(void * arg) {
 		      if (temp_idx < temp_max)
 			{
 			  // save packet to temp buffer
-			  memcpy (temp_buffers[temp_idx], udpdb.sock->buf + UDP_HEADER, UDP_DATA);
+			  memcpy (temp_buffers[temp_idx], udpdb->sock->buf + UDP_HEADER, UDP_DATA);
 			  temp_seq_byte[temp_idx] = seq_byte;
 			  temp_idx++;
 			}
 		      else
 			{
-			  udpdb.packets->dropped++;
-			  udpdb.bytes->dropped += UDP_DATA;
+			  udpdb->packets->dropped++;
+			  udpdb->bytes->dropped += UDP_DATA;
 			}
 		    }
 		}
 	    }
 
 	  // now check for a full buffer or full temp queue
-	  if ((udpdb.block_count >= udpdb.packets_per_buffer) || (temp_idx >= temp_max))
+	  if ((udpdb->block_count >= udpdb->packets_per_buffer) || (temp_idx >= temp_max))
 	    {
 	      syslog (LOG_INFO, "BLOCK COMPLETE seq_no=%"PRIu64", "
 		      "ant_id=%"PRIu16", block_count=%"PRIu64", "
-		      "temp_idx=%d\n", seq_no, ant_id,  udpdb.block_count, 
+		      "temp_idx=%d\n", seq_no, ant_id,  udpdb->block_count, 
 		      temp_idx);
 
 	      // increment counters
-	      dsaX_udpdb_increment(&udpdb);
+	      dsaX_udpdb_increment(udpdb);
 	      
-	      uint64_t dropped = udpdb.packets_per_buffer - udpdb.block_count;
+	      uint64_t dropped = udpdb->packets_per_buffer - udpdb->block_count;
 	      if (dropped)
 		{
-		  udpdb.packets->dropped += dropped;
-		  udpdb.bytes->dropped += (dropped * UDP_DATA);
+		  udpdb->packets->dropped += dropped;
+		  udpdb->bytes->dropped += (dropped * UDP_DATA);
 		}
 
 	      // write any temp packets saved
 
-	      if (DEBUG) syslog(LOG_INFO, "block bytes: %"PRIu64" - %"PRIu64"\n", udpdb.block_start_byte, udpdb.block_end_byte);
+	      if (DEBUG) syslog(LOG_INFO, "block bytes: %"PRIu64" - %"PRIu64"\n", udpdb->block_start_byte, udpdb->block_end_byte);
   
 	      // include any futuristic packets we saved
 	      for (i=0; i < temp_idx; i++)
 		{
 		  seq_byte = temp_seq_byte[i];
-		  byte_offset = seq_byte - udpdb.block_start_byte;
-		  if (byte_offset < udpdb.hdu_bufsz)
+		  byte_offset = seq_byte - udpdb->block_start_byte;
+		  if (byte_offset < udpdb->hdu_bufsz)
 		    {
-		      memcpy (udpdb.tblock + byte_offset + writeBlock*udpdb.hdu_bufsz, temp_buffers[i], UDP_DATA);
-		      udpdb.block_count++;
-		      udpdb.packets->received++;
-		      udpdb.bytes->received += UDP_DATA;
+		      memcpy (udpdb->tblock + byte_offset + writeBlock*udpdb->hdu_bufsz, temp_buffers[i], UDP_DATA);
+		      udpdb->block_count++;
+		      udpdb->packets->received++;
+		      udpdb->bytes->received += UDP_DATA;
 		    }
 		  else
 		    {
-		      udpdb.packets->dropped++;
-		      udpdb.bytes->dropped += UDP_DATA;
+		      udpdb->packets->dropped++;
+		      udpdb->bytes->dropped += UDP_DATA;
 		    }
 		}
 	      temp_idx = 0;
@@ -734,7 +734,7 @@ void recv_thread(void * arg) {
 	}
 
       // packet has been inserted or saved by this point
-      udpdb.sock->have_packet = 0;
+      udpdb->sock->have_packet = 0;
       
 	
     }
@@ -767,20 +767,26 @@ void write_thread(void * arg) {
   
   
   udpdb_t * udpdb = (udpdb_t *) arg;
+  int lWriteBlock = 0;
 
   while (!quit_threads)
   {
 
     if (doWrite==1) {
 
-      memcpy(
-	     
-      if (dsaX_udpdb_new_buffer (&udpdb) < 0)
+      memcpy(udpdb->block, udpdb->tblock + lWriteBlock*udpdb->hdu_bufsz, udpdb->hdu_bufsz);
+      
+      if (dsaX_udpdb_new_buffer (udpdb) < 0)
 	{
 	  syslog(LOG_ERR, "receive_obs: dsaX_udpdb_new_buffer failed");
 	  return EXIT_FAILURE;
 	}
 
+      doWrite=0;
+      if (lWriteBlock==0) lWriteBlock=1;
+      else lWriteBlock=0;
+			    
+      
     }
     
   }
@@ -1069,13 +1075,7 @@ int main (int argc, char *argv[]) {
     syslog(LOG_INFO, "Error creating write_thread: %s", strerror(rval));
     return -1;
   }
-  syslog(LOG_NOTICE, "started write_thread()");
-
-
-  
-
-  /* END WHAT WAS IN RECV THREAD */
-  
+  syslog(LOG_NOTICE, "started write_thread()");  
 
   // close threads
   syslog(LOG_INFO, "joining all threads");
@@ -1085,10 +1085,7 @@ int main (int argc, char *argv[]) {
   pthread_join (stats_thread_id, &result);
   pthread_join (recv_thread_id, &result);
   pthread_join (write_thread_id, &result);
-
   
-  free(temp_seq_byte);
-  free(temp_buffers);
   free(udpdb.tblock);
   
   dsaX_dbgpu_cleanup (hdu_out);

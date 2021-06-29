@@ -109,6 +109,7 @@ int dsaX_udpdb_destroy_receiver (udpdb_t * ctx);
 int dsaX_udpdb_open_buffer (udpdb_t * ctx);
 int dsaX_udpdb_close_buffer (udpdb_t * ctx, uint64_t bytes_written, unsigned eod);
 int dsaX_udpdb_new_buffer (udpdb_t * ctx);
+int dsaX_udpdb_increment (udpdb_t * ctx);
 
 // allocate required resources for data capture
 int dsaX_udpdb_prepare (udpdb_t * ctx);

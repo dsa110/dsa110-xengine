@@ -72,6 +72,12 @@ dsaX_capture.o: dsaX_capture.c $(CDEPS1)
 dsaX_capture: dsaX_capture.o
 	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
 
+dsaX_capture_thread.o: dsaX_capture_thread.c $(CDEPS1)
+	$(CC) -c -o $@ $< $(CFLAGS1)
+
+dsaX_capture_thread: dsaX_capture_thread.o
+	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
+
 dsaX_split.o: dsaX_split.c $(CDEPS1)
 	$(CC) -c -o $@ $< $(CFLAGS1)
 
