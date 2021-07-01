@@ -41,7 +41,6 @@ using std::endl;
 
 /* global variables */
 int DEBUG = 0;
-int cores[8] = {32, 33, 34, 35, 36, 37, 38, 39};
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out);
 int dada_bind_thread_to_core (int core);
@@ -87,63 +86,6 @@ fprintf (stdout,
 	 " -h print usage\n");
 }
 
-
-// data to pass to threads
-struct data {
-  char * data;
-  int n_threads;
-  int thread_id;
-  int debug;
-  ipcio_t * ipc;
-  char * input;
-  int write;
-  uint64_t size;
-};
-
-/* thread for data massaging */
-void * massage(void *args) {
-
-  // basic stuff
-  struct data *d = (data *) args;
-  int thread_id = d->thread_id;
-  int dbg = d->debug;
-  char *data = (char *)d->data;
-  int nthreads = d->n_threads;
-  uint64_t size = d->size;
-  
-  // set affinity
-  const pthread_t pid = pthread_self();
-  const int core_id = cores[thread_id];
-  cpu_set_t cpuset;
-  CPU_ZERO(&cpuset);
-  CPU_SET(core_id, &cpuset);
-  const int set_result = pthread_setaffinity_np(pid, sizeof(cpu_set_t), &cpuset);
-  if (set_result != 0)
-    syslog(LOG_ERR,"thread %d: setaffinity_np fail",thread_id);
-  const int get_affinity = pthread_getaffinity_np(pid, sizeof(cpu_set_t), &cpuset);
-  if (get_affinity != 0)
-    syslog(LOG_ERR,"thread %d: getaffinity_np fail",thread_id);
-  if (CPU_ISSET(core_id, &cpuset))
-    if (DEBUG || dbg) syslog(LOG_DEBUG,"thread %d: successfully set thread",thread_id);
-
-  // do stuff
-
-  uint64_t buf_size = size/nthreads;
-  
-  // read into data
-  if (d->write==0) 
-    memcpy(data + thread_id*buf_size, d->input + thread_id*buf_size, buf_size);
-
-  // write to buffer
-  if (d->write==1) 
-    memcpy(d->ipc->curbuf + thread_id*buf_size, data + thread_id*buf_size, buf_size);
-  
-  /* return 0 */
-  int thread_result = 0;
-  pthread_exit((void *) &thread_result);
-  
-  
-}
 
 // MAIN
 
@@ -313,13 +255,6 @@ int main (int argc, char *argv[]) {
   output_buffer = (char *)malloc(sizeof(char)*block_out);
   uint64_t written, block_id;  
 
-  // threads
-  struct data args[16];
-  pthread_t threads[16];
-  pthread_attr_t attr;
-  pthread_attr_init(&attr);
-  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-  void* result=0;
   
   // set up xgpu
 
@@ -368,38 +303,8 @@ int main (int argc, char *argv[]) {
       
     // DO STUFF
 
-    // copy to xgpu input
-
-    // set up data structure
-    for (int i=0; i<nthreads; i++) {
-      args[i].data = (char *)(h_din);
-      args[i].n_threads = nthreads;
-      args[i].thread_id = i;
-      args[i].debug = 0;
-      args[i].input = block;
-      args[i].ipc = hdu_in->data_block;
-      args[i].write = 0;
-      args[i].size = block_size;
-    }
-
-    if (DEBUG) syslog(LOG_DEBUG,"creating %d threads",nthreads);
-
-    for(int i=0; i<nthreads; i++){
-      if (pthread_create(&threads[i], &attr, &massage, (void *)(&args[i]))) {
-	syslog(LOG_ERR,"Failed to create massage thread %d\n", i);
-      }
-    }
-
-    pthread_attr_destroy(&attr);
-    if (DEBUG) syslog(LOG_DEBUG,"threads kinda running");
-
-    for(int i=0; i<nthreads; i++){
-      pthread_join(threads[i], &result);
-      if (DEBUG) syslog(LOG_DEBUG,"joined thread %d",i);
-    }
-
     // do fluff
-    cudaMemcpy(d_din,h_din,context.array_len*sizeof(char),cudaMemcpyHostToDevice);
+    cudaMemcpy(d_din,block,context.array_len*sizeof(char),cudaMemcpyHostToDevice);
     promoter<<<6291456,32>>>(d_din,d_dout);
     cudaMemcpy((char *)(array_h),d_dout,2*context.array_len*sizeof(char),cudaMemcpyDeviceToHost);        
     
@@ -426,42 +331,14 @@ int main (int argc, char *argv[]) {
     
     // write to output
 
-    // set up write
-    hdu_out->data_block->curbuf = ipcbuf_get_next_write ((ipcbuf_t*)hdu_out->data_block);
-    hdu_out->data_block->marked_filled = 0;
-    
-    // set up data structure
-    for (int i=0; i<nthreads; i++) {
-      args[i].data = (char *)(cuda_matrix_h);
-      args[i].n_threads = nthreads;
-      args[i].thread_id = i;
-      args[i].debug = 0;
-      args[i].ipc = hdu_out->data_block;
-      args[i].write = 1;
-      args[i].size = block_out;
-    }
-
-    if (DEBUG) syslog(LOG_DEBUG,"creating %d threads",nthreads);
-
-    for(int i=0; i<nthreads; i++){
-      if (pthread_create(&threads[i], &attr, &massage, (void *)(&args[i]))) {
-	syslog(LOG_ERR,"Failed to create massage thread %d\n", i);
+    written = ipcio_write (hdu_out->data_block, (char *)(cuda_matrix_h), block_out);
+    if (written < block_out)
+      {
+	syslog(LOG_ERR, "main: failed to write all data to datablock [output]");
+	dsaX_dbgpu_cleanup (hdu_in, hdu_out);
+	return EXIT_FAILURE;
       }
-    }
-
-    pthread_attr_destroy(&attr);
-    if (DEBUG) syslog(LOG_DEBUG,"threads kinda running");
-
-    for(int i=0; i<nthreads; i++){
-      pthread_join(threads[i], &result);
-      if (DEBUG) syslog(LOG_DEBUG,"joined thread %d",i);
-    }
-
-    // finish write
-    ipcbuf_mark_filled ((ipcbuf_t*)hdu_out->data_block, block_out);
-    //ipcio_check_pending_sod (hdu_out->data_block);
-    hdu_out->data_block->marked_filled = 1;
-
+    
     // finish up
     if (bytes_read < block_size)
       observation_complete = 1;

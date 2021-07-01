@@ -522,7 +522,7 @@ void recv_thread(void * arg) {
 
   // set affinity
   const pthread_t pid = pthread_self();
-  const int core_id = 18;
+  const int core_id = 34;
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(core_id, &cpuset);
@@ -757,7 +757,7 @@ void write_thread(void * arg) {
 
   // set affinity
   const pthread_t pid = pthread_self();
-  const int core_id = 19;
+  const int core_id = 36;
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(core_id, &cpuset);
