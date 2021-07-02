@@ -50,7 +50,7 @@ char iP[100];
 int DEBUG = 0;
 int HISTOGRAM[16];
 int writeBlock = 0;
-const int nth = 4;
+const int nth = 8;
 int cores[8] = {30,31,32,33,34,35,36,37};
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 volatile int doWrite = 0;
@@ -648,7 +648,7 @@ void write_thread(void * arg) {
 
   // set affinity
   const pthread_t pid = pthread_self();
-  const int core_id = 36;
+  const int core_id = 39;
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(core_id, &cpuset);
