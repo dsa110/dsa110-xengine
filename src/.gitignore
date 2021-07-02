@@ -3,6 +3,7 @@ dsaX_beamformer
 dsaX_beamformer_offline	
 dsaX_capture
 dsaX_capture_thread
+dsaX_capture_manythread
 dsaX_dbnic
 dsaX_fake
 dsaX_filTrigger

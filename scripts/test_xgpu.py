@@ -28,7 +28,7 @@ if sys.argv[1]=='start':
     
     # start code    
     junk = 'dada_junkdb -t 1000 -k dada -r 1000 /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt'
-    reorder = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_xgpu -t 8 -i dada -o bada'
+    reorder = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_xgpu -t 8 -i dada -o bada -d'
     dbnull1 = 'dada_dbnull -k bada'
 
     

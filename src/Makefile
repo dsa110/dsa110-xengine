@@ -2,7 +2,8 @@
 
 CC=gcc
 CFLAGS1 = -g -O3 -Wall -pthread -march=native -I/usr/local/include -I/usr/local/include/src -I/usr/local/cfitsio-3.47/include/
-CDEPS1=dsaX_def.h dsaX_capture.h
+CDEPS1=dsaX_def.h dsaX_capture_manythreadh.
+CDEPS2=dsaX_def.h dsaX_capture.h
 LIBS = -L/usr/local/lib -lpsrdada -L/usr/lib/gcc/x86_64-linux-gnu/5 -lgfortran -L/usr/local/cuda/lib64 -lcudart -lm -L/usr/local/cfitsio-3.47/lib -lcfitsio -lsigproc -lxgpu
 
 CCU=/usr/local/cuda/bin/nvcc -D CUDA -ccbin=g++
@@ -66,16 +67,22 @@ dsaX_nicdb.o: dsaX_nicdb.c $(CDEPS1)
 dsaX_nicdb: dsaX_nicdb.o
 	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
 
-dsaX_capture.o: dsaX_capture.c $(CDEPS1)
+dsaX_capture.o: dsaX_capture.c $(CDEPS2)
 	$(CC) -c -o $@ $< $(CFLAGS1)
 
 dsaX_capture: dsaX_capture.o
 	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
 
-dsaX_capture_thread.o: dsaX_capture_thread.c $(CDEPS1)
+dsaX_capture_thread.o: dsaX_capture_thread.c $(CDEPS2)
 	$(CC) -c -o $@ $< $(CFLAGS1)
 
 dsaX_capture_thread: dsaX_capture_thread.o
+	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
+
+dsaX_capture_manythread.o: dsaX_capture_manythread.c $(CDEPS2)
+	$(CC) -c -o $@ $< $(CFLAGS1)
+
+dsaX_capture_manythread: dsaX_capture_manythread.o
 	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
 
 dsaX_split.o: dsaX_split.c $(CDEPS1)
@@ -160,7 +167,7 @@ dsaX_beamformer_offline: dsaX_beamformer_offline.cu
 clean:
 	rm -f *.o *~ dsaX_beamformer dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle fil2dada gpu_flagger dumpfil dsaX_simplesplit dsaX_store dsaX_trigger dsaX_beamformer_offline dsaX_splice dsaX_filTrigger
 
-all: dsaX_beamformer dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_capture_thread dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle fil2dada gpu_flagger dumpfil dsaX_simplesplit dsaX_store dsaX_trigger dsaX_filTrigger dsaX_beamformer_offline dsaX_splice dsaX_splitup
+all: dsaX_beamformer dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_capture_thread dsaX_capture_manythread dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle fil2dada gpu_flagger dumpfil dsaX_simplesplit dsaX_store dsaX_trigger dsaX_filTrigger dsaX_beamformer_offline dsaX_splice dsaX_splitup
 
 
 
