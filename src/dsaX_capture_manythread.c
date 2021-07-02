@@ -55,6 +55,10 @@ int cores[8] = {30,31,32,33,34,35,36,37};
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 volatile int doWrite = 0;
 volatile uint64_t last_seq = 0;
+volatile uint64_t block_count = 0;
+volatile uint64_t block_start_byte=0, block_end_byte=0;
+volatile  unsigned capture_started = 0;
+
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * out);
 int dada_bind_thread_to_core (int core);
@@ -263,9 +267,9 @@ void dsaX_udpdb_increment (udpdb_t * ctx)
   // increment buffer byte markers
   if (writeBlock==0) writeBlock=1;
   else writeBlock=0;
-  ctx->block_start_byte = ctx->block_end_byte + UDP_DATA;
-  ctx->block_end_byte = ctx->block_start_byte + ( ctx->packets_per_buffer - 1) * UDP_DATA;
-  ctx->block_count = 0;
+  block_start_byte = block_end_byte + UDP_DATA;
+  block_end_byte = block_start_byte + ( ctx->packets_per_buffer - 1) * UDP_DATA;
+  block_count = 0;
 
 }
 
@@ -435,6 +439,7 @@ void recv_thread(void * arg) {
   dsaX_sock_t * sock = dsaX_make_sock(udpdb);
   
   // DEFINITIONS
+  uint64_t tpack = 0;
   uint64_t act_seq_no = 0;
   uint64_t block_seq_no = 0;
   uint64_t seq_no = 0;
@@ -481,7 +486,7 @@ void recv_thread(void * arg) {
 	      errsv = errno;
 	      if (errsv == EAGAIN) 
 		{
-		  if (udpdb->capture_started)
+		  if (capture_started)
 		    timeouts++;
 		  if (timeouts > timeout_max)
 		    syslog(LOG_INFO, "timeouts[%"PRIu64"] > timeout_max[%"PRIu64"]\n",timeouts, timeout_max);		  
@@ -526,39 +531,43 @@ void recv_thread(void * arg) {
 	  
 	  // check for starting or stopping condition, using continue
 	  if (canWrite==0) {
-	    if (seq_no >= UTC_START-50 && UTC_START != 10000) ct_snaps++;
-	    if (ct_snaps >= 10) canWrite=1;
-	  }	  
+	    if (seq_no >= UTC_START-50 && UTC_START != 10000) {
+	      canWrite=1;	      
+	    }
+	  }
 	  if (canWrite == 0) continue;
 
 	  // threadsafe start of capture
 	  pthread_mutex_lock(&mutex);
-	  if (!(*udpdb->capture_started))
+	  if (!(capture_started))
 	    {
-	      *udpdb->block_start_byte = block_seq_no * UDP_DATA;
-	      *udpdb->block_end_byte   = (*udpdb->block_start_byte + udpdb->hdu_bufsz) - UDP_DATA;
-	      *udpdb->capture_started = 1;
+	      block_start_byte = block_seq_no * UDP_DATA;
+	      block_end_byte   = (block_start_byte + udpdb->hdu_bufsz) - UDP_DATA;
+	      capture_started = 1;
 
-	      syslog (LOG_INFO, "receive_obs: START [%"PRIu64" - %"PRIu64"]", *udpdb->block_start_byte, *udpdb->block_end_byte);
+	      syslog (LOG_INFO, "receive_obs: START [%"PRIu64" - %"PRIu64"]", block_start_byte, block_end_byte);
 	    }
 	  pthread_mutex_unlock(&mutex);
-	  
+
 	  // if capture running
-	  if (udpdb->capture_started)
+	  if (capture_started)
 	    {
-	      seq_byte = (act_seq_no * UDP_DATA);	      
+	      seq_byte = (act_seq_no * UDP_DATA);
+	      tpack++;
 	      
 	      // packet belongs in this block
-	      if ((seq_byte <= *udpdb->block_end_byte) && (seq_byte >= *udpdb->block_start_byte))
+	      if ((seq_byte <= block_end_byte) && (seq_byte >= block_start_byte))
 		{
-		  byte_offset = seq_byte - (*udpdb->block_start_byte);
+		  byte_offset = seq_byte - (block_start_byte);
 		  memcpy (udpdb->tblock + byte_offset + writeBlock*udpdb->hdu_bufsz, sock->buf + UDP_HEADER, UDP_DATA);		  
 		  pthread_mutex_lock(&mutex);		  
-		  *udpdb->block_count++;
-		  pthread_mutex_unlock(&mutex);		  
+		  block_count++;
+		  //syslog(LOG_INFO,"block count %"PRIu64"",block_count);
+		  pthread_mutex_unlock(&mutex);
+		  
 		}
 	      // packet belongs in subsequent block
-	      else if (seq_byte > *udpdb->block_end_byte)
+	      else if (seq_byte > block_end_byte)
 		{
 		      
 		  if (temp_idx < temp_max)
@@ -573,19 +582,19 @@ void recv_thread(void * arg) {
 	  
 	  // threadsafe end of block
 	  pthread_mutex_lock(&mutex);
-	  if ((*udpdb->block_count >= udpdb->packets_per_buffer) || (temp_idx >= temp_max))
+	  if ((block_count >= udpdb->packets_per_buffer) || (temp_idx >= temp_max))
 	    {
 	      syslog (LOG_INFO, "BLOCK COMPLETE seq_no=%"PRIu64", "
 		      "ant_id=%"PRIu16", block_count=%"PRIu64", "
-		      "temp_idx=%d\n", seq_no, ant_id,  *udpdb->block_count, 
+		      "temp_idx=%d\n", seq_no, ant_id,  block_count, 
 		      temp_idx);
 
 	      // write block
 	      doWrite=1;
 	      
-	      uint64_t dropped = udpdb->packets_per_buffer - (*udpdb->block_count);
-	      udpdb->packets->received += (*udpdb->block_count);
-	      udpdb->bytes->received += (*udpdb->block_count) * UDP_DATA;	      
+	      uint64_t dropped = udpdb->packets_per_buffer - (block_count);
+	      udpdb->packets->received += (block_count);
+	      udpdb->bytes->received += (block_count) * UDP_DATA;	      
 	      if (dropped)
 		{
 		  udpdb->packets->dropped += dropped;
@@ -593,23 +602,26 @@ void recv_thread(void * arg) {
 		}
 
 	      // increment counters
-	      dsaX_udpdb_increment(udpdb);
+	      dsaX_udpdb_increment(udpdb);	      	
 	      
 	    }
 	  pthread_mutex_unlock(&mutex);
 
 	  // at this stage, can try and write temp queue safely
-	  if (temp_seq_byte[0] >= *udpdb->block_start_byte)
+	  if (temp_seq_byte[0] >= block_start_byte && temp_seq_byte[0] <= block_end_byte && temp_idx > 0)
 	    {
+	      syslog(LOG_INFO,"thread %d: packets in this block %"PRIu64", temp_idx %d",thread_id,tpack,temp_idx);
+	      tpack = 0;
+	
 	      for (i=0; i < temp_idx; i++)
 		{
 		  seq_byte = temp_seq_byte[i];
-		  byte_offset = seq_byte - (*udpdb->block_start_byte);
+		  byte_offset = seq_byte - (block_start_byte);
 		  if (byte_offset < udpdb->hdu_bufsz && byte_offset >= 0)
 		    {
 		      memcpy (udpdb->tblock + byte_offset + writeBlock*udpdb->hdu_bufsz, temp_buffers[i], UDP_DATA);
 		      pthread_mutex_lock(&mutex);
-		      *udpdb->block_count++;
+		      block_count++;		      
 		      pthread_mutex_unlock(&mutex);
 		    }
 		}
@@ -686,7 +698,7 @@ int main (int argc, char *argv[]) {
 
   // startup syslog message
   // using LOG_LOCAL0
-  openlog ("dsaX_capture_thread", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
+  openlog ("dsaX_capture_manythread", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
   syslog (LOG_NOTICE, "Program started by User %d", getuid ());
   
   /* DADA Header plus Data Unit for writing */
@@ -888,8 +900,6 @@ int main (int argc, char *argv[]) {
   stats_t * bytes = init_stats_t();
   reset_stats_t(packets);
   reset_stats_t(bytes);
-  uint64_t block_start_byte=0, block_end_byte=0, block_count=0;
-  unsigned capture_started;
 
   // initialise stats struct
   stats.packets = packets;
@@ -906,10 +916,6 @@ int main (int argc, char *argv[]) {
   for (int i=0;i<nth;i++) {
 
     // shared stuff
-    udpdb[i].block_count = &block_count;
-    udpdb[i].capture_started = &capture_started;
-    udpdb[i].block_start_byte = &block_start_byte;
-    udpdb[i].block_end_byte = &block_end_byte;
     udpdb[i].packets = packets;
     udpdb[i].bytes = bytes;
     udpdb[i].tblock = tblock;
