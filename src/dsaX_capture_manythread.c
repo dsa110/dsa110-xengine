@@ -54,6 +54,7 @@ const int nth = 4;
 int cores[8] = {30,31,32,33,34,35,36,37};
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 volatile int doWrite = 0;
+volatile uint64_t last_seq = 0;
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * out);
 int dada_bind_thread_to_core (int core);
@@ -322,7 +323,7 @@ void stats_thread(void * arg) {
     gb_rcv_ps /= 1000000000;    
 
     /* determine how much memory is free in the receivers */
-    syslog (LOG_NOTICE,"CAPSTATS %6.3f [Gb/s], D %4.1f [MB/s], D %"PRIu64" pkts, %"PRIu64"", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, ctx->last_seq);
+    syslog (LOG_NOTICE,"CAPSTATS %6.3f [Gb/s], D %4.1f [MB/s], D %"PRIu64" pkts, %"PRIu64"", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, last_seq);
 
     sleep(1);
   }
@@ -519,7 +520,8 @@ void recv_thread(void * arg) {
 
 	  // set shared last_seq
 	  pthread_mutex_lock(&mutex);
-	  *udpdb->last_seq = seq_no;
+	  last_seq = seq_no;
+	  //syslog(LOG_INFO,"last_seq %"PRIu64"",last_seq);
 	  pthread_mutex_unlock(&mutex);
 	  
 	  // check for starting or stopping condition, using continue
@@ -886,13 +888,12 @@ int main (int argc, char *argv[]) {
   stats_t * bytes = init_stats_t();
   reset_stats_t(packets);
   reset_stats_t(bytes);
-  uint64_t last_seq=0, block_start_byte=0, block_end_byte=0, block_count=0;
+  uint64_t block_start_byte=0, block_end_byte=0, block_count=0;
   unsigned capture_started;
 
   // initialise stats struct
   stats.packets = packets;
   stats.bytes = bytes;
-  stats.last_seq = &last_seq;
 
   // initialise writey struct and open buffer
   writey.hdu = hdu_out;
@@ -907,7 +908,6 @@ int main (int argc, char *argv[]) {
     // shared stuff
     udpdb[i].block_count = &block_count;
     udpdb[i].capture_started = &capture_started;
-    udpdb[i].last_seq = &last_seq;
     udpdb[i].block_start_byte = &block_start_byte;
     udpdb[i].block_end_byte = &block_end_byte;
     udpdb[i].packets = packets;
