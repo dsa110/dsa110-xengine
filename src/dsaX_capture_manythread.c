@@ -584,9 +584,9 @@ void recv_thread(void * arg) {
 	  pthread_mutex_lock(&mutex);
 	  if ((block_count >= udpdb->packets_per_buffer) || (temp_idx >= temp_max))
 	    {
-	      syslog (LOG_INFO, "BLOCK COMPLETE seq_no=%"PRIu64", "
+	      syslog (LOG_INFO, "BLOCK COMPLETE thread_id=%d, seq_no=%"PRIu64", "
 		      "ant_id=%"PRIu16", block_count=%"PRIu64", "
-		      "temp_idx=%d\n", seq_no, ant_id,  block_count, 
+		      "temp_idx=%d\n", thread_id, seq_no, ant_id,  block_count, 
 		      temp_idx);
 
 	      // write block
@@ -603,11 +603,29 @@ void recv_thread(void * arg) {
 
 	      // increment counters
 	      dsaX_udpdb_increment(udpdb);	      	
-	      
+
+	      // write temp queue for this thread
+	      syslog(LOG_INFO,"thread %d: packets in this block %"PRIu64", temp_idx %d",thread_id,tpack,temp_idx);
+	      tpack = 0;
+	
+	      for (i=0; i < temp_idx; i++)
+		{
+		  seq_byte = temp_seq_byte[i];
+		  byte_offset = seq_byte - (block_start_byte);
+		  if (byte_offset < udpdb->hdu_bufsz && byte_offset >= 0)
+		    {
+		      memcpy (udpdb->tblock + byte_offset + writeBlock*udpdb->hdu_bufsz, temp_buffers[i], UDP_DATA);
+		      //pthread_mutex_lock(&mutex);
+		      block_count++;		      
+		      //pthread_mutex_unlock(&mutex);
+		    }
+		}
+	      temp_idx = 0;
+       
 	    }
 	  pthread_mutex_unlock(&mutex);
 
-	  // at this stage, can try and write temp queue safely
+	  // at this stage, can try and write temp queue safely for other threads
 	  if (temp_seq_byte[0] >= block_start_byte && temp_seq_byte[0] <= block_end_byte && temp_idx > 0)
 	    {
 	      syslog(LOG_INFO,"thread %d: packets in this block %"PRIu64", temp_idx %d",thread_id,tpack,temp_idx);
@@ -626,6 +644,7 @@ void recv_thread(void * arg) {
 		    }
 		}
 	      temp_idx = 0;
+
 	    }
 
 	}
