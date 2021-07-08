@@ -118,7 +118,7 @@ def ld_run(args):
                         with open('/home/ubuntu/data/dumps.dat', 'r') as dumpsf:
                             for line in dumpsf:
                                 if re.search(cur_specnum, line):
-                                    actual_specnum = line.split()[4]
+                                    actual_specnum = int(line.split()[4])
                                     json_dictionary = dict({
                                         cur_specnum: {
                                             "mjds": get_mjd(
