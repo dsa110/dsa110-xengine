@@ -18,12 +18,35 @@ import socket
 import numpy as np
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
+import dsacalib.constants as ct
 my_log = dsl.DsaSyslogger()
 my_log.subsystem('correlator')
 my_log.app('look_after_dumps.py')
 from astropy.time import Time
 from os import path
 import re
+
+def get_mjd(armed_mjd, utc_start, specnum):
+    """Get the start mjd of a voltage dump.
+
+    Parameters
+    ----------
+    armed_mjd : float
+        The time at which the snaps were armed, in mjd.
+    utc_start : int
+        The spectrum number at which the correlator was started.
+    specnum : int
+        The spectrum number of the first spectrum in the voltage dump,
+        referenced to when the correlator was started.
+
+    Returns
+    -------
+    tstart : float
+        The start time of the voltage dump in mjd.
+    """
+    tstart = (armed_mjd+utc_start*4*8.192e-6/86400+
+              (1/(250e6/8192/2)*specnum/ct.SECONDS_PER_DAY))
+    return tstart
 
         
 # watch callback function for commands
@@ -89,8 +112,33 @@ def ld_run(args):
                     sleep(1)
 
                 else:
-                
-                    # simply copy associated json file, and copy llf file
+                    jsonfile = '/home/ubuntu/data/{0}.json'.format(cur_specnum)
+                    if not path.exists(jsonfile):
+                        # create a dummy json file
+                        with open('/home/ubuntu/data/dumps.dat', 'r') as dumpsf:
+                            for line in dumpsf:
+                                if re.search(cur_specnum, line):
+                                    actual_specnum = line.split()[4]
+                                    json_dictionary = dict({
+                                        cur_specnum: {
+                                            "mjds": get_mjd(
+                                                float(my_ds.get_dict('/mon/snap/1')['armed_mjd']),
+                                                int(my_ds.get_dict('/mon/snap/1/utc_start')['utc_start']),
+                                                actual_specnum
+                                                ),
+                                            "specnum": actual_specnum,
+                                            "snr": 0,
+                                            "ibox": 0,
+                                            "dm": 0.,
+                                            "ibeam": 0,
+                                            "cntb": 0,
+                                            "cntc": 0
+                                        }
+                                    })
+                                    with open(jsonfile, 'w') as jsonfhandler:
+                                        json.dump(json_dictionary, jsonfhandler)
+                                    break
+                        # simply copy associated json file, and copy llf file
                     os.system("cp /home/ubuntu/data/"+str(cur_specnum)+".json "+llf+"."+str(cur_specnum)+".json")
                     os.system("mv "+llf+" "+llf+"."+str(cur_specnum))
 
