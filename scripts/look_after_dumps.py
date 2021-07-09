@@ -118,23 +118,27 @@ def ld_run(args):
                         with open('/home/ubuntu/data/dumps.dat', 'r') as dumpsf:
                             for line in dumpsf:
                                 if re.search(cur_specnum, line):
-                                    actual_specnum = int(line.split()[4])
-                                    json_dictionary = dict({
-                                        cur_specnum: {
-                                            "mjds": get_mjd(
-                                                float(my_ds.get_dict('/mon/snap/1')['armed_mjd']),
-                                                int(my_ds.get_dict('/mon/snap/1/utc_start')['utc_start']),
-                                                actual_specnum
+                                    try:
+                                        actual_specnum = int(line.split()[4])
+                                    except IndexError:
+                                        my_log.error('No json file exists or can be created for {0}'.format(cur_specnum))
+                                    else:
+                                        json_dictionary = dict({
+                                            cur_specnum: {
+                                                "mjds": get_mjd(
+                                                    float(my_ds.get_dict('/mon/snap/1')['armed_mjd']),
+                                                    int(my_ds.get_dict('/mon/snap/1/utc_start')['utc_start']),
+                                                    actual_specnum
                                                 ),
-                                            "specnum": actual_specnum,
-                                            "snr": 0,
-                                            "ibox": 0,
+                                                "specnum": actual_specnum,
+                                                "snr": 0,
+                                                "ibox": 0,
                                             "dm": 0.,
-                                            "ibeam": 0,
-                                            "cntb": 0,
-                                            "cntc": 0
-                                        }
-                                    })
+                                                "ibeam": 0,
+                                                "cntb": 0,
+                                                "cntc": 0
+                                            }
+                                        })
                                     with open(jsonfile, 'w') as jsonfhandler:
                                         json.dump(json_dictionary, jsonfhandler)
                                     break
