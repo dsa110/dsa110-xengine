@@ -226,7 +226,13 @@ def process(params, cmd, val, my_ds):
 
         # deal with buffers
         for buff in params['buffers']:
-            cmdstr = 'dada_db -k '+str(buff['k'])+' -b '+str(buff['b'])+' -n '+str(buff['n'])+' -c '+str(buff['c'])+' -l -p'
+            ks = buff.keys()
+            cmdstr = 'dada_db -k '+str(buff['k'])+' -b '+str(buff['b'])+' -n '+str(buff['n'])+' -l -p'
+            if 'c' in ks:
+                cmdstr = cmdstr + ' -c '+str(buff['c'])
+            if 'r' in ks:
+                cmdstr = cmdstr + ' -r '+str(buff['r'])
+
             my_log.debug('running: '+cmdstr)
             os.system(cmdstr)
             sleep(0.5)
