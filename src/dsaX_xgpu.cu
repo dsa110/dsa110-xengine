@@ -80,7 +80,6 @@ fprintf (stdout,
 	 "dsaX_xgpu [options]\n"
 	 " -c core   bind process to CPU core [no default]\n"
 	 " -d send debug messages to syslog\n"
-	 " -t number of threads for reading and writing [default 1]\n"
 	 " -i in_key [default REORDER_BLOCK_KEY]\n"
 	 " -o out_key [default XGPU_BLOCK_KEY]\n"
 	 " -h print usage\n");
@@ -107,9 +106,8 @@ int main (int argc, char *argv[]) {
   // command line arguments
   int core = -1;
   int arg = 0;
-  int nthreads = 1;
   
-  while ((arg=getopt(argc,argv,"c:t:i:o:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:i:o:dh")) != -1)
     {
       switch (arg)
 	{
@@ -155,18 +153,6 @@ int main (int argc, char *argv[]) {
 	      usage();
 	      return EXIT_FAILURE;
 	    }
-	case 't':
-	  if (optarg)
-	    {
-	      nthreads = atoi(optarg);
-	      break;
-	    }
-	  else
-	    {
-	      syslog(LOG_ERR,"-t flag requires argument");
-	      usage();
-	      return EXIT_FAILURE;
-	    }	  
 	case 'd':
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
@@ -306,10 +292,11 @@ int main (int argc, char *argv[]) {
     // do fluff
     cudaMemcpy(d_din,block,context.array_len*sizeof(char),cudaMemcpyHostToDevice);
     promoter<<<6291456,32>>>(d_din,d_dout);
-    cudaMemcpy((char *)(array_h),d_dout,2*context.array_len*sizeof(char),cudaMemcpyDeviceToHost);        
+    //cudaMemcpy((char *)(array_h),d_dout,2*context.array_len*sizeof(char),cudaMemcpyDeviceToHost);        
+    cudaDeviceSynchronize();
     
     // run xgpu
-    xgpu_error = xgpuCudaXengine(&context, syncOp);
+    xgpu_error = xgpuCudaXengine(&context, (ComplexInput *)d_dout, syncOp);
     if(xgpu_error) {
       syslog(LOG_ERR, "xGPU error %d\n", xgpu_error);
       return EXIT_FAILURE;

@@ -21,14 +21,14 @@ if sys.argv[1]=='start':
     # create buffers - check dsaX_def for correct block sizes
 
     # CAPTURE
-    os.system('dada_db -k dada -b 201326592 -l -p -c 0 -n 8') # 2048 packets
+    os.system('dada_db -k dada -b 201326592 -l -p -c 0 -n 20') # 2048 packets
     # REORDER
     os.system('dada_db -k bada -b 51118080 -l -p -c 0 -n 8') # 2048 packets
 
     
     # start code    
-    junk = 'dada_junkdb -t 1000 -k dada -r 1000 /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt'
-    reorder = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_xgpu -t 8 -i dada -o bada -d'
+    junk = 'dada_junkdb -t 1000 -k dada -r 1600 /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt'
+    reorder = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_xgpu -i dada -o bada -d -c 6'
     dbnull1 = 'dada_dbnull -k bada'
 
     

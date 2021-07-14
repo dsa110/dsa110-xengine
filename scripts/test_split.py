@@ -8,6 +8,9 @@ if sys.argv[1]=='stop':
 
     output0 = subprocess.Popen('killall -q dsaX_split',shell=True)
     subprocess.Popen.wait(output0)
+
+    output0 = subprocess.Popen('killall -q dsaX_splitup',shell=True)
+    subprocess.Popen.wait(output0)
     
     output0 = subprocess.Popen('killall -q dada_junkdb',shell=True)
     subprocess.Popen.wait(output0)
@@ -16,6 +19,7 @@ if sys.argv[1]=='stop':
     os.system('dada_db -k dada -d')
     os.system('dada_db -k abda -d')
     os.system('dada_db -k bada -d')
+    os.system('dada_db -k cada -d')
     
 if sys.argv[1]=='start':
 
@@ -24,14 +28,17 @@ if sys.argv[1]=='start':
     # TEST DATA
     os.system('dada_db -k abda -b 198180864 -l -p -c 0 -n 4') # 2048 packets
     # CAPTURE
-    os.system('dada_db -k dada -b 198180864 -l -p -c 0 -n 8') # 2048 packets
+    os.system('dada_db -k cada -b 198180864 -l -p -c 0 -n 8') # 2048 packets
     # REORDER
-    os.system('dada_db -k bada -b 198180864 -l -p -c 0 -n 8') # 2048 packets
+    os.system('dada_db -k bada -b 198180864 -l -p -c 0 -n 30') # 2048 packets
+    # first
+    os.system('dada_db -k dada -b 1585446912 -l -p -c 0 -n 4') # 2048 packets
 
     
     # start code    
     junk = 'dada_junkdb -t 1000 -k dada -r 1500 /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/correlator_header_dsaX.txt'
-    reorder = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_split -c 19 -b -m -i dada -o abda -j bada'
+    splitup = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_splitup -i dada -o cada'
+    reorder = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dsaX_split -c 19 -b -m -i cada -o abda -j bada'
     dbnull1 = 'dada_dbnull -k abda'
     dbnull2 = 'dada_dbnull -k bada'
 
@@ -49,6 +56,11 @@ if sys.argv[1]=='start':
     print('Starting reorder')
     reorder_log = open('/home/ubuntu/tmp/reorder.log','w')
     reorder_proc = subprocess.Popen(reorder, shell = True, stdout=reorder_log, stderr=reorder_log)
+    sleep(0.1)
+
+    print('Starting splitup')
+    reorder_log = open('/home/ubuntu/tmp/reorder.log','w')
+    reorder_proc = subprocess.Popen(splitup, shell = True, stdout=reorder_log, stderr=reorder_log)
     sleep(0.1)
     
     print('Starting capture')

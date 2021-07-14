@@ -466,7 +466,7 @@ int main (int argc, char *argv[]) {
       }
 
       // update current spec
-      if (DEBUG) syslog(LOG_INFO,"current_specnum %llu",current_specnum);
+      syslog(LOG_INFO,"current_specnum %llu",current_specnum);
       current_specnum += specs_per_block;
       
 
