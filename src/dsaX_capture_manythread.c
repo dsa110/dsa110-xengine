@@ -605,7 +605,7 @@ void recv_thread(void * arg) {
 	      dsaX_udpdb_increment(udpdb);	      	
 
 	      // write temp queue for this thread
-	      syslog(LOG_INFO,"thread %d: packets in this block %"PRIu64", temp_idx %d",thread_id,tpack,temp_idx);
+	      //syslog(LOG_INFO,"thread %d: packets in this block %"PRIu64", temp_idx %d",thread_id,tpack,temp_idx);
 	      tpack = 0;
 	
 	      for (i=0; i < temp_idx; i++)
@@ -628,7 +628,7 @@ void recv_thread(void * arg) {
 	  // at this stage, can try and write temp queue safely for other threads
 	  if (temp_seq_byte[0] >= block_start_byte && temp_seq_byte[0] <= block_end_byte && temp_idx > 0)
 	    {
-	      syslog(LOG_INFO,"thread %d: packets in this block %"PRIu64", temp_idx %d",thread_id,tpack,temp_idx);
+	      //syslog(LOG_INFO,"thread %d: packets in this block %"PRIu64", temp_idx %d",thread_id,tpack,temp_idx);
 	      tpack = 0;
 	
 	      for (i=0; i < temp_idx; i++)
