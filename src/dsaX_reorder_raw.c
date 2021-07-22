@@ -149,7 +149,7 @@ void * massage(void *args) {
   // let's do it!
   int in_idx, out_idx, a1, a2, a3, a4, a5, a6;
   int in_offset = idx*(NPACKETS/nthreads)*NANTS*(384*2)*2;
-  int out_offset = idx*(NPACKETS/nthreads)*(384*2)*na*2*2;
+  int out_offset = idx*(NPACKETS/nthreads)*(384*2)*na*2;
   for (int i=0;i<(NPACKETS/nthreads);i++) {
     a1 = i*NANTS*1536;
     a2 = i*na*1536;
