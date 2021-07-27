@@ -69,9 +69,11 @@ __global__ void promoter(char *input, char *output) {
   int idx = blockIdx.x*32 + threadIdx.x;
   char v = input[idx];
   
-  output[2*idx] = ((v<<4) & 240) >> 4;
-  output[2*idx+1] = v >> 4;
-
+  //output[2*idx] = ((v<<4) & 240) >> 4;
+  //output[2*idx+1] = v >> 4;
+  output[2*idx] = (char)(((unsigned char)(v) & (unsigned char)(15)) << 4) >> 4;
+  output[2*idx+1] = (char)(((unsigned char)(v) & (unsigned char)(240))) >> 4;
+  
 }
 
 void usage()
