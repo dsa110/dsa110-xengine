@@ -488,12 +488,12 @@ void recv_thread(void * arg) {
 		{
 		  if (capture_started)
 		    timeouts++;
-		  if (timeouts > timeout_max)
-		    syslog(LOG_INFO, "timeouts[%"PRIu64"] > timeout_max[%"PRIu64"]\n",timeouts, timeout_max);		  
+		  //if (timeouts > timeout_max)
+		  //syslog(LOG_INFO, "timeouts[%"PRIu64"] > timeout_max[%"PRIu64"]\n",timeouts, timeout_max);		  
 		}
 	      else 
 		{
-		  syslog (LOG_ERR, "receive_obs: recvfrom failed %s", strerror(errsv));
+		  //syslog (LOG_ERR, "receive_obs: recvfrom failed %s", strerror(errsv));
 		  return EXIT_FAILURE;
 		}
 	    } 
