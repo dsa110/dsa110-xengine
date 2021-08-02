@@ -676,9 +676,10 @@ int main(int argc, char**argv)
     in_data = (unsigned char *)(cin_data);
 
     // deal with bm0
-    memcpy(h_data+NTIMES_P*NCHAN_P,in_data+NTIMES_P*NCHAN_P,(NBEAMS_P-1)*NTIMES_P*NCHAN_P);
+    /*memcpy(h_data+NTIMES_P*NCHAN_P,in_data+NTIMES_P*NCHAN_P,(NBEAMS_P-1)*NTIMES_P*NCHAN_P);
     memcpy(h_bm0,in_data,NTIMES_P*NCHAN_P);
-    memcpy(h_data,h_data+NTIMES_P*NCHAN_P,NTIMES_P*NCHAN_P);
+    memcpy(h_data,h_data+NTIMES_P*NCHAN_P,NTIMES_P*NCHAN_P);*/
+    
 
     if (DEBUG) syslog(LOG_INFO,"read block");
 
@@ -745,7 +746,7 @@ int main(int argc, char**argv)
     cudaMemcpy(h_data, d_data, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyDeviceToHost);
 
     // deal with bm0
-    memcpy(h_data,h_bm0,NTIMES_P*NCHAN_P);
+    //memcpy(h_data,h_bm0,NTIMES_P*NCHAN_P);
     
     // close block after reading
     ipcio_close_block_read (hdu_in->data_block, bytes_read);
