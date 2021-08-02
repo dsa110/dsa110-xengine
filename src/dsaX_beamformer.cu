@@ -419,6 +419,24 @@ void calc_bp(float *data, float *bp, int pr) {
 
 }
 
+// for finding median of bandpass
+
+int cmpfunc(const void* elem1, const void* elem2)
+{
+  if(*(const float*)elem1 < *(const float*)elem2)
+    return -1;
+  return *(const float*)elem1 > *(const float*)elem2;
+}
+
+void ret_med_bp(float *bp) {
+
+  qsort(bp, 256, sizeof(float), cmpfunc);
+  float medval = 0.5*(bp[127]+bp[128]);
+  for (int i=0;i<256;i++)
+    bp[i] = medval;  
+
+}
+
 // performs cpu reorder of block to be loaded to GPU
 void reorder_block(char * block) {
 
@@ -916,6 +934,7 @@ int main (int argc, char *argv[]) {
 	  //if (st==0 && bst==0) 
 	  //calc_bp(h_transfer,bp,1);
 	  calc_bp(h_transfer + st*256*96*16,bp,0);
+	  ret_med_bp(bp);
 
 	}
       }
