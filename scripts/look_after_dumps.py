@@ -36,7 +36,8 @@ def cb_func(my_ds):
         my_log.function('cb_func')        
         my_log.debug("received event= {}".format(event))
         print(event)
-        tm = (int(list(event)[0])-1907)*4
+        #tm = (int(list(event)[0])-1907)*4
+        tm = list(event)[0]
         my_log.info("specnum = {}".format(tm))
         with open('/home/ubuntu/data/'+str(tm)+'.json', 'w') as f: #encoding='utf-8'            
             json.dump(event, f, ensure_ascii=False, indent=4)
@@ -78,19 +79,24 @@ def ld_run(args):
                 flnum = int(re.findall('[0-9]+', llf)[0])
 
                 # find specnum number
-                os.system("grep specnum /home/ubuntu/data/dumps.dat | awk '{print $5,$6,$7}' | sed 's/NUM/ /' | sed 's/NUM/ /' | awk '{print $1,$5}' > /home/ubuntu/tmp/specnums.dat")
-                specnum,dumpnum = np.loadtxt("/home/ubuntu/tmp/specnums.dat").transpose()
-                cur_specnum = int(specnum[dumpnum==flnum])
-
-                # test for existence of associated json file
-                if path.exists(llf+"."+str(cur_specnum)+".json"):
+                #os.system("grep specnum /home/ubuntu/data/dumps.dat | awk '{print $5,$6,$7}' | sed 's/NUM/ /' | sed 's/NUM/ /' | awk '{print $1,$5}' > /home/ubuntu/tmp/specnums.dat")
+                os.system("grep specnum /home/ubuntu/data/dumps.dat | awk '{print $7,$8}' | sed 's/\-/ /' | sed 's/\-/ /' | sed 's/NUM/ /' | awk '{print $4,$2}' > /home/ubuntu/tmp/specnums.dat")
+                #specnum,dumpnum = np.loadtxt("/home/ubuntu/tmp/specnums.dat").transpose()
+                #cur_specnum = int(specnum[dumpnum==flnum])
+                trigname,dumpnum = np.genfromtxt("/home/ubuntu/tmp/specnums.dat",dtype=str).transpose()
+                dumpnum = dumpnum.astype('int')
+                cur_trigname = trigname[dumpnum==flnum]
+                
+                # test for existence of associated json file with specnum
+                if path.exists("/home/ubuntu/data/"+cur_trigname+"_header.json"):
                     sleep(1)
 
                 else:
                 
                     # simply copy associated json file, and copy llf file
-                    os.system("cp /home/ubuntu/data/"+str(cur_specnum)+".json "+llf+"."+str(cur_specnum)+".json")
-                    os.system("mv "+llf+" "+llf+"."+str(cur_specnum))
+                    os.system("cp /home/ubuntu/data/"+cur_trigname+".json /home/ubuntu/data/"+cur_trigname+"_header.json")
+                    nfln = "/home/ubuntu/data/" + cur_trigname + "_data.out" 
+                    os.system("mv "+llf+" "+nfln)
 
                     sleep(1)
 

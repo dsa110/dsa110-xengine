@@ -178,17 +178,19 @@ void control_thread (void * arg) {
 
     // interpret buffer string
     char * rest = buffer;
+    char tnam[100];
     tmps = (uint64_t)(strtoull(strtok_r(rest, "-", &rest),&endptr,0));
+    strcpy(tnam,strtok_r(rest, "-", &rest));
     
     if (!dump_pending) {
       //specnum = (uint64_t)(strtoull(buffer,&endptr,0)*16);
       specnum = tmps/4;
-      strcpy(footer_buf,tbuf);
-      syslog(LOG_INFO, "control_thread: received command to dump at %llu",specnum);
+      strcpy(footer_buf,tnam);
+      syslog(LOG_INFO, "control_thread: received command to dump at %llu src %s",specnum,footer_buf);
     }
 	
     if (dump_pending)
-      syslog(LOG_ERR, "control_thread: BACKED UP - CANNOT dump at %llu",tmps);
+      syslog(LOG_ERR, "control_thread: BACKED UP - CANNOT dump at %llu src %s",tmps,tnam);
   
     if (!dump_pending) dump_pending = 1;
     
@@ -459,17 +461,17 @@ int main (int argc, char *argv[]) {
 	
 	// DO THE WRITING
 
-	sprintf(dirnam,"mkdir -p %s_%llu",of,specnum*4);
+	sprintf(dirnam,"mkdir -p %s_%s",of,footer_buf);
 	system(dirnam);
 	
 	for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
 	  
-	  sprintf(foutnam,"%s_%llu/%llu_%d.fil",of,specnum*4,specnum*4,beamn+i);
+	  sprintf(foutnam,"%s_%s/%s_%d.fil",of,footer_buf,footer_buf,beamn+i);
 	  output = fopen(foutnam,"wb");
 	  
 	  send_string("HEADER_START");
 	  send_string("source_name");
-	  send_string(foutnam);
+	  send_string(footer_buf);
 	  send_int("machine_id",1);
 	  send_int("telescope_id",82);
 	  send_int("data_type",1); // filterbank data
