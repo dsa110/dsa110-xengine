@@ -67,7 +67,7 @@ def ld_run(args):
     while True:
 
         # test for existence of file in data dir
-        if len(glob.glob('/home/ubuntu/data/fl_0.out*'))>0:
+        if len(glob.glob('/home/ubuntu/data/fl_*.out*'))>0:
 
             # find latest out file that hasn't been moved
             lf = glob.glob('/home/ubuntu/data/fl_*.out')
@@ -85,7 +85,7 @@ def ld_run(args):
                 #cur_specnum = int(specnum[dumpnum==flnum])
                 trigname,dumpnum = np.genfromtxt("/home/ubuntu/tmp/specnums.dat",dtype=str).transpose()
                 dumpnum = dumpnum.astype('int')
-                cur_trigname = trigname[dumpnum==flnum]
+                cur_trigname = trigname[dumpnum==flnum][0]
                 
                 # test for existence of associated json file with specnum
                 if path.exists("/home/ubuntu/data/"+cur_trigname+"_header.json"):

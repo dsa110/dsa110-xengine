@@ -445,7 +445,7 @@ int main (int argc, char *argv[]) {
       
       if (sumi==1) fwrite((unsigned char *)(block),sizeof(unsigned char),block_size,output);
       else {
-	if (onebeam==1) fwrite(hoblock,sizeof(float),block_size/sumi/64,output);
+	if (onebeam==1) fwrite(hoblock + block_size/sumi/2,sizeof(float),block_size/sumi/64,output);
 	else fwrite(hoblock,sizeof(float),block_size/sumi,output);
       }
       //fwrite(oblock,sizeof(float),256*48,output);
