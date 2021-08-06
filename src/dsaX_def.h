@@ -65,10 +65,10 @@
 #define WRITEVIS_CONTROL_PORT 11226
 #define TRIGGER_CONTROL_PORT 11227
 
-#define NPACKETS_PER_CALL 2048
-#define NPACKETS_PER_BLOCK 2048
+#define NPACKETS_PER_CALL 16384
+#define NPACKETS_PER_BLOCK 16384
 #define NPACKETS_PER_FIL 2
-#define NPACKETS 2048
+#define NPACKETS 16384
 #define NOUTBLOCKS 30 // number of input blocks stored by trigger
 #define NANTS 63
 
@@ -85,7 +85,7 @@
 #define NSAMPS_PER_BLOCK 16384 // number of samples per block
 #define NCHAN_FIL 1024 // final number of filterband chans
 #define NBEAMS_PER_BLOCK 64 // number of beams to expect
-#define NSAMPS_PER_TRANSMIT 512 // number of samples transmitted at one time
+#define NSAMPS_PER_TRANSMIT 4096 // number of samples transmitted at one time
 #define NBMS 256
 #define P_SIZE 4108
 #define NWAIT 100000
