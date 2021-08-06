@@ -134,7 +134,7 @@ void * transmit(void *args) {
       
     }
     
-    if (DEBUG) syslog(LOG_DEBUG,"thread %d: written output",thread_id);
+    if (DEBUG) syslog(LOG_INFO,"thread %d: written output",thread_id);
 
     free(op);
 
