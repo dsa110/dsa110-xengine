@@ -265,8 +265,7 @@ void dsaX_udpdb_increment (udpdb_t * ctx)
 {
 
   // increment buffer byte markers
-  if (writeBlock==0) writeBlock=1;
-  else writeBlock=0;
+  writeBlock++;
   block_start_byte = block_end_byte + UDP_DATA;
   block_end_byte = block_start_byte + ( ctx->packets_per_buffer - 1) * UDP_DATA;
   block_count = 0;
@@ -462,6 +461,7 @@ void recv_thread(void * arg) {
   uint64_t timeout_max = 1000000000;
   int canWrite = 0;
   int ct_snaps=0;
+  int mod_WB;
 
   // infinite loop to receive packets
 
@@ -559,7 +559,8 @@ void recv_thread(void * arg) {
 	      if ((seq_byte <= block_end_byte) && (seq_byte >= block_start_byte))
 		{
 		  byte_offset = seq_byte - (block_start_byte);
-		  memcpy (udpdb->tblock + byte_offset + writeBlock*udpdb->hdu_bufsz, sock->buf + UDP_HEADER, UDP_DATA);		  
+		  mod_WB = writeBlock % 3;
+		  memcpy (udpdb->tblock + byte_offset + mod_WB*udpdb->hdu_bufsz, sock->buf + UDP_HEADER, UDP_DATA);		  
 		  pthread_mutex_lock(&mutex);		  
 		  block_count++;
 		  //syslog(LOG_INFO,"block count %"PRIu64"",block_count);
@@ -614,7 +615,8 @@ void recv_thread(void * arg) {
 		  byte_offset = seq_byte - (block_start_byte);
 		  if (byte_offset < udpdb->hdu_bufsz && byte_offset >= 0)
 		    {
-		      memcpy (udpdb->tblock + byte_offset + writeBlock*udpdb->hdu_bufsz, temp_buffers[i], UDP_DATA);
+		      mod_WB = writeBlock % 3;
+		      memcpy (udpdb->tblock + byte_offset + mod_WB*udpdb->hdu_bufsz, temp_buffers[i], UDP_DATA);
 		      //pthread_mutex_lock(&mutex);
 		      block_count++;		      
 		      //pthread_mutex_unlock(&mutex);
@@ -637,7 +639,8 @@ void recv_thread(void * arg) {
 		  byte_offset = seq_byte - (block_start_byte);
 		  if (byte_offset < udpdb->hdu_bufsz && byte_offset >= 0)
 		    {
-		      memcpy (udpdb->tblock + byte_offset + writeBlock*udpdb->hdu_bufsz, temp_buffers[i], UDP_DATA);
+		      mod_WB = writeBlock % 3;
+		      memcpy (udpdb->tblock + byte_offset + mod_WB*udpdb->hdu_bufsz, temp_buffers[i], UDP_DATA);
 		      pthread_mutex_lock(&mutex);
 		      block_count++;		      
 		      pthread_mutex_unlock(&mutex);
@@ -681,7 +684,7 @@ void write_thread(void * arg) {
     syslog(LOG_INFO,"thread %d: successfully set thread",core_id);
     
   dsaX_write_t * udpdb = (dsaX_write_t *) arg;
-  int lWriteBlock = 0;
+  int lWriteBlock = 0, mod_WB = 0;
   int a;
   
   while (!quit_threads)
@@ -692,7 +695,8 @@ void write_thread(void * arg) {
     }
     
     syslog(LOG_INFO,"writing block...");
-    
+
+    mod_WB = lWriteBlock % 3;
     memcpy(udpdb->block, udpdb->tblock + lWriteBlock*udpdb->hdu_bufsz, udpdb->hdu_bufsz);
     
     if (dsaX_udpdb_new_buffer (udpdb) < 0)
@@ -702,8 +706,7 @@ void write_thread(void * arg) {
       }
     
     doWrite=0;
-    if (lWriteBlock==0) lWriteBlock=1;
-    else lWriteBlock=0;
+    lWriteBlock++;
      
   }
 
@@ -914,7 +917,7 @@ int main (int argc, char *argv[]) {
 
   // shared variables and memory
   uint64_t bufsz = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
-  char * tblock = (char *)malloc(sizeof(char)*bufsz);
+  char * tblock = (char *)malloc(sizeof(char)*bufsz*3);
   stats_t * packets = init_stats_t();
   stats_t * bytes = init_stats_t();
   reset_stats_t(packets);
