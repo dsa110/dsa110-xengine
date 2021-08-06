@@ -59,6 +59,7 @@ typedef struct {
   unsigned          block_open;        // if the current data block element is open
   char            * block;             // pointer to current datablock buffer
   char            * tblock;            // area of memory to write to
+  int               thread_id;
 
 } dsaX_write_t;
 

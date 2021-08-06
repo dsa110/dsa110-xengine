@@ -51,14 +51,17 @@ int DEBUG = 0;
 int HISTOGRAM[16];
 int writeBlock = 0;
 const int nth = 8;
+const int nwth = 4;
 int cores[8] = {30,31,32,33,34,35,36,37};
+int write_cores[4] = {17,18,19,39};
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 volatile int doWrite = 0;
+volatile int write_ct = 0;
 volatile uint64_t last_seq = 0;
 volatile uint64_t block_count = 0;
 volatile uint64_t block_start_byte=0, block_end_byte=0;
 volatile  unsigned capture_started = 0;
-
+volatile char * wblock;
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * out);
 int dada_bind_thread_to_core (int core);
@@ -178,8 +181,8 @@ int dsaX_udpdb_open_buffer (dsaX_write_t * ctx)
 
   uint64_t block_id = 0;
 
-  ctx->block = ipcio_open_block_write (ctx->hdu->data_block, &block_id);
-  if (!ctx->block)
+  wblock = ipcio_open_block_write (ctx->hdu->data_block, &block_id);
+  if (!wblock)
   { 
     syslog (LOG_ERR, "open_buffer: ipcio_open_block_write failed");
     return -1;
@@ -228,7 +231,7 @@ int dsaX_udpdb_close_buffer (dsaX_write_t * ctx, uint64_t bytes_written, unsigne
     }
   }
 
-  ctx->block = 0;
+  wblock = 0;
   ctx->block_open = 0;
 
   return 0;
@@ -587,8 +590,8 @@ void recv_thread(void * arg) {
 	    {
 	      syslog (LOG_INFO, "BLOCK COMPLETE thread_id=%d, seq_no=%"PRIu64", "
 		      "ant_id=%"PRIu16", block_count=%"PRIu64", "
-		      "temp_idx=%d\n", thread_id, seq_no, ant_id,  block_count, 
-		      temp_idx);
+		      "temp_idx=%d, writeBlock=%d", thread_id, seq_no, ant_id,  block_count, 
+		      temp_idx,writeBlock);
 
 	      // write block
 	      doWrite=1;
@@ -668,9 +671,12 @@ void recv_thread(void * arg) {
  */
 void write_thread(void * arg) {
 
+  dsaX_write_t * udpdb = (dsaX_write_t *) arg;
+  int thread_id = udpdb->thread_id;
+
   // set affinity
   const pthread_t pid = pthread_self();
-  const int core_id = 39;
+  const int core_id = write_cores[thread_id];
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(core_id, &cpuset);
@@ -683,7 +689,6 @@ void write_thread(void * arg) {
   if (CPU_ISSET(core_id, &cpuset))
     syslog(LOG_INFO,"thread %d: successfully set thread",core_id);
     
-  dsaX_write_t * udpdb = (dsaX_write_t *) arg;
   int lWriteBlock = 0, mod_WB = 0;
   int a;
   
@@ -692,20 +697,42 @@ void write_thread(void * arg) {
 
     while (!doWrite) {
       a=1;
-    }
-    
-    syslog(LOG_INFO,"writing block...");
+    }    
 
-    mod_WB = lWriteBlock % 3;
-    memcpy(udpdb->block, udpdb->tblock + lWriteBlock*udpdb->hdu_bufsz, udpdb->hdu_bufsz);
+    // assume everything is set up
+    // wblock is assigned, write_ct=0
     
-    if (dsaX_udpdb_new_buffer (udpdb) < 0)
-      {
-	syslog(LOG_ERR, "receive_obs: dsaX_udpdb_new_buffer failed");
-	return EXIT_FAILURE;
-      }
-    
-    doWrite=0;
+    mod_WB = lWriteBlock % 3;    
+    memcpy(wblock + thread_id*udpdb->hdu_bufsz/nwth, udpdb->tblock + mod_WB*udpdb->hdu_bufsz  + thread_id*udpdb->hdu_bufsz/nwth, udpdb->hdu_bufsz/nwth);
+
+    pthread_mutex_lock(&mutex);
+    write_ct++;
+    pthread_mutex_unlock(&mutex);
+
+    syslog(LOG_INFO,"write thread %d: successfully memcpied",thread_id);
+
+    // now wait until thread 0 has finished getting a new block before moving on
+    if (thread_id>0) {
+      while (write_ct!=0) a=1;
+    }
+    else {
+
+      // wait for all sub-blocks to be written
+      while (write_ct<nwth) a=1;
+
+      // get new block
+      if (dsaX_udpdb_new_buffer (udpdb) < 0)
+	{
+	  syslog(LOG_ERR, "receive_obs: dsaX_udpdb_new_buffer failed");
+	  return EXIT_FAILURE;
+	}
+
+      syslog(LOG_INFO,"write thread %d: written block... %d",thread_id,lWriteBlock);
+      write_ct = 0;
+      doWrite=0;
+    }
+
+    // increment local lWriteBlock
     lWriteBlock++;
      
   }
@@ -913,11 +940,11 @@ int main (int argc, char *argv[]) {
   // make recv, write, and stats structs  
   udpdb_t udpdb[nth];
   dsaX_stats_t stats;
-  dsaX_write_t writey;
+  dsaX_write_t writey[nwth];
 
   // shared variables and memory
   uint64_t bufsz = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
-  char * tblock = (char *)malloc(sizeof(char)*bufsz*3);
+  char * tblock = (char *)malloc(sizeof(char)*bufsz*4);
   stats_t * packets = init_stats_t();
   stats_t * bytes = init_stats_t();
   reset_stats_t(packets);
@@ -928,11 +955,14 @@ int main (int argc, char *argv[]) {
   stats.bytes = bytes;
 
   // initialise writey struct and open buffer
-  writey.hdu = hdu_out;
-  writey.hdu_bufsz = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
-  writey.block_open = 0;
-  writey.tblock = tblock;
-  dsaX_udpdb_open_buffer (&writey);
+  for (int i=0;i<nwth;i++) {
+    writey[i].hdu = hdu_out;
+    writey[i].hdu_bufsz = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
+    writey[i].block_open = 0;
+    writey[i].tblock = tblock;
+    writey[i].thread_id = i;    
+  }
+  dsaX_udpdb_open_buffer (&writey[0]);
 
   // initialise all udpdb structs
   for (int i=0;i<nth;i++) {
@@ -980,13 +1010,16 @@ int main (int argc, char *argv[]) {
   syslog(LOG_NOTICE, "Created recv threads");
 
   // start the write thread
-  pthread_t write_thread_id;
-  rval = pthread_create (&write_thread_id, 0, (void *) write_thread, (void *) &writey);
-  if (rval != 0) {
-    syslog(LOG_INFO, "Error creating write_thread: %s", strerror(rval));
-    return -1;
+  pthread_t write_thread_id[nwth];
+  rval = 0;
+  for (int i=0;i<nwth;i++) {
+    rval = pthread_create (&write_thread_id[i], 0, (void *) write_thread, (void *) (&writey[i]));
+    if (rval != 0) {
+      syslog(LOG_INFO, "Error creating write_thread: %s", strerror(rval));
+      return -1;
+    }
   }
-  syslog(LOG_NOTICE, "started write_thread()");  
+  syslog(LOG_NOTICE, "started write threads");  
 
   while (!quit_threads) {
     sleep(1);
@@ -999,7 +1032,7 @@ int main (int argc, char *argv[]) {
   pthread_join (control_thread_id, &result);
   pthread_join (stats_thread_id, &result);
   for (int i=0;i<nth;i++) pthread_join(recv_thread_id[i], &result);
-  pthread_join (write_thread_id, &result);
+  for (int i=0;i<nwth;i++) pthread_join(write_thread_id[i], &result);
   
   free(tblock);
   dsaX_dbgpu_cleanup (hdu_out);
