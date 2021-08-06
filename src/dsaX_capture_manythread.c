@@ -56,8 +56,11 @@ int cores[8] = {30,31,32,33,34,35,36,37};
 int write_cores[4] = {17,18,19,39};
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 volatile int doWrite = 0;
+volatile int skipBlock = 0;
+volatile int skipping = 0;
 volatile int write_ct = 0;
 volatile uint64_t last_seq = 0;
+volatile int skipct = 0;
 volatile uint64_t block_count = 0;
 volatile uint64_t block_start_byte=0, block_end_byte=0;
 volatile  unsigned capture_started = 0;
@@ -329,7 +332,7 @@ void stats_thread(void * arg) {
     gb_rcv_ps /= 1000000000;    
 
     /* determine how much memory is free in the receivers */
-    syslog (LOG_NOTICE,"CAPSTATS %6.3f [Gb/s], D %4.1f [MB/s], D %"PRIu64" pkts, %"PRIu64"", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, last_seq);
+    syslog (LOG_NOTICE,"CAPSTATS %6.3f [Gb/s], D %4.1f [MB/s], D %"PRIu64" pkts, %"PRIu64", skipped %d", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, last_seq, skipct);
 
     sleep(1);
   }
@@ -594,7 +597,9 @@ void recv_thread(void * arg) {
 		      temp_idx,writeBlock);
 
 	      // write block
-	      doWrite=1;
+	      // check whether doWrite has been released. If not, skip this block
+	      if (doWrite==1) skipBlock=1;
+	      else doWrite=1;
 	      
 	      uint64_t dropped = udpdb->packets_per_buffer - (block_count);
 	      udpdb->packets->received += (block_count);
@@ -702,14 +707,15 @@ void write_thread(void * arg) {
     // assume everything is set up
     // wblock is assigned, write_ct=0
     
-    mod_WB = lWriteBlock % 3;    
-    memcpy(wblock + thread_id*udpdb->hdu_bufsz/nwth, udpdb->tblock + mod_WB*udpdb->hdu_bufsz  + thread_id*udpdb->hdu_bufsz/nwth, udpdb->hdu_bufsz/nwth);
+    mod_WB = lWriteBlock % 3;
+    if (!skipping)
+      memcpy(wblock + thread_id*udpdb->hdu_bufsz/nwth, udpdb->tblock + mod_WB*udpdb->hdu_bufsz  + thread_id*udpdb->hdu_bufsz/nwth, udpdb->hdu_bufsz/nwth);
 
     pthread_mutex_lock(&mutex);
     write_ct++;
     pthread_mutex_unlock(&mutex);
 
-    syslog(LOG_INFO,"write thread %d: successfully memcpied",thread_id);
+    //syslog(LOG_INFO,"write thread %d: successfully memcpied",thread_id);
 
     // now wait until thread 0 has finished getting a new block before moving on
     if (thread_id>0) {
@@ -727,9 +733,24 @@ void write_thread(void * arg) {
 	  return EXIT_FAILURE;
 	}
 
-      syslog(LOG_INFO,"write thread %d: written block... %d",thread_id,lWriteBlock);
+      syslog(LOG_INFO,"write thread %d: written block... %d (skipping %d)",thread_id,lWriteBlock,skipping);
       write_ct = 0;
-      doWrite=0;
+
+      // check for skipBlock
+      if (!skipBlock)
+	doWrite=0;
+      if (skipBlock) {
+	if (skipping) {
+	  skipBlock=0;
+	  doWrite=0;
+	  skipping=0;
+	  skipct++;
+	}
+	else
+	  skipping=1;
+      }
+	
+      
     }
 
     // increment local lWriteBlock
