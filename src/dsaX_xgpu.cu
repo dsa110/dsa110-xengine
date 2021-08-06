@@ -291,52 +291,56 @@ int main (int argc, char *argv[]) {
       
     // DO STUFF
 
-    // do fluff
-    cudaMemcpy(d_din,block,context.array_len*sizeof(char),cudaMemcpyHostToDevice);
-    promoter<<<6291456,32>>>(d_din,d_dout);
-    //cudaMemcpy((char *)(array_h),d_dout,2*context.array_len*sizeof(char),cudaMemcpyDeviceToHost);        
-    cudaDeviceSynchronize();
+    for (int myint=0;myint<NPACKETS/NPACKETS_INTS;myint++) {
     
-    // run xgpu
-    xgpu_error = xgpuCudaXengine(&context, (ComplexInput *)d_dout, syncOp);
-    if(xgpu_error) {
-      syslog(LOG_ERR, "xGPU error %d\n", xgpu_error);
-      return EXIT_FAILURE;
-    }
-
-    if (started==0 && blocks==20) {
-      syslog(LOG_INFO,"now in RUN state");
-      if (DEBUG) {
-	for (int i=100;i<200;i++) {
-	  syslog(LOG_DEBUG,"INPUT %hhi %hhi",array_h[i].real,array_h[i].imag);
-	  syslog(LOG_DEBUG,"OUTPUT %g %g",(float)(cuda_matrix_h[i].real),(float)(cuda_matrix_h[i].imag));
-	}
-      }
-      started=1;
-    }    
-
-    // clear device
-    xgpuClearDeviceIntegrationBuffer(&context);
+      // do fluff
+      cudaMemcpy(d_din,block+myint*block_size*NPACKETS_INTS/NPACKETS,context.array_len*sizeof(char),cudaMemcpyHostToDevice);
+      promoter<<<6291456,32>>>(d_din,d_dout);
+      //cudaMemcpy((char *)(array_h),d_dout,2*context.array_len*sizeof(char),cudaMemcpyDeviceToHost);        
+      cudaDeviceSynchronize();
     
-    // write to output
-
-    written = ipcio_write (hdu_out->data_block, (char *)(cuda_matrix_h), block_out);
-    if (written < block_out)
-      {
-	syslog(LOG_ERR, "main: failed to write all data to datablock [output]");
-	dsaX_dbgpu_cleanup (hdu_in, hdu_out);
+      // run xgpu
+      xgpu_error = xgpuCudaXengine(&context, (ComplexInput *)d_dout, syncOp);
+      if(xgpu_error) {
+	syslog(LOG_ERR, "xGPU error %d\n", xgpu_error);
 	return EXIT_FAILURE;
       }
-    
+      
+      if (started==0 && blocks==20) {
+	syslog(LOG_INFO,"now in RUN state");
+	if (DEBUG) {
+	  for (int i=100;i<200;i++) {
+	    syslog(LOG_DEBUG,"INPUT %hhi %hhi",array_h[i].real,array_h[i].imag);
+	    syslog(LOG_DEBUG,"OUTPUT %g %g",(float)(cuda_matrix_h[i].real),(float)(cuda_matrix_h[i].imag));
+	  }
+	}
+	started=1;
+      }    
+      
+      // clear device
+      xgpuClearDeviceIntegrationBuffer(&context);
+      
+      // write to output
+      
+      written = ipcio_write (hdu_out->data_block, (char *)(cuda_matrix_h), block_out);
+      if (written < block_out)
+	{
+	  syslog(LOG_ERR, "main: failed to write all data to datablock [output]");
+	  dsaX_dbgpu_cleanup (hdu_in, hdu_out);
+	  return EXIT_FAILURE;
+	}
+
+      if (DEBUG) syslog(LOG_DEBUG, "written block %d",blocks);	    
+      blocks++;
+
+    }
+      
     // finish up
     if (bytes_read < block_size)
       observation_complete = 1;
 
     ipcio_close_block_read (hdu_in->data_block, bytes_read);
-      
-    if (DEBUG) syslog(LOG_DEBUG, "written block %d",blocks);	    
-    blocks++;
-	
+    
   }
 
   // finish up

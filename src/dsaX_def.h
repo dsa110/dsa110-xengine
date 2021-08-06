@@ -67,6 +67,7 @@
 
 #define NPACKETS_PER_CALL 16384
 #define NPACKETS_PER_BLOCK 16384
+#define NPACKETS_INTS 2048 // number of packets per xgpu int
 #define NPACKETS_PER_FIL 2
 #define NPACKETS 16384
 #define NOUTBLOCKS 30 // number of input blocks stored by trigger

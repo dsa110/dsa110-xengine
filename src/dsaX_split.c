@@ -436,6 +436,7 @@ int main (int argc, char *argv[]) {
   // get block sizes and allocate memory
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
   uint64_t block_out = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
+  uint64_t nints = block_size / block_out;
   syslog(LOG_INFO, "main: have input and output block sizes %llu %llu\n",block_size,block_out);
   uint64_t  bytes_read = 0;
   char * block, * output_buffer, * o1, * o2;
@@ -476,80 +477,84 @@ int main (int argc, char *argv[]) {
     
     // DO STUFF
 
+    for (int myint=0;myint<nints;myint++) {
         
-    // copy to output buffer
-    memcpy(output_buffer, block, block_size);      
+      // copy to output buffer
+                  
+      memcpy(output_buffer, block + myint*block_out, block_out);      
 
-    if (mwrite) {
-      o1 = ipcio_open_block_write (hdu_out->data_block, &block_id);
-      if (bf) o2 = ipcio_open_block_write (hdu_out2->data_block, &block_id);
-    }
-    
-    // stats
-    if (STATS) calc_stats(output_buffer);
-
-    //if (reorder) {
-    
-    // set up data structure
-    for (int i=0; i<nth; i++) {
-      args[i].in = output_buffer;
-      args[i].reorder = reorder;
-      args[i].bf = 0;
       if (mwrite) {
-	args[i].out = o1;	
-	if (bf) {
-	  args[i].out2 = o2;
-	  args[i].bf = 1;
+	o1 = ipcio_open_block_write (hdu_out->data_block, &block_id);
+	if (bf) o2 = ipcio_open_block_write (hdu_out2->data_block, &block_id);
+      }
+      
+      // stats
+      if (STATS) calc_stats(output_buffer);
+      
+      //if (reorder) {
+      
+      // set up data structure
+      for (int i=0; i<nth; i++) {
+	args[i].in = output_buffer;
+	args[i].reorder = reorder;
+	args[i].bf = 0;
+	if (mwrite) {
+	  args[i].out = o1;	
+	  if (bf) {
+	    args[i].out2 = o2;
+	    args[i].bf = 1;
+	  }
+	}
+	else
+	  args[i].out = output;
+	args[i].n_threads = nth;
+	args[i].thread_id = i;
+      }
+      
+      if (DEBUG) syslog(LOG_DEBUG,"creating %d threads",nth);
+      
+      for(int i=0; i<nth; i++){
+	if (pthread_create(&threads[i], &attr, &massage, (void *)(&args[i]))) {
+	  syslog(LOG_ERR,"Failed to create massage thread %d\n", i);
 	}
       }
-      else
-	args[i].out = output;
-      args[i].n_threads = nth;
-      args[i].thread_id = i;
-    }
-    
-    if (DEBUG) syslog(LOG_DEBUG,"creating %d threads",nth);
-    
-    for(int i=0; i<nth; i++){
-      if (pthread_create(&threads[i], &attr, &massage, (void *)(&args[i]))) {
-	syslog(LOG_ERR,"Failed to create massage thread %d\n", i);
+      
+      pthread_attr_destroy(&attr);
+      if (DEBUG) syslog(LOG_DEBUG,"threads kinda running");
+      
+      for(int i=0; i<nth; i++){
+	pthread_join(threads[i], &result);
+	if (DEBUG) syslog(LOG_DEBUG,"joined thread %d",i);
       }
-    }
-    
-    pthread_attr_destroy(&attr);
-    if (DEBUG) syslog(LOG_DEBUG,"threads kinda running");
-    
-    for(int i=0; i<nth; i++){
-      pthread_join(threads[i], &result);
-      if (DEBUG) syslog(LOG_DEBUG,"joined thread %d",i);
-    }
-
-
-    if (!mwrite) {
-      if (reorder && (!bf))
-	written = ipcio_write (hdu_out->data_block, output, block_out);
-      else 
-	written = ipcio_write (hdu_out->data_block, output_buffer, block_out);
-
-      if (bf) {
-	written = ipcio_write (hdu_out->data_block, output_buffer, block_out);
-	if (reorder)
-	  written = ipcio_write (hdu_out2->data_block, output, block_out);
-	else
-	  written = ipcio_write (hdu_out2->data_block, output_buffer, block_out);
+      
+      
+      if (!mwrite) {
+	if (reorder && (!bf))
+	  written = ipcio_write (hdu_out->data_block, output, block_out);
+	else 
+	  written = ipcio_write (hdu_out->data_block, output_buffer, block_out);
+	
+	if (bf) {
+	  written = ipcio_write (hdu_out->data_block, output_buffer, block_out);
+	  if (reorder)
+	    written = ipcio_write (hdu_out2->data_block, output, block_out);
+	  else
+	    written = ipcio_write (hdu_out2->data_block, output_buffer, block_out);
+	}
       }
+      else {
+	ipcio_close_block_write (hdu_out->data_block, block_out);
+	if (bf) ipcio_close_block_write (hdu_out2->data_block, block_out);
+      }
+      
+      if (DEBUG) syslog(LOG_DEBUG, "written block %d",blocks);      
+      blocks++;
+      
+      
+      if (bytes_read < block_size)
+	observation_complete = 1;            
+      
     }
-    else {
-      ipcio_close_block_write (hdu_out->data_block, block_out);
-      if (bf) ipcio_close_block_write (hdu_out2->data_block, block_out);
-    }
-    
-    if (DEBUG) syslog(LOG_DEBUG, "written block %d",blocks);      
-    blocks++;
-    
-
-    if (bytes_read < block_size)
-      observation_complete = 1;
 
     ipcio_close_block_read (hdu_in->data_block, bytes_read);
 
