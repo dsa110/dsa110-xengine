@@ -332,7 +332,7 @@ void stats_thread(void * arg) {
     gb_rcv_ps /= 1000000000;    
 
     /* determine how much memory is free in the receivers */
-    syslog (LOG_NOTICE,"CAPSTATS %6.3f [Gb/s], D %4.1f [MB/s], D %"PRIu64" pkts, %"PRIu64", skipped %d", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, last_seq, skipct);
+    syslog (LOG_NOTICE,"CAPSTATS %6.3f [Gb/s], D %4.1f [MB/s], D %"PRIu64" pkts, %"PRIu64" skipped %d", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, last_seq, skipct);
 
     sleep(1);
   }
@@ -565,7 +565,7 @@ void recv_thread(void * arg) {
 	      if ((seq_byte <= block_end_byte) && (seq_byte >= block_start_byte))
 		{
 		  byte_offset = seq_byte - (block_start_byte);
-		  mod_WB = writeBlock % 3;
+		  mod_WB = writeBlock % 4;
 		  memcpy (udpdb->tblock + byte_offset + mod_WB*udpdb->hdu_bufsz, sock->buf + UDP_HEADER, UDP_DATA);		  
 		  pthread_mutex_lock(&mutex);		  
 		  block_count++;
@@ -623,7 +623,7 @@ void recv_thread(void * arg) {
 		  byte_offset = seq_byte - (block_start_byte);
 		  if (byte_offset < udpdb->hdu_bufsz && byte_offset >= 0)
 		    {
-		      mod_WB = writeBlock % 3;
+		      mod_WB = writeBlock % 4;
 		      memcpy (udpdb->tblock + byte_offset + mod_WB*udpdb->hdu_bufsz, temp_buffers[i], UDP_DATA);
 		      //pthread_mutex_lock(&mutex);
 		      block_count++;		      
@@ -647,7 +647,7 @@ void recv_thread(void * arg) {
 		  byte_offset = seq_byte - (block_start_byte);
 		  if (byte_offset < udpdb->hdu_bufsz && byte_offset >= 0)
 		    {
-		      mod_WB = writeBlock % 3;
+		      mod_WB = writeBlock % 4;
 		      memcpy (udpdb->tblock + byte_offset + mod_WB*udpdb->hdu_bufsz, temp_buffers[i], UDP_DATA);
 		      pthread_mutex_lock(&mutex);
 		      block_count++;		      
@@ -707,7 +707,7 @@ void write_thread(void * arg) {
     // assume everything is set up
     // wblock is assigned, write_ct=0
     
-    mod_WB = lWriteBlock % 3;
+    mod_WB = lWriteBlock % 4;
     if (!skipping)
       memcpy(wblock + thread_id*udpdb->hdu_bufsz/nwth, udpdb->tblock + mod_WB*udpdb->hdu_bufsz  + thread_id*udpdb->hdu_bufsz/nwth, udpdb->hdu_bufsz/nwth);
 

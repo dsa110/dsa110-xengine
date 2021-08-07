@@ -83,10 +83,10 @@ def get_capture_stats():
     my_log.function('get_capture_stats')
     
     try:
-        result = subprocess.check_output("tail -n 50000 /var/log/syslog | grep CAPSTATS | tail -n 1 | awk '{print $7,$10,$13,$15}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 50000 /var/log/syslog | grep CAPSTATS | tail -n 1 | awk '{print $7,$10,$13,$15,$17}'", shell=True, stderr=subprocess.STDOUT)
         arr = result.decode("utf-8").split(' ')
-        oarr = np.zeros(4)
-        for i in range(4):
+        oarr = np.zeros(5)
+        for i in range(5):
             oarr[i] = float(arr[i])
     except:
         #my_log.warning('buffer not accessible: '+buff)
@@ -152,11 +152,13 @@ def get_monitor_dict(params, corr_num):
         mon_dict['drop_rate'] = 0.0
         mon_dict['drop_count'] = 0
         mon_dict['last_seq'] = 0
+        mon_dict['skipped'] = 0
     else:
         mon_dict['capture_rate'] = capstats[0]
         mon_dict['drop_rate'] = capstats[1]*8.
         mon_dict['drop_count'] = capstats[2]
         mon_dict['last_seq'] = capstats[3]
+        mon_dict['skipped'] = capstats[4]
 
     # stuff Rick wants
     mon_dict['sim'] = 'false'
