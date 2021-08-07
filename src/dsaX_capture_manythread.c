@@ -758,9 +758,6 @@ void write_thread(void * arg) {
       write_ct = 0;
 
     }
-
-    // increment local lWriteBlock
-    lWriteBlock++;
      
   }
 
