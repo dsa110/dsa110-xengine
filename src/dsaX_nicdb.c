@@ -48,12 +48,16 @@ switch block when one block is being written out
 #include "dsaX_capture.h"
 #include "dsaX_def.h"
 
+#define bdepth 8
+
 // global variables
 int DEBUG = 0;
-int blockct = 0; // to count how many writes to block. max is NSAMPS_PER_BLOCK*NBEAMS_PER_BLOCK*NW
-int block_switch = 0; // 0 means write to output1, write out output2.
+volatile int blockct[bdepth]; // to count how many writes to block. max is NSAMPS_PER_BLOCK*NBEAMS_PER_BLOCK*NW
+volatile int flush_flag = 0; // set to flush output2
+volatile int global_tseq = 0; // global count of full buffers
 int cores[16] = {3, 4, 5, 6, 7, 8, 9, 20, 21, 22, 23, 24, 25, 26, 27, 28}; // to bind threads to
 char iP[100];
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;	  
 
 // structure to pass to threads
 struct data
@@ -130,17 +134,17 @@ void * process(void * ptr)
 
   // data buffer and other variables
   char * buffer = (char *)malloc((NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW)*sizeof(char));
-  int tseq, oidx, iidx, pseq;
-  int remain_data, outptr, len, pct = 0;
+  int tseq, oidx, pseq;
+  int pct = 0;
   int i0;
   int lastPacket, nextBuf, current_tseq = 0, act_tseq; 
-
+  uint64_t shifty = (bdepth-1)*NSAMPS_PER_BLOCK*NBEAMS_PER_BLOCK*NCHAN_FIL;
   
   // infinite loop 
   while (1) {
   
     /* read message */
-    // logic is to fill buffer using packet counters
+    // fill up local buffer
     lastPacket = 0;
     nextBuf = 0;
     while ((lastPacket==0) && (nextBuf==0)) {
@@ -164,12 +168,16 @@ void * process(void * ptr)
 	lastPacket=1;
 
     }
-
+    
     if (pct != NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW/(P_SIZE-12))
       syslog(LOG_ERR,"thread %d: only received %d of %d",thread_id,pct,NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW/(P_SIZE-12));
     
     if (DEBUG) syslog(LOG_INFO,"thread %d: read message with chgroup %d tseq %d blockct %d",thread_id,chgroup,tseq,blockct);
-    act_tseq = (current_tseq * NSAMPS_PER_TRANSMIT) % NSAMPS_PER_BLOCK; // place within output
+    act_tseq = (current_tseq * NSAMPS_PER_TRANSMIT) % NSAMPS_PER_BLOCK; // place within output buffer
+
+    // at this stage we have a full local buffer
+    // this needs to be placed in the global buffer
+    // according to difference in current_tseq and global_tseq
       
     // output order is [beam, time, freq]. input order is [beam, time, freq], but only a subset of freqs
     i0 = 0;
@@ -177,22 +185,17 @@ void * process(void * ptr)
       for (int j=0;j<NSAMPS_PER_TRANSMIT;j++) {	
 	for (int k=0;k<NW;k++) {
 	  
-	  oidx = i*NSAMPS_PER_BLOCK*NCHAN_FIL + (act_tseq+j)*NCHAN_FIL + CHOFF/8 + chgroup*NW + k;
-	  //iidx = 8 + i0;
+	  oidx = (current_tseq - global_tseq)*NSAMPS_PER_BLOCK*NBEAMS_PER_BLOCK*NCHAN_FIL + i*NSAMPS_PER_BLOCK*NCHAN_FIL + (act_tseq+j)*NCHAN_FIL + CHOFF/8 + chgroup*NW + k;
 	  
-	  if (block_switch==0) output1[oidx] = buffer[i0];
-	  if (block_switch==1) output2[oidx] = buffer[i0];
+	  output1[oidx] = buffer[i0];
 
 	  i0++;
 	    
 	}
       }
     }
-      
-    // iterate blockct
-    blockct++;
 
-    // deal with packet capture
+    // advance local tseq and deal with packet capture
     if (lastPacket==1) {
       current_tseq++;
       lastPacket=0;
@@ -205,6 +208,33 @@ void * process(void * ptr)
       pct=1;
       lastPacket=0;
     }
+
+    // at this stage we have dealt with this capture round, and must address blockct within mutex
+    pthread_mutex_lock(&mutex);
+
+    // increment appropriate blockct
+    blockct[current_tseq-global_tseq] += 1;
+
+    // deal with full block
+    if (blockct[0] == NCLIENTS*NSAMPS_PER_BLOCK/NSAMPS_PER_TRANSMIT) {
+
+      // copy to output block and set flush flag
+      memcpy(output2,output1,NSAMPS_PER_BLOCK*NBEAMS_PER_BLOCK*NCHAN_FIL);
+      flush_flag = 1;
+
+      // shift output1 and blockct back by 1
+      memcpy(output1,output1+NSAMPS_PER_BLOCK*NBEAMS_PER_BLOCK*NCHAN_FIL,shifty);
+      for (int i=0;i<bdepth-1;i++) blockct[i] = blockct[i+1];      
+      
+      // increment global tseq
+      global_tseq++;
+
+      // log - hardcoded bdepth
+      syslog(LOG_INFO,"Incremented global_tseq %d. Blockcts %d %d %d %d %d %d %d %d",global_tseq,blockct[0],blockct[1],blockct[2],blockct[3],blockct[4],blockct[5],blockct[6],blockct[7]);
+
+    }    
+    pthread_mutex_unlock(&mutex);
+
 
   }
 
@@ -245,6 +275,7 @@ int main(int argc, char ** argv)
   pthread_attr_init(&attr);
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
   void* result=0;
+  for (int i=0;i<bdepth;i++) blockct[i] = 0;
 
   /* DADA Header plus Data Unit */
   dada_hdu_t* hdu_out = 0;
@@ -366,9 +397,9 @@ int main(int argc, char ** argv)
   syslog(LOG_INFO, "main: have output block sizes %llu\n",block_out);
   uint64_t  bytes_read = 0;
   char *output1, *output2;
-  output1 = (char *)malloc(sizeof(char)*block_out);
+  output1 = (char *)malloc(sizeof(char)*block_out*bdepth);
   output2 = (char *)malloc(sizeof(char)*block_out);
-  memset(output1,0,block_out);
+  memset(output1,0,block_out*bdepth);
   memset(output2,0,block_out);
   uint64_t written, block_id;
 
@@ -394,8 +425,7 @@ int main(int argc, char ** argv)
   
   int observation_complete=0;
   int blocks = 0;
-  int ctt;
-  int bswitch;
+  int aa;
   
   syslog(LOG_INFO, "starting observation");
 
@@ -404,32 +434,25 @@ int main(int argc, char ** argv)
     // look for complete block
 
     //if (DEBUG) syslog(LOG_INFO,"here with %d",blockct);
-    usleep(10);
+    while (flush_flag==0)
+      aa=1;
 
-    if (blockct>=NCLIENTS*NSAMPS_PER_BLOCK/NSAMPS_PER_TRANSMIT) {      
-      
-      // change output
-      bswitch= block_switch;
-      blockct=0;
-      if (bswitch==0) block_switch=1;
-      if (bswitch==1) block_switch=0;
+    // write to output
+    written = ipcio_write (hdu_out->data_block, output2, block_out);
+    if (written < block_out)
+      {
+	syslog(LOG_ERR, "main: failed to write all data to datablock [output]");	
+	dsaX_dbgpu_cleanup (hdu_out);
+	return EXIT_FAILURE;
+      }
+    
+    if (DEBUG) syslog(LOG_INFO, "written block %d",blocks);      
+    blocks++;
 
-      // write to output
-      if (bswitch==0) written = ipcio_write (hdu_out->data_block, output1, block_out);
-      if (bswitch==1) written = ipcio_write (hdu_out->data_block, output2, block_out);
-      if (written < block_out)
-	{
-	  syslog(LOG_ERR, "main: failed to write all data to datablock [output]");	
-	  dsaX_dbgpu_cleanup (hdu_out);
-	  return EXIT_FAILURE;
-	}
+    flush_flag = 0;
 
-      if (DEBUG) syslog(LOG_INFO, "written block %d",blocks);      
-      blocks++;
-      ctt=0;
-    }
-      
   }
+      
   
   // free stuff
   for(int i=0; i<NCLIENTS; i++){
