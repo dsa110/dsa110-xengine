@@ -733,7 +733,7 @@ void write_thread(void * arg) {
 	  return EXIT_FAILURE;
 	}
 
-      syslog(LOG_INFO,"write thread %d: written block... %d (skipping %d)",thread_id,lWriteBlock,skipping);
+      syslog(LOG_INFO,"write thread %d: written block... %d",thread_id,lWriteBlock);
       lWriteBlock++;
 
       // check for skipBlock
@@ -747,9 +747,23 @@ void write_thread(void * arg) {
 	  }
 
 	// update lWriteBlock and skipct
+	syslog(LOG_INFO,"write thread %d: written block... %d",thread_id,lWriteBlock);
 	lWriteBlock++;
 	skipct++;
 
+	// get second new block
+	if (dsaX_udpdb_new_buffer (udpdb) < 0)
+	  {
+	    syslog(LOG_ERR, "receive_obs: dsaX_udpdb_new_buffer failed");
+	    return EXIT_FAILURE;
+	  }
+
+	// update lWriteBlock and skipct
+	syslog(LOG_INFO,"write thread %d: written block... %d",thread_id,lWriteBlock);
+	lWriteBlock++;
+	skipct++;
+
+	
       }
       
       // update doWrite and skipBlock
