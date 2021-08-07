@@ -58,6 +58,7 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 volatile int doWrite = 0;
 volatile int skipBlock = 0;
 volatile int skipping = 0;
+volatile int lWriteBlock = 0;
 volatile int write_ct = 0;
 volatile uint64_t last_seq = 0;
 volatile int skipct = 0;
@@ -694,7 +695,7 @@ void write_thread(void * arg) {
   if (CPU_ISSET(core_id, &cpuset))
     syslog(LOG_INFO,"thread %d: successfully set thread",core_id);
     
-  int lWriteBlock = 0, mod_WB = 0;
+  int mod_WB = 0;
   int a;
   
   while (!quit_threads)
@@ -708,8 +709,7 @@ void write_thread(void * arg) {
     // wblock is assigned, write_ct=0
     
     mod_WB = lWriteBlock % 4;
-    if (!skipping)
-      memcpy(wblock + thread_id*udpdb->hdu_bufsz/nwth, udpdb->tblock + mod_WB*udpdb->hdu_bufsz  + thread_id*udpdb->hdu_bufsz/nwth, udpdb->hdu_bufsz/nwth);
+    memcpy(wblock + thread_id*udpdb->hdu_bufsz/nwth, udpdb->tblock + mod_WB*udpdb->hdu_bufsz  + thread_id*udpdb->hdu_bufsz/nwth, udpdb->hdu_bufsz/nwth);
 
     pthread_mutex_lock(&mutex);
     write_ct++;
@@ -734,23 +734,29 @@ void write_thread(void * arg) {
 	}
 
       syslog(LOG_INFO,"write thread %d: written block... %d (skipping %d)",thread_id,lWriteBlock,skipping);
-      write_ct = 0;
+      lWriteBlock++;
 
       // check for skipBlock
-      if (!skipBlock)
-	doWrite=0;
       if (skipBlock) {
-	if (skipping) {
-	  skipBlock=0;
-	  doWrite=0;
-	  skipping=0;
-	  skipct++;
-	}
-	else
-	  skipping=1;
+
+	// get another new block
+	if (dsaX_udpdb_new_buffer (udpdb) < 0)
+	  {
+	    syslog(LOG_ERR, "receive_obs: dsaX_udpdb_new_buffer failed");
+	    return EXIT_FAILURE;
+	  }
+
+	// update lWriteBlock and skipct
+	lWriteBlock++;
+	skipct++;
+
       }
-	
       
+      // update doWrite and skipBlock
+      doWrite=0;
+      skipBlock=0;
+      write_ct = 0;
+
     }
 
     // increment local lWriteBlock
