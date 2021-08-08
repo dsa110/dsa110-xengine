@@ -566,7 +566,7 @@ void recv_thread(void * arg) {
 	      if ((seq_byte <= block_end_byte) && (seq_byte >= block_start_byte))
 		{
 		  byte_offset = seq_byte - (block_start_byte);
-		  mod_WB = writeBlock % 8;
+		  mod_WB = writeBlock % 64;
 		  memcpy (udpdb->tblock + byte_offset + mod_WB*udpdb->hdu_bufsz, sock->buf + UDP_HEADER, UDP_DATA);		  
 		  pthread_mutex_lock(&mutex);		  
 		  block_count++;
@@ -624,7 +624,7 @@ void recv_thread(void * arg) {
 		  byte_offset = seq_byte - (block_start_byte);
 		  if (byte_offset < udpdb->hdu_bufsz && byte_offset >= 0)
 		    {
-		      mod_WB = writeBlock % 8;
+		      mod_WB = writeBlock % 64;
 		      memcpy (udpdb->tblock + byte_offset + mod_WB*udpdb->hdu_bufsz, temp_buffers[i], UDP_DATA);
 		      //pthread_mutex_lock(&mutex);
 		      block_count++;		      
@@ -648,7 +648,7 @@ void recv_thread(void * arg) {
 		  byte_offset = seq_byte - (block_start_byte);
 		  if (byte_offset < udpdb->hdu_bufsz && byte_offset >= 0)
 		    {
-		      mod_WB = writeBlock % 8;
+		      mod_WB = writeBlock % 64;
 		      memcpy (udpdb->tblock + byte_offset + mod_WB*udpdb->hdu_bufsz, temp_buffers[i], UDP_DATA);
 		      pthread_mutex_lock(&mutex);
 		      block_count++;		      
@@ -708,7 +708,7 @@ void write_thread(void * arg) {
     // assume everything is set up
     // wblock is assigned, write_ct=0
     
-    mod_WB = lWriteBlock % 8;
+    mod_WB = lWriteBlock % 64;
     memcpy(wblock + thread_id*udpdb->hdu_bufsz/nwth, udpdb->tblock + mod_WB*udpdb->hdu_bufsz  + thread_id*udpdb->hdu_bufsz/nwth, udpdb->hdu_bufsz/nwth);
 
     pthread_mutex_lock(&mutex);
@@ -957,7 +957,7 @@ int main (int argc, char *argv[]) {
 
   // shared variables and memory
   uint64_t bufsz = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
-  char * tblock = (char *)malloc(sizeof(char)*bufsz*8);
+  char * tblock = (char *)malloc(sizeof(char)*bufsz*64);
   stats_t * packets = init_stats_t();
   stats_t * bytes = init_stats_t();
   reset_stats_t(packets);
