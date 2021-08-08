@@ -54,6 +54,7 @@ switch block when one block is being written out
 int DEBUG = 0;
 volatile int blockct[bdepth]; // to count how many writes to block. max is NSAMPS_PER_BLOCK*NBEAMS_PER_BLOCK*NW
 volatile int flush_flag = 0; // set to flush output2
+volatile int writing = 0;
 volatile int global_tseq = 0; // global count of full buffers
 int cores[16] = {3, 4, 5, 6, 7, 8, 9, 20, 21, 22, 23, 24, 25, 26, 27, 28}; // to bind threads to
 char iP[100];
@@ -134,11 +135,13 @@ void * process(void * ptr)
 
   // data buffer and other variables
   char * buffer = (char *)malloc((NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW)*sizeof(char));
-  int tseq, oidx, pseq;
+  int tseq, pseq;
   int pct = 0;
-  int i0;
+  int fullBlock;
+  int i0, aa;
   int lastPacket, nextBuf, current_tseq = 0, act_tseq; 
   uint64_t shifty = (bdepth-1)*NSAMPS_PER_BLOCK*NBEAMS_PER_BLOCK*NCHAN_FIL;
+  uint64_t oidx_offset, oidx;
   
   // infinite loop 
   while (1) {
@@ -172,20 +175,21 @@ void * process(void * ptr)
     if (pct != NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW/(P_SIZE-12))
       syslog(LOG_ERR,"thread %d: only received %d of %d",thread_id,pct,NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW/(P_SIZE-12));
     
-    if (DEBUG) syslog(LOG_INFO,"thread %d: read message with chgroup %d tseq %d blockct %d",thread_id,chgroup,tseq,blockct);
     act_tseq = (current_tseq * NSAMPS_PER_TRANSMIT) % NSAMPS_PER_BLOCK; // place within output buffer
 
     // at this stage we have a full local buffer
     // this needs to be placed in the global buffer
-    // according to difference in current_tseq and global_tseq
       
     // output order is [beam, time, freq]. input order is [beam, time, freq], but only a subset of freqs
     i0 = 0;
+    aa = ((current_tseq / (NSAMPS_PER_BLOCK/NSAMPS_PER_TRANSMIT)) % bdepth);
+    oidx_offset = ((uint64_t)(aa))*NSAMPS_PER_BLOCK*NBEAMS_PER_BLOCK*NCHAN_FIL;
+    //syslog(LOG_INFO,"thread %d: read message with chgroup %d tseq %d current_tseq %d global_tseq %d position %d %"PRIu64"",thread_id,chgroup,tseq,current_tseq,global_tseq,aa,oidx_offset);
     for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
       for (int j=0;j<NSAMPS_PER_TRANSMIT;j++) {	
 	for (int k=0;k<NW;k++) {
 	  
-	  oidx = (current_tseq - global_tseq)*NSAMPS_PER_BLOCK*NBEAMS_PER_BLOCK*NCHAN_FIL + i*NSAMPS_PER_BLOCK*NCHAN_FIL + (act_tseq+j)*NCHAN_FIL + CHOFF/8 + chgroup*NW + k;
+	  oidx = oidx_offset + i*NSAMPS_PER_BLOCK*NCHAN_FIL + (act_tseq+j)*NCHAN_FIL + CHOFF/8 + chgroup*NW + k;
 	  
 	  output1[oidx] = buffer[i0];
 
@@ -194,6 +198,32 @@ void * process(void * ptr)
 	}
       }
     }
+    //syslog(LOG_INFO,"thread %d: entering mutex",thread_id);
+
+    // at this stage we have dealt with this capture round, and must address blockct within mutex
+    pthread_mutex_lock(&mutex);
+
+    // increment appropriate blockct
+    aa = ((current_tseq / (NSAMPS_PER_BLOCK/NSAMPS_PER_TRANSMIT)) % bdepth);
+    blockct[aa] += 1;
+    //syslog(LOG_INFO,"thread %d: incrementing blockct %d %d %d (total %d)",thread_id,current_tseq,aa,blockct[aa],NCLIENTS*NSAMPS_PER_BLOCK/NSAMPS_PER_TRANSMIT);
+
+    // deal with full block anywhere
+    for (int i=0;i<bdepth;i++) {
+      if (blockct[i] == NCLIENTS*NSAMPS_PER_BLOCK/NSAMPS_PER_TRANSMIT) {
+
+	// need to write this block and reset blockct
+	flush_flag = 1;
+	blockct[i] = 0;
+	// log - hardcoded bdepth
+	syslog(LOG_INFO,"thread %d: Writing global_tseq %d. Blockcts %d %d %d %d %d %d %d %d",thread_id,global_tseq,blockct[0],blockct[1],blockct[2],blockct[3],blockct[4],blockct[5],blockct[6],blockct[7]);
+
+	
+      }	
+
+    }
+        
+    pthread_mutex_unlock(&mutex);
 
     // advance local tseq and deal with packet capture
     if (lastPacket==1) {
@@ -209,32 +239,7 @@ void * process(void * ptr)
       lastPacket=0;
     }
 
-    // at this stage we have dealt with this capture round, and must address blockct within mutex
-    pthread_mutex_lock(&mutex);
-
-    // increment appropriate blockct
-    blockct[current_tseq-global_tseq] += 1;
-
-    // deal with full block
-    if (blockct[0] == NCLIENTS*NSAMPS_PER_BLOCK/NSAMPS_PER_TRANSMIT) {
-
-      // copy to output block and set flush flag
-      memcpy(output2,output1,NSAMPS_PER_BLOCK*NBEAMS_PER_BLOCK*NCHAN_FIL);
-      flush_flag = 1;
-
-      // shift output1 and blockct back by 1
-      memcpy(output1,output1+NSAMPS_PER_BLOCK*NBEAMS_PER_BLOCK*NCHAN_FIL,shifty);
-      for (int i=0;i<bdepth-1;i++) blockct[i] = blockct[i+1];      
-      
-      // increment global tseq
-      global_tseq++;
-
-      // log - hardcoded bdepth
-      syslog(LOG_INFO,"Incremented global_tseq %d. Blockcts %d %d %d %d %d %d %d %d",global_tseq,blockct[0],blockct[1],blockct[2],blockct[3],blockct[4],blockct[5],blockct[6],blockct[7]);
-
-    }    
-    pthread_mutex_unlock(&mutex);
-
+    
 
   }
 
@@ -438,7 +443,10 @@ int main(int argc, char ** argv)
       aa=1;
 
     // write to output
-    written = ipcio_write (hdu_out->data_block, output2, block_out);
+    writing=1;
+    written = ipcio_write (hdu_out->data_block, output1 + (global_tseq % bdepth)*block_out, block_out);
+    global_tseq += 1;
+    writing=0;
     if (written < block_out)
       {
 	syslog(LOG_ERR, "main: failed to write all data to datablock [output]");	
@@ -446,7 +454,7 @@ int main(int argc, char ** argv)
 	return EXIT_FAILURE;
       }
     
-    if (DEBUG) syslog(LOG_INFO, "written block %d",blocks);      
+    syslog(LOG_INFO, "written block %d",blocks);      
     blocks++;
 
     flush_flag = 0;

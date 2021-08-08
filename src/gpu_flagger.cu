@@ -665,6 +665,12 @@ int main(int argc, char**argv)
   cudaMalloc((void **)&d_repval, NTIMES_P*NCHAN_P*sizeof(unsigned char));
   genrand<<<NTIMES_P*NCHAN_P/NTHREADS_GPU,NTHREADS_GPU>>>(d_repval,time(NULL));
   syslog(LOG_INFO,"done with repvals");
+
+  // for pre-start
+  unsigned char * tmp_indata = (unsigned char *)malloc(sizeof(unsigned char)*NBEAMS_P*NTIMES_P*NCHAN_P);
+  for (int i=0;i<NBEAMS_P;i++)
+    cudaMemcpy(tmp_indata, d_repval, NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+  int prestart = 2;
   
   int started = 0;
   
@@ -672,8 +678,12 @@ int main(int argc, char**argv)
   while (1) {	
     
     // read a DADA block
-    cin_data = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
-    in_data = (unsigned char *)(cin_data);
+    if (prestart==0)  {
+      cin_data = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
+      in_data = (unsigned char *)(cin_data);
+    }
+    else
+      in_data = (unsigned char *)(tmp_indata);
 
     // deal with bm0
     /*memcpy(h_data+NTIMES_P*NCHAN_P,in_data+NTIMES_P*NCHAN_P,(NBEAMS_P-1)*NTIMES_P*NCHAN_P);
@@ -699,7 +709,7 @@ int main(int argc, char**argv)
     //cudaMemset(d_data, 8, NBEAMS_P*NTIMES_P*NCHAN_P);
 
     // if not first block, correct data
-    if (started==1) 
+    if (started==1 || prestart==1) 
       scaley<<<NBEAMS_P*NTIMES_P*NCHAN_P/NTHREADS_GPU,NTHREADS_GPU>>>(d_data, d_spec0, d_var0);
 
     if (DEBUG) syslog(LOG_INFO,"copied data and scaled");
@@ -713,7 +723,7 @@ int main(int argc, char**argv)
     if (DEBUG) syslog(LOG_INFO,"done spec and var");
     
     // if not first block
-    if (started==1) {
+    if (started==1 || prestart==1) {
 
       // calc maxspec
       calc_spectrum<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_max);
@@ -749,26 +759,40 @@ int main(int argc, char**argv)
     //memcpy(h_data,h_bm0,NTIMES_P*NCHAN_P);
     
     // close block after reading
-    ipcio_close_block_read (hdu_in->data_block, bytes_read);
-    if (DEBUG) syslog(LOG_DEBUG,"closed read block");		    
-    written = ipcio_write (hdu_out->data_block, (char *)(h_data), BUF_SIZE);
-    if (written < BUF_SIZE)
-      {
-	syslog(LOG_ERR,"write error");
-	return EXIT_FAILURE;
-      }
+    if (prestart==0) {
+      ipcio_close_block_read (hdu_in->data_block, bytes_read);
+      if (DEBUG) syslog(LOG_DEBUG,"closed read block");		    
+      written = ipcio_write (hdu_out->data_block, (char *)(h_data), BUF_SIZE);
+      if (written < BUF_SIZE)
+	{
+	  syslog(LOG_ERR,"write error");
+	  return EXIT_FAILURE;
+	}
+    }
 
+    if (prestart==1) {
+      syslog(LOG_INFO,"Finishing with pre-start run-through");
+      prestart=0;
+    }
+
+    
     // deal with started and oldspec
-    if (started==0) {
+    if (started==0 || prestart==2) {
       cudaMemcpy(d_spec0, d_spec, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToDevice);
       cudaMemcpy(d_var0, d_var, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToDevice);
-      started=1;
+      if (prestart==0)
+	started=1;
+      else {
+	prestart=1;
+	syslog(LOG_INFO,"Pre-starting");
+      }
     }
+      
     for (int i=0;i<NBEAMS_P*NCHAN_P;i++) {
       h_oldspec[i] = h_spec[i];
     }
     
-    if (fwrite) {
+    if (fwrite && prestart==0 && started==1) {
       fout=fopen(fnam,"a");      
       for (int i=0;i<NCHAN_P;i++) fprintf(fout,"%d %g %g %g\n",h_mask[i],h_subspec[i],h_var[i],h_max[i]);
       fclose(fout);
@@ -786,10 +810,12 @@ int main(int argc, char**argv)
       }
       fclose(fout2);
     }
-	
+
     if (DEBUG) syslog(LOG_INFO,"done with round");
     
+
   }
+
 
   free(fnam);
   free(fnam2);
