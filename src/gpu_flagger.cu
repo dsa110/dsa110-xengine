@@ -671,6 +671,7 @@ int main(int argc, char**argv)
   for (int i=0;i<NBEAMS_P;i++)
     cudaMemcpy(tmp_indata, d_repval, NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyDeviceToHost);
   int prestart = 2;
+  int gotDada = 0;
   
   int started = 0;
   
@@ -681,6 +682,7 @@ int main(int argc, char**argv)
     if (prestart==0)  {
       cin_data = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
       in_data = (unsigned char *)(cin_data);
+      gotDada=1;
     }
     else
       in_data = (unsigned char *)(tmp_indata);
@@ -778,11 +780,13 @@ int main(int argc, char**argv)
     
     // deal with started and oldspec
     if (started==0 || prestart==2) {
-      cudaMemcpy(d_spec0, d_spec, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToDevice);
-      cudaMemcpy(d_var0, d_var, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToDevice);
-      if (prestart==0)
+      if (gotDada==1 || prestart==2) {
+	cudaMemcpy(d_spec0, d_spec, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToDevice);
+	cudaMemcpy(d_var0, d_var, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToDevice);
+      }
+      if (prestart==0 && gotDada==1)
 	started=1;
-      else {
+      else if (prestart==2 && gotDada==0) {
 	prestart=1;
 	syslog(LOG_INFO,"Pre-starting");
       }
