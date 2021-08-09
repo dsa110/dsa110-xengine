@@ -38,6 +38,13 @@ Sequence of events:
 #include "ascii_header.h"
 #include "dsaX_def.h"
 
+// data to pass to threads
+struct cdata {
+  char * in;
+  dada_hdu_t * hdu_out;
+};
+
+
 /* global variables */
 int quit_threads = 0;
 int dump_pending = 0;
@@ -48,6 +55,7 @@ int dumpnum = 0;
 char iP[100];
 char footer_buf[1024];
 int DEBUG = 0;
+volatile int docopy = 0;
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out);
 int dada_bind_thread_to_core (int core);
@@ -85,6 +93,37 @@ void usage()
 	   " -h print usage\n");
 }
 
+// thread to control writing of data to buffer 
+
+void copy_thread (void * arg) {
+
+  struct cdata *d = arg;
+  char *in = (char *)d->in;
+  dada_hdu_t * hdu_out = (dada_hdu_t *)d->hdu_out;
+
+  uint64_t written = 0;
+  uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
+  syslog(LOG_INFO,"in thread... blocksize %"PRIu64"",block_size);
+  
+  while (1) {
+
+    while (docopy=0) usleep(100);
+  
+    written = ipcio_write (hdu_out->data_block, in, block_size);
+
+    dump_pending = 0;
+    docopy=0;
+
+    syslog(LOG_INFO,"Finished writing trigger");
+
+  }
+
+  /* return 0 */
+  int thread_result = 0;
+  pthread_exit((void *) &thread_result);
+
+  
+}
 
 // Thread to control the dumping of data
 
@@ -271,7 +310,7 @@ int main (int argc, char *argv[]) {
   udpdb.verbose = DEBUG;
   udpdb.control_port = control_port;
   
-    // start control thread
+  // start control thread
   int rval = 0;
   pthread_t control_thread_id;
   syslog(LOG_INFO, "starting control_thread()");
@@ -367,7 +406,7 @@ int main (int argc, char *argv[]) {
   uint64_t specs_per_out = 2048*NOUTBLOCKS;
   uint64_t current_specnum = 0; // updates with each dada block read
   uint64_t start_byte, bytes_to_copy, bytes_copied=0;
-  //char * out_data = (char *)malloc(sizeof(char)*block_out);
+  char * out_data = (char *)malloc(sizeof(char)*block_out);
   char * in_data;
   uint64_t written=0;
   uint64_t block_id, bytes_read=0;
@@ -376,6 +415,20 @@ int main (int argc, char *argv[]) {
   ofile = fopen("/home/ubuntu/data/dumps.dat","w");
   fprintf(ofile,"starting...\n");
   fclose(ofile);
+
+
+  // thread for copying data
+  struct cdata cstruct;
+  cstruct.in = out_data;
+  cstruct.hdu_out = hdu_out;  
+  rval = 0;
+  pthread_t copy_thread_id;
+  syslog(LOG_INFO, "starting copy_thread()");
+  rval = pthread_create (&copy_thread_id, 0, (void *) copy_thread, (void *) &cstruct);
+  if (rval != 0) {
+    syslog(LOG_ERR, "Error creating copy_thread: %s", strerror(rval));
+    return -1;
+  }
 
 
   // main reading loop
@@ -417,8 +470,8 @@ int main (int argc, char *argv[]) {
 	  bytes_to_copy = block_size-start_byte;
 	  
 	  // do copy
-	  //memcpy(out_data, in_data+start_byte, bytes_to_copy);
-	  written = ipcio_write (hdu_out->data_block, in_data+start_byte, bytes_to_copy);
+	  memcpy(out_data, in_data+start_byte, bytes_to_copy);
+	  //written = ipcio_write (hdu_out->data_block, in_data+start_byte, bytes_to_copy);
 	  bytes_copied = bytes_to_copy;
 	  
 	}
@@ -427,8 +480,8 @@ int main (int argc, char *argv[]) {
 	if (specnum < current_specnum && specnum + specs_per_out > current_specnum + specs_per_block && dumping==1) {
 
 	  // do copy
-	  //memcpy(out_data + bytes_copied, in_data, block_size);
-	  written = ipcio_write (hdu_out->data_block, in_data, block_size);
+	  memcpy(out_data + bytes_copied, in_data, block_size);
+	  //written = ipcio_write (hdu_out->data_block, in_data, block_size);
 	  bytes_copied += block_size;
 
 	}
@@ -440,8 +493,8 @@ int main (int argc, char *argv[]) {
 	  bytes_to_copy = block_out-bytes_copied;
 
 	  // do copy
-	  //memcpy(out_data+bytes_copied, in_data, bytes_to_copy);
-	  written = ipcio_write (hdu_out->data_block, in_data, bytes_to_copy);
+	  memcpy(out_data+bytes_copied, in_data, bytes_to_copy);
+	  //written = ipcio_write (hdu_out->data_block, in_data, bytes_to_copy);
 
 	  // DO THE WRITING
 	  /*written = ipcio_write (hdu_out->data_block, out_data, block_out);
@@ -453,6 +506,10 @@ int main (int argc, char *argv[]) {
 	      return EXIT_FAILURE;
 	    }
 	  */
+
+	  // DO writing using thread
+	  docopy = 1;
+	  
 	  syslog(LOG_INFO, "written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s", specnum, trignum-1, dumpnum, footer_buf);
 	  ofile = fopen("/home/ubuntu/data/dumps.dat","a");
 	  fprintf(ofile,"written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s\n", specnum, trignum-1, dumpnum, footer_buf);
@@ -462,7 +519,6 @@ int main (int argc, char *argv[]) {
 	  
 	  // reset
 	  bytes_copied = 0;
-	  dump_pending = 0;
 	  dumping=0;
 	  
 	}
@@ -497,13 +553,15 @@ int main (int argc, char *argv[]) {
   }
 
 
-  // close control thread
+  // close threads
   syslog(LOG_INFO, "joining control_thread");
   quit_threads = 1;
   void* result=0;
   pthread_join (control_thread_id, &result);
+  result=0;
+  pthread_join (copy_thread_id, &result);
 
-  //free(out_data);
+  free(out_data);
   dsaX_dbgpu_cleanup (hdu_in, hdu_out);
 
 }
