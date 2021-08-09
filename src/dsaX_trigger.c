@@ -80,6 +80,7 @@ void usage()
 	   " -j in_key [default eaea]\n"
 	   " -o out_key [default fafa]\n"
 	   " -d debug\n"
+	   " -f full_pct [default 0.8]\n"
 	   " -n output file name [no default]\n"
 	   " -h print usage\n");
 }
@@ -192,9 +193,10 @@ int main (int argc, char *argv[]) {
 
   // command line arguments
   int core = -1;
+  float full_pct = 0.8;
   int arg=0;
 
-  while ((arg=getopt(argc,argv,"i:c:j:o:d:h")) != -1)
+  while ((arg=getopt(argc,argv,"i:c:j:o:f:d:h")) != -1)
     {
       switch (arg)
 	{
@@ -205,6 +207,18 @@ int main (int argc, char *argv[]) {
 	  if (optarg)
 	    {
 	      core = atoi(optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog (LOG_ERR,"ERROR: -c flag requires argument\n");
+	      return EXIT_FAILURE;
+	    }
+	case 'f':
+	  if (optarg)
+	    {
+	      full_pct = atof(optarg);
+	      syslog(LOG_INFO,"Using full_pct %f",full_pct);
 	      break;
 	    }
 	  else
@@ -376,7 +390,7 @@ int main (int argc, char *argv[]) {
     
       // add delay
       // only proceed if input data block is 80% full
-      while (pc_full < 0.97) {
+      while (pc_full < full_pct) {
 	pc_full = ipcio_percent_full(hdu_in->data_block);
 	usleep(100);
       }
