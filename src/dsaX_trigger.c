@@ -107,7 +107,7 @@ void copy_thread (void * arg) {
   
   while (1) {
 
-    while (docopy=0) usleep(100);
+    while (docopy==0) usleep(100);
   
     written = ipcio_write (hdu_out->data_block, in, block_size);
 
