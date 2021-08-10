@@ -56,6 +56,7 @@ char iP[100];
 char footer_buf[1024];
 int DEBUG = 0;
 volatile int docopy = 0;
+volatile int dumping = 0;
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out);
 int dada_bind_thread_to_core (int core);
@@ -111,6 +112,7 @@ void copy_thread (void * arg) {
   
     written = ipcio_write (hdu_out->data_block, in, block_size);
 
+    dumping = 0;
     dump_pending = 0;
     docopy=0;
 
@@ -410,7 +412,6 @@ int main (int argc, char *argv[]) {
   char * in_data;
   uint64_t written=0;
   uint64_t block_id, bytes_read=0;
-  int dumping = 0;
   FILE *ofile;
   ofile = fopen("/home/ubuntu/data/dumps.dat","w");
   fprintf(ofile,"starting...\n");
@@ -519,7 +520,6 @@ int main (int argc, char *argv[]) {
 	  
 	  // reset
 	  bytes_copied = 0;
-	  dumping=0;
 	  
 	}
 

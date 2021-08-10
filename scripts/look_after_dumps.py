@@ -80,18 +80,42 @@ def ld_run(args):
 
                 # find specnum number
                 #os.system("grep specnum /home/ubuntu/data/dumps.dat | awk '{print $5,$6,$7}' | sed 's/NUM/ /' | sed 's/NUM/ /' | awk '{print $1,$5}' > /home/ubuntu/tmp/specnums.dat")
-                os.system("grep specnum /home/ubuntu/data/dumps.dat | awk '{print $7,$8}' | sed 's/\-/ /' | sed 's/\-/ /' | sed 's/NUM/ /' | awk '{print $4,$2}' > /home/ubuntu/tmp/specnums.dat")
+                os.system("grep specnum /home/ubuntu/data/dumps.dat | awk '{print $5,$7,$8}' | sed 's/\-/ /' | sed 's/\-/ /' | sed 's/NUM/ /' | awk '{print $4,$2,$1}' > /home/ubuntu/tmp/specnums.dat")
                 #specnum,dumpnum = np.loadtxt("/home/ubuntu/tmp/specnums.dat").transpose()
                 #cur_specnum = int(specnum[dumpnum==flnum])
-                trigname,dumpnum = np.genfromtxt("/home/ubuntu/tmp/specnums.dat",dtype=str).transpose()
+                trigname,dumpnum,specnum = np.genfromtxt("/home/ubuntu/tmp/specnums.dat",dtype=str).transpose()
                 dumpnum = dumpnum.astype('int')
                 cur_trigname = trigname[dumpnum==flnum][0]
+                cur_specnum = specnum[dumpnum==flnum][0]
                 
                 # test for existence of associated json file with specnum
                 if path.exists("/home/ubuntu/data/"+cur_trigname+"_header.json"):
                     sleep(1)
 
                 else:
+
+                    jsonfile = '/home/ubuntu/data/{0}.json'.format(cur_trigname)
+                    if not path.exists(jsonfile):
+                        json_dictionary = dict({
+                            cur_specnum: {
+                                "mjds": get_mjd(
+                                    float(my_ds.get_dict('/mon/snap/1')['armed_mjd']),
+                                    int(my_ds.get_dict('/mon/snap/1/utc_start')['utc_start']),
+                                    float(cur_specnum)
+                                ),
+                                "specnum": float(cur_specnum),
+                                "snr": 0,
+                                "ibox": 0,
+                                "dm": 0.,
+                                "ibeam": 0,
+                                "cntb": 0,
+                                "cntc": 0
+                            }
+                        })
+                        with open(jsonfile, 'w') as jsonfhandler:
+                            json.dump(json_dictionary, jsonfhandler)
+                        break
+                    
                 
                     # simply copy associated json file, and copy llf file
                     os.system("cp /home/ubuntu/data/"+cur_trigname+".json /home/ubuntu/data/"+cur_trigname+"_header.json")
