@@ -80,7 +80,7 @@ def ld_run(args):
 
                 # find specnum number
                 #os.system("grep specnum /home/ubuntu/data/dumps.dat | awk '{print $5,$6,$7}' | sed 's/NUM/ /' | sed 's/NUM/ /' | awk '{print $1,$5}' > /home/ubuntu/tmp/specnums.dat")
-                os.system("grep specnum /home/ubuntu/data/dumps.dat | awk '{print $5,$7,$8}' | sed 's/\-/ /' | sed 's/\-/ /' | sed 's/NUM/ /' | awk '{print $4,$2,$1}' > /home/ubuntu/tmp/specnums.dat")
+                os.system("grep specnum /home/ubuntu/data/dumps.dat | awk '{print $5,$7,$8}' | sed 's/\-/ /' | sed 's/\-/ /' | sed 's/NUM/ /' | awk '{print $5,$3,$1}' > /home/ubuntu/tmp/specnums.dat")
                 #specnum,dumpnum = np.loadtxt("/home/ubuntu/tmp/specnums.dat").transpose()
                 #cur_specnum = int(specnum[dumpnum==flnum])
                 trigname,dumpnum,specnum = np.genfromtxt("/home/ubuntu/tmp/specnums.dat",dtype=str).transpose()
