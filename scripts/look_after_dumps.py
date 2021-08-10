@@ -18,6 +18,7 @@ import socket
 import numpy as np
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
+import dsacalib.constants as ct
 my_log = dsl.DsaSyslogger()
 my_log.subsystem('correlator')
 my_log.app('look_after_dumps.py')
@@ -25,7 +26,16 @@ from astropy.time import Time
 from os import path
 import re
 
-        
+def get_mjd(armed_mjd, utc_start, specnum):
+    """Get the start mjd of a voltage dump.                                                                        
+    Returns                                                                                                        
+    -------                                                                                                        
+    tstart : float                                                                                                 
+    The start time of the voltage dump in mjd.                                                                 
+    """
+    tstart = (armed_mjd+utc_start*4*8.192e-6/86400+(1/(250e6/8192/2)*specnum/ct.SECONDS_PER_DAY))
+    return tstart
+
 # watch callback function for commands
 def cb_func(my_ds):
     """ etcd watch callback function
@@ -97,7 +107,7 @@ def ld_run(args):
                     jsonfile = '/home/ubuntu/data/{0}.json'.format(cur_trigname)
                     if not path.exists(jsonfile):
                         json_dictionary = dict({
-                            cur_specnum: {
+                            cur_trigname: {
                                 "mjds": get_mjd(
                                     float(my_ds.get_dict('/mon/snap/1')['armed_mjd']),
                                     int(my_ds.get_dict('/mon/snap/1/utc_start')['utc_start']),
@@ -114,11 +124,10 @@ def ld_run(args):
                         })
                         with open(jsonfile, 'w') as jsonfhandler:
                             json.dump(json_dictionary, jsonfhandler)
-                        break
                     
                 
                     # simply copy associated json file, and copy llf file
-                    os.system("cp /home/ubuntu/data/"+cur_trigname+".json /home/ubuntu/data/"+cur_trigname+"_header.json")
+                    os.system("mv /home/ubuntu/data/"+cur_trigname+".json /home/ubuntu/data/"+cur_trigname+"_header.json")
                     nfln = "/home/ubuntu/data/" + cur_trigname + "_data.out" 
                     os.system("mv "+llf+" "+nfln)
 
