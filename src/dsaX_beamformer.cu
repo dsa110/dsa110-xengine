@@ -145,8 +145,10 @@ __global__ void promoter(char *input, half *inr, half *ini) {
   int ant = (int)(time_ant % NANT);
   int oidx = tim*98304 + chan*2048 + pol*1024 + ant*16 + chunnel;
 
-  inr[oidx] = __float2half((float)(((char)((input[iidx] & 15) << 4)) >> 4));
-  ini[oidx] = __float2half((float)(((char)((input[iidx] & 240))) >> 4));
+  //inr[oidx] = __float2half((float)(((char)((input[iidx] & 15) << 4)) >> 4));
+  //ini[oidx] = __float2half((float)(((char)((input[iidx] & 240))) >> 4));
+  inr[oidx] = __float2half((float)((char)(((unsigned char)(input[iidx]) & (unsigned char)(15)) << 4) >> 4));
+  ini[oidx] = __float2half((float)((char)(((unsigned char)(input[iidx]) & (unsigned char)(240))) >> 4));
 
 }
 

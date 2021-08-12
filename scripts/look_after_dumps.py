@@ -19,6 +19,7 @@ import numpy as np
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
 import dsacalib.constants as ct
+from dsautils import dsa_functions36
 my_log = dsl.DsaSyslogger()
 my_log.subsystem('correlator')
 my_log.app('look_after_dumps.py')
@@ -76,6 +77,15 @@ def ld_run(args):
     # infinite monitoring loop
     while True:
 
+        # heartbeat        
+        key = '/mon/service/voltage/' + str(args.corr_num)
+        value = {'cadence': 2, 'time': dsa_functions36.current_mjd()}
+        try:
+            my_ds.put_dict(key, value)
+        except:
+            my_log.error('COULD NOT CONNECT TO ETCD')
+
+        
         # test for existence of file in data dir
         if len(glob.glob('/home/ubuntu/data/fl_*.out*'))>0:
 
@@ -100,7 +110,7 @@ def ld_run(args):
                 
                 # test for existence of associated json file with specnum
                 if path.exists("/home/ubuntu/data/"+cur_trigname+"_header.json"):
-                    sleep(1)
+                    sleep(2)
 
                 else:
 
@@ -131,11 +141,11 @@ def ld_run(args):
                     nfln = "/home/ubuntu/data/" + cur_trigname + "_data.out" 
                     os.system("mv "+llf+" "+nfln)
 
-                    sleep(1)
+                    sleep(2)
 
         else:
 
-            sleep(1)
+            sleep(2)
 
     
 

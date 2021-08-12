@@ -75,8 +75,8 @@ using std::endl;
 #define HDR_SIZE 4096
 #define BUF_SIZE NTIMES_P*NCHAN_P*NBEAMS_P // size of TCP packet
 #define NTHREADS_GPU 32
-#define MN 64.0
-#define SIG 8.0
+#define MN 48.0
+#define SIG 6.0
 #define RMAX 16384
 
 // global variables
