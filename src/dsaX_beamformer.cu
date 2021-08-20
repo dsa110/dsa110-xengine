@@ -86,7 +86,7 @@ void adder(float *input, unsigned char *output, float *bp) {
   int beamidx = (int)(bidx / 48);
   
   // declare shared mem
-  __shared__ float data[32]; // data block to be summed  
+  volatile __shared__ float data[32]; // data block to be summed  
 
   // transfer from input to shared mem
   data[tidx] = input[bidx*32+tidx];
