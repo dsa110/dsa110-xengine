@@ -97,7 +97,6 @@ void adder(float *input, unsigned char *output, float *bp) {
   // complete sum
   if (tidx<16) {
     data[tidx] += data[tidx+16]; // over pols
-
     data[tidx] += data[tidx+2];
     data[tidx] += data[tidx+1];
   }
@@ -215,18 +214,20 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
   int oidx = f_idx*16 + tim_idx;
   
   // shared memory for convenience
-  __shared__ float summr[16][16]; // beam, chunnel
+  __shared__ half summr[16][16]; // beam, chunnel
   __shared__ float summi[16][16]; // beam, chunnel
   
   // accumulate real and imag parts into [16 beam x 16 f] fragments
   // Declare the fragments.
   wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> a_frag;
   wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> b_frag;
-  wmma::fragment<wmma::accumulator, 16, 16, 16, float> wr_inr_frag;
-  wmma::fragment<wmma::accumulator, 16, 16, 16, float> wr_ini_frag;
-  wmma::fragment<wmma::accumulator, 16, 16, 16, float> wi_inr_frag;
-  wmma::fragment<wmma::accumulator, 16, 16, 16, float> wi_ini_frag;
+  wmma::fragment<wmma::accumulator, 16, 16, 16, half> wr_inr_frag;
+  wmma::fragment<wmma::accumulator, 16, 16, 16, half> wr_ini_frag;
+  wmma::fragment<wmma::accumulator, 16, 16, 16, half> wi_inr_frag;
+  wmma::fragment<wmma::accumulator, 16, 16, 16, half> wi_ini_frag;
   wmma::fragment<wmma::accumulator, 16, 16, 16, float> ib_frag;
+  wmma::fragment<wmma::accumulator, 16, 16, 16, float> final_frag;
+  
   
   // zero out accumulators
   wmma::fill_fragment(wr_inr_frag, 0.0f);
@@ -298,46 +299,34 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
   }
 
   // at this stage the matrices are [beam, chunnel], and need to be summed over columns
+
+  __syncthreads();
     
   // copy back to shared mem
-  float *p1, *p2, tmp;
+  half *p1;
+  float *p2, tmp;
   p1 = &summr[0][0];
   wmma::store_matrix_sync(p1, wr_inr_frag, 16, wmma::mem_row_major);
 
-  if (stuffants!=1) {
+  __syncthreads();
   
-    // do thread reduction for each beam
-    if (tidx<8) {
-      for (int i=0;i<4;i++) summr[i][tidx] += summr[i][tidx+8];
-      for (int i=0;i<4;i++) summr[i][tidx] += summr[i][tidx+4];
-      for (int i=0;i<4;i++) summr[i][tidx] += summr[i][tidx+2];
-      for (int i=0;i<4;i++) summr[i][tidx] += summr[i][tidx+1];
-    }
-    if (tidx>=8 && tidx<16) {
-      for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+8-8];
-      for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+4-8];
-      for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+2-8];
-      for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+1-8];  
-    }
-    if (tidx>=16 && tidx<24) {
-      for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+8-16];
-      for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+4-16];
-      for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+2-16];
-      for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+1-16];  
-    }
-    if (tidx>=24) {
-      for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+8-24];
-      for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+4-24];
-      for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+2-24];
-      for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+1-24];  
+  if (stuffants!=1) {
+
+    // now do thread reduction using multiplication by unity
+    wmma::fill_fragment(final_frag, 0.0f);
+    wmma::fill_fragment(b_frag, 1.0f);
+    wmma::load_matrix_sync(a_frag, p1, 16);
+    wmma::mma_sync(final_frag, a_frag, b_frag, final_frag);
+    p2 = &summi[0][0];
+    wmma::store_matrix_sync(p2, final_frag, 16, wmma::mem_row_major);
+    
+    __syncthreads();
+
+    // store
+    if (tidx<16) {
+      output[(beam_tile*16+tidx)*1536 + oidx] = summi[tidx][tidx];
     }
 
-    __syncthreads();
-    
-    // now summr[beam][0] can go into output
-    if (tidx<16) {
-      output[(beam_tile*16+tidx)*1536 + oidx] = summr[tidx][0];
-    }
 
   }
 
@@ -487,13 +476,13 @@ int init_weights(char * fnam, float *antpos, float *weights, char *flagants) {
   fread(antpos,64*sizeof(float),1,fin);
   fread(weights,64*NW*2*2*sizeof(float),1,fin);
   float wnorm;
-  /*for (int i=0;i<64*NW*2;i++) {
+  for (int i=0;i<64*NW*2;i++) {
     wnorm = sqrt(weights[2*i]*weights[2*i] + weights[2*i+1]*weights[2*i+1]);
     if (wnorm!=0.0) {
-      weights[2*i] /= wnorm;
-      weights[2*i+1] /= wnorm;
+      weights[2*i] /= wnorm*wnorm;
+      weights[2*i+1] /= wnorm*wnorm;
     }
-    }*/
+  }
 	
 
   int ant;

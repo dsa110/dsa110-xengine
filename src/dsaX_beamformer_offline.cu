@@ -1,8 +1,33 @@
 // -*- c++ -*-       
 /* will implement the 64-input beamformer 
 
-works on individual baseband files, given as input instead of dada.
-writes binary data to output.
+does N beams of 256
+
+order is (taking time as 8x 8.192e-6) 
+[2048 time, 63 antennas, 768 channels, 2 pol, r/i]
+Load in 16 times at a time, so that we have (in units of what needs to be added)
+[16 time, 63 antennas, 96 channels, 8 chunnels, 2 pol, r/i]
+
+This should be reordered on the cpu to 
+[16 time, 96 channels, 63 antennas, 8 chunnels, 2 pol, r/i]
+
+The first kernel, launched with 1536 blocks of 64 threads, needs to
+ - promote each measurement and store in shared mem, parallelizing over ants. need only 8 kB. 
+ - each thread processes 4 beams, adding everything. for each beam,
+  + for each chunnel and pol, calculate weights using cal weights and ant positions, 
+  + add everything into output array
+Output array has order [beam, 96 frequency, 16 time]
+
+Shared mem requirement: 8 kB for promoted data, 512b for positions, nch*1024b for weights
+
+Initialy we start with 4-bit numbers. these are first rotated using 17-bit weights, yielding 22-bit numbers. 
+these are then added: (64 ant)^2 * (2 complex) * (32 chan) * (2 pol) * (16 time). 
+after adding by 64 ants, we have 28-bit numbers. Need to bit shift right by 19 after adding 64 ants. This will yield 29-bit numbers. Need to bit shift right by 21 to pick off lowest 8 bits. 
+
+Do everything in floating point until second kernel. 
+
+Second kernel will simply add times and adjacent channels and pick leading 8 bits
+Then copy back to specific locations in host to form final [beam, time, frequency] array, to be sent to corner turn.
 
  */
 #include <iostream>
@@ -26,6 +51,15 @@ using std::endl;
 #include <mma.h>
 #include <cuda.h>
 #include "cuda_fp16.h"
+//#include "dada_cuda.h"
+#include "dada_client.h"
+#include "dada_def.h"
+#include "dada_hdu.h"
+#include "multilog.h"
+#include "ipcio.h"
+#include "ipcbuf.h"
+#include "dada_affinity.h"
+#include "ascii_header.h"
 #include "dsaX_def.h"
 #include <thrust/device_ptr.h>
 #include <thrust/fill.h>
@@ -39,55 +73,56 @@ int DEBUG = 0;
 
 // kernel for summing and requantizing
 // input array has order [beam, 48 frequency, 2 pol, 16 time]
-// need to output to [beam, 48 frequency]
+// need to output to [4 time, beam, 48 frequency]
 // bp is scale factor for each beam 
-// run with 256*24=6144 blocks and 32 threads
+// run with 256*48=12288 blocks and 32 threads
 __global__
 void adder(float *input, unsigned char *output, float *bp) {
 
   // get block and thread ids
-  int bidx = blockIdx.x; // assume 256*24=6144
+  int bidx = blockIdx.x; // assume 256*48=12288
   int tidx = threadIdx.x; // assume 32
   //int fidx = 2*(bidx % 24);
-  int beamidx = (int)(bidx / 24);
+  int beamidx = (int)(bidx / 48);
   
   // declare shared mem
-  __shared__ float data[64]; // data block to be summed  
+  volatile __shared__ float data[32]; // data block to be summed  
 
   // transfer from input to shared mem
-  data[2*tidx] = input[bidx*64+tidx*2];
-  data[2*tidx+1] = input[bidx*64+tidx*2+1];
-
+  data[tidx] = input[bidx*32+tidx];
+  
   // sync
   __syncthreads();
-  
-  // do sum into data[0] and data[32]
+
+  // complete sum
   if (tidx<16) {
-    data[tidx] += data[tidx+16];
-    data[tidx] += data[tidx+8];
-    data[tidx] += data[tidx+4];
+    data[tidx] += data[tidx+16]; // over pols
     data[tidx] += data[tidx+2];
     data[tidx] += data[tidx+1];
   }
-  if (tidx>=16) {
-    data[tidx+16] += data[tidx+32];
-    data[tidx+16] += data[tidx+24];
-    data[tidx+16] += data[tidx+20];
-    data[tidx+16] += data[tidx+18];
-    data[tidx+16] += data[tidx+17];
-  }
+  // now tidx = 0, 4, 8, 12 are what we want! 
 
   __syncthreads();
   
   // store
-  if (tidx == 0) {
-    //output[bidx*2] = (unsigned char)(__float2int_rn(3.6));
-    //output[bidx*2+1] = (unsigned char)(__float2int_rn(12.5));    
-    output[bidx*2] = (unsigned char)(__float2int_rn(data[0]*bp[beamidx])/2);
-    output[bidx*2+1] = (unsigned char)(__float2int_rn(data[32]*bp[beamidx])/2);
-    //if (beamidx==BEAM_OUT) printf("%hu %hu\n",output[bidx*2],output[bidx*2+1]);
-  }
-      
+  if (tidx == 0) 
+    output[bidx] = (unsigned char)(__float2int_rn(data[0]*bp[beamidx])/2);
+  if (tidx == 4) 
+    output[bidx + 12288] = (unsigned char)(__float2int_rn(data[4]*bp[beamidx])/2);
+  if (tidx == 8) 
+    output[bidx + 2*12288] = (unsigned char)(__float2int_rn(data[8]*bp[beamidx])/2);
+  if (tidx == 12) 
+    output[bidx + 3*12288] = (unsigned char)(__float2int_rn(data[12]*bp[beamidx])/2);
+  
+  /*if (tidx == 0)
+    output[bidx] = (unsigned char)(__float2int_rn(data[0]));
+  if (tidx == 4)
+    output[bidx + 12288] = (unsigned char)(__float2int_rn(data[4]));
+  if (tidx == 8)
+    output[bidx + 2*12288] = (unsigned char)(__float2int_rn(data[8]));
+  if (tidx == 12)
+  output[bidx + 3*12288] = (unsigned char)(__float2int_rn(data[12]));*/
+  
 }
 
 // kernel for promotion
@@ -118,8 +153,10 @@ __global__ void promoter(char *input, half *inr, half *ini) {
   int ant = (int)(time_ant % NANT);
   int oidx = tim*98304 + chan*2048 + pol*1024 + ant*16 + chunnel;
 
-  inr[oidx] = __float2half((float)(((char)((input[iidx] & 15) << 4)) >> 4));
-  ini[oidx] = __float2half((float)(((char)((input[iidx] & 240))) >> 4));
+  //inr[oidx] = __float2half((float)(((char)((input[iidx] & 15) << 4)) >> 4));
+  //ini[oidx] = __float2half((float)(((char)((input[iidx] & 240))) >> 4));
+  inr[oidx] = __float2half((float)((char)(((unsigned char)(input[iidx]) & (unsigned char)(15)) << 4) >> 4));
+  ini[oidx] = __float2half((float)((char)(((unsigned char)(input[iidx]) & (unsigned char)(240))) >> 4));
 
 }
 
@@ -186,25 +223,49 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
   int oidx = f_idx*16 + tim_idx;
   
   // shared memory for convenience
-  __shared__ float summr[16][16]; // beam, chunnel
+  __shared__ half summr[16][16]; // beam, chunnel
   __shared__ float summi[16][16]; // beam, chunnel
   
   // accumulate real and imag parts into [16 beam x 16 f] fragments
   // Declare the fragments.
   wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> a_frag;
   wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> b_frag;
-  wmma::fragment<wmma::accumulator, 16, 16, 16, float> wr_inr_frag;
-  wmma::fragment<wmma::accumulator, 16, 16, 16, float> wr_ini_frag;
-  wmma::fragment<wmma::accumulator, 16, 16, 16, float> wi_inr_frag;
-  wmma::fragment<wmma::accumulator, 16, 16, 16, float> wi_ini_frag;
+  wmma::fragment<wmma::accumulator, 16, 16, 16, half> wr_inr_frag;
+  wmma::fragment<wmma::accumulator, 16, 16, 16, half> wr_ini_frag;
+  wmma::fragment<wmma::accumulator, 16, 16, 16, half> wi_inr_frag;
+  wmma::fragment<wmma::accumulator, 16, 16, 16, half> wi_ini_frag;
+  wmma::fragment<wmma::accumulator, 16, 16, 16, float> ib_frag;
+  wmma::fragment<wmma::accumulator, 16, 16, 16, float> final_frag;
+  
   
   // zero out accumulators
   wmma::fill_fragment(wr_inr_frag, 0.0f);
   wmma::fill_fragment(wr_ini_frag, 0.0f);
   wmma::fill_fragment(wi_inr_frag, 0.0f);
   wmma::fill_fragment(wi_ini_frag, 0.0f);
+  wmma::fill_fragment(ib_frag, 0.0f);
 
-  if (stuffants) {        
+  // IB
+  if (stuffants==2) {
+
+    wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::col_major> c_frag;
+    wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> d_frag;
+    
+    for (int ant_tile=0; ant_tile<4; ant_tile++) {
+
+      wmma::load_matrix_sync(c_frag, inr + data_offset + ant_tile*256, 16);
+      wmma::load_matrix_sync(d_frag, inr + data_offset + ant_tile*256, 16);
+      wmma::mma_sync(ib_frag, c_frag, d_frag, ib_frag);
+      wmma::load_matrix_sync(c_frag, ini + data_offset + ant_tile*256, 16);
+      wmma::load_matrix_sync(d_frag, ini + data_offset + ant_tile*256, 16);
+      wmma::mma_sync(ib_frag, c_frag, d_frag, ib_frag);
+
+    }
+
+  }
+
+  // one ant per beam
+  if (stuffants==1) {        
 
     wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> c_frag;
     wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::col_major> d_frag;
@@ -216,7 +277,7 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
     wmma::mma_sync(wr_inr_frag, c_frag, d_frag, wr_inr_frag);
     
   }
-  else {
+  if (stuffants!=1) {
   
     // loop over ant tiles
     for (int ant_tile=0; ant_tile<4; ant_tile++) {
@@ -247,16 +308,37 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
   }
 
   // at this stage the matrices are [beam, chunnel], and need to be summed over columns
+
+  __syncthreads();
     
   // copy back to shared mem
-  float *p1;
+  half *p1;
+  float *p2, tmp;
   p1 = &summr[0][0];
   wmma::store_matrix_sync(p1, wr_inr_frag, 16, wmma::mem_row_major);
 
-  if (!stuffants) {
+  __syncthreads();
   
-    // do thread reduction for each beam
-    if (tidx<8) {
+  if (stuffants!=1) {
+
+      // now do thread reduction using multiplication by unity
+    wmma::fill_fragment(final_frag, 0.0f);
+    wmma::fill_fragment(b_frag, 1.0f);
+    wmma::load_matrix_sync(a_frag, p1, 16);
+    wmma::mma_sync(final_frag, a_frag, b_frag, final_frag);
+    p2 = &summi[0][0];
+    wmma::store_matrix_sync(p2, final_frag, 16, wmma::mem_row_major);
+    
+    __syncthreads();
+
+    // store
+    if (tidx<16) {
+      output[(beam_tile*16+tidx)*1536 + oidx] = summi[tidx][tidx];
+    }
+
+    
+    // do thread reduction for each beam    
+    /*    if (tidx<8) {
       for (int i=0;i<4;i++) summr[i][tidx] += summr[i][tidx+8];
       for (int i=0;i<4;i++) summr[i][tidx] += summr[i][tidx+4];
       for (int i=0;i<4;i++) summr[i][tidx] += summr[i][tidx+2];
@@ -266,38 +348,48 @@ __global__ void beamformer(half *inr, half *ini, half *wr, half *wi, float *outp
       for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+8-8];
       for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+4-8];
       for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+2-8];
-      for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+1-8];  
+      for (int i=4;i<8;i++) summr[i][tidx-8] += summr[i][tidx+1-8];
     }
     if (tidx>=16 && tidx<24) {
       for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+8-16];
       for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+4-16];
       for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+2-16];
-      for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+1-16];  
+      for (int i=8;i<12;i++) summr[i][tidx-16] += summr[i][tidx+1-16];
     }
     if (tidx>=24) {
       for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+8-24];
       for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+4-24];
       for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+2-24];
-      for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+1-24];  
-    }
+      for (int i=12;i<16;i++) summr[i][tidx-24] += summr[i][tidx+1-24];
+      }*/
 
-    __syncthreads();
+    /*if (tidx<16) 
+      for (int j=1;j<16;j++) summr[tidx][0] += summr[tidx][j];
+
+      __syncthreads();*/
     
     // now summr[beam][0] can go into output
-    if (tidx<16) {
+    /*if (tidx<16) {
       output[(beam_tile*16+tidx)*1536 + oidx] = summr[tidx][0];
-    }
+      }*/
 
   }
-  else {
 
+  if (stuffants==1) {
     if (tidx<16) {
       output[(beam_tile*16+tidx)*1536 + oidx] = summr[tidx][tidx];
     }
-
-
   }
+  if (stuffants==2) {
 
+    p2 = &summi[0][0];
+    wmma::store_matrix_sync(p2, ib_frag, 16, wmma::mem_row_major);      
+    tmp = 0.;
+    for (int i=0;i<16;i++) tmp += summi[i][i];
+    if (tidx==0 && beam_tile==0) 
+      output[(beam_tile*16+tidx)*1536 + oidx] = tmp;
+
+  }      
   
 }
 
@@ -336,6 +428,7 @@ void calc_weights(float *antpos, float *weights, float *freqs, half *wr, half *w
  
   
 // function prototypes
+int dada_bind_thread_to_core (int core);
 int init_weights(char *fnam, float *antpos, float *weights, char *flagants);
 void reorder_block(char *block);
 void calc_bp(float *data, float *bp, int pr);
@@ -358,6 +451,24 @@ void calc_bp(float *data, float *bp, int pr) {
       }
     }
   }
+
+}
+
+// for finding median of bandpass
+
+int cmpfunc(const void* elem1, const void* elem2)
+{
+  if(*(const float*)elem1 < *(const float*)elem2)
+    return -1;
+  return *(const float*)elem1 > *(const float*)elem2;
+}
+
+void ret_med_bp(float *bp) {
+
+  qsort(bp, 256, sizeof(float), cmpfunc);
+  float medval = 0.5*(bp[127]+bp[128]);
+  for (int i=0;i<256;i++)
+    bp[i] = medval;  
 
 }
 
@@ -412,8 +523,8 @@ int init_weights(char * fnam, float *antpos, float *weights, char *flagants) {
   for (int i=0;i<64*NW*2;i++) {
     wnorm = sqrt(weights[2*i]*weights[2*i] + weights[2*i+1]*weights[2*i+1]);
     if (wnorm!=0.0) {
-      weights[2*i] /= wnorm;
-      weights[2*i+1] /= wnorm;
+      weights[2*i] /= wnorm*wnorm;
+      weights[2*i+1] /= wnorm*wnorm;
     }
   }
 	
@@ -428,7 +539,7 @@ int init_weights(char * fnam, float *antpos, float *weights, char *flagants) {
       
   fclose(fants);
   fclose(fin);
-  syslog(LOG_INFO,"Loaded antenna positions and weights");
+  if (DEBUG) syslog(LOG_INFO,"Loaded antenna positions and weights");
   return 0;
 
 }
@@ -438,13 +549,16 @@ void usage()
 {
   fprintf (stdout,
 	   "dsaX_beamformer [options]\n"
+	   " -c core   bind process to CPU core [no default]\n"
 	   " -d send debug messages to syslog\n"
 	   " -f filename for antenna stuff [no default]\n"
-	   " -i input data file\n"
-	   " -o output data file\n"
+	   " -i input data set [no default]\n"
+	   " -o output beam [default 128]\n"
 	   " -z fch1 in MHz [default 1530]\n"
 	   " -a flagants file\n"
 	   " -s stuffants \n"
+	   " -q do incoherent beam \n"
+	   " -t test pattern \n"
 	   " -h print usage\n");
 }
 
@@ -454,7 +568,7 @@ int main (int argc, char *argv[]) {
 
   // startup syslog message
   // using LOG_LOCAL0
-  openlog ("dsaX_beamformer", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
+  openlog ("dsaX_beamformer_offline", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
   syslog (LOG_NOTICE, "Program started by User %d", getuid ());
 
   // device properties
@@ -471,31 +585,42 @@ int main (int argc, char *argv[]) {
   cudaSetDevice(1);
   
   // command line arguments
+  int core = -1;
   int arg = 0;
   int stuffants=0;
+  int test_pattern = 0;
   float fch1 = 1530.0;
-  char dnam[200], onam[200];
-  FILE *fin;
-  FILE *fout;
   char * fnam;
   fnam=(char *)malloc(sizeof(char)*100);
   sprintf(fnam,"nofile");  
+  char * finnam;
+  finnam=(char *)malloc(sizeof(char)*100);
+  sprintf(finnam,"nofile");
+  int obeam=128;
   char * flagants;
   flagants=(char *)malloc(sizeof(char)*100);
   sprintf(flagants,"nofile");  
 
-  while ((arg=getopt(argc,argv,"f:i:o:z:a:sdh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:i:o:z:a:tsqdh")) != -1)
     {
       switch (arg)
 	{
+	case 'c':
+	  if (optarg)
+	    {
+	      core = atoi(optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-c flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
 	case 'i':
 	  if (optarg)
 	    {
-	      strcpy(dnam,optarg);
-	      if (!(fin=fopen(dnam,"rb"))) {
-		syslog(LOG_ERR,"cannot open input file");
-	      	return EXIT_FAILURE;
-	      }
+	      strcpy(finnam,optarg);
 	      break;
 	    }
 	  else
@@ -507,11 +632,7 @@ int main (int argc, char *argv[]) {
 	case 'o':
 	  if (optarg)
 	    {
-	      strcpy(onam,optarg);
-	      if (!(fout=fopen(onam,"wb"))) {
-		syslog(LOG_ERR,"cannot open output file");
-	      	return EXIT_FAILURE;
-	      }
+	      obeam = atoi(optarg);
 	      break;
 	    }
 	  else
@@ -560,9 +681,17 @@ int main (int argc, char *argv[]) {
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
 	  break;
+	case 't':
+	  test_pattern=1;
+	  syslog (LOG_INFO, "Will execute test pattern");
+	  break;
 	case 's':
 	  stuffants=1;
 	  syslog (LOG_INFO, "Will place antennas in output");
+	  break;
+	case 'q':
+	  stuffants=2;
+	  syslog (LOG_INFO, "Will place IB in output");
 	  break;
 	case 'h':
 	  usage();
@@ -574,19 +703,29 @@ int main (int argc, char *argv[]) {
   syslog(LOG_INFO,"Forming 256 beams with sep %g arcmin, fch1 %g",sep,fch1);
   syslog(LOG_INFO,"Using calibrations file %s",fnam);
   syslog(LOG_INFO,"Using flagants file %s",flagants);
+  syslog(LOG_INFO,"Output beam %d",obeam);
+  syslog(LOG_INFO,"Input file %s",finnam);
+  
 
   // load in weights and antpos
   float * antpos = (float *)malloc(sizeof(float)*64); // easting
   float * weights = (float *)malloc(sizeof(float)*64*NW*2*2); // complex weights [ant, NW, pol, r/i]
   float * freqs = (float *)malloc(sizeof(float)*384); // freq
-  for (int i=0;i<384;i++) freqs[i] = (fch1 - i*250./8192.)*1e6;
-  init_weights(fnam,antpos,weights,flagants);  
+  for (int i=0;i<384;i++) freqs[i] = (fch1 - i*250./8192.)*1e6;  
+  
+  // Bind to cpu core
+  if (core >= 0)
+    {
+      if (dada_bind_thread_to_core(core) < 0)
+	syslog(LOG_ERR,"failed to bind to core %d", core);
+      syslog(LOG_NOTICE,"bound to core %d", core);
+    }
+  
   
   // get block sizes and allocate memory
-  uint64_t block_size = 75497472;
-  uint64_t block_out = 1572864;
+  uint64_t block_size = 198180864;
+  uint64_t block_out = 30*48*512;
   syslog(LOG_INFO, "main: have input and output block sizes %llu %llu\n",block_size,block_out);
-  uint64_t  bytes_read = 0;
   int nints = NPACKETS / 16;
   uint64_t nbytes_per_int = block_size / nints;
   uint64_t nbytes_per_out = block_out / nints;
@@ -594,7 +733,6 @@ int main (int argc, char *argv[]) {
   unsigned char * output_buffer;
   output_buffer = (unsigned char *)malloc(sizeof(unsigned char)*block_out);
   memset(output_buffer,0,block_out);
-  uint64_t written, block_id;
   
   // allocate host and device memory for calculations
   //inr and ini are data, in [16 time, 48 freq, 2 pol, 64 ant, 16 chunnels] for real and imag
@@ -609,26 +747,19 @@ int main (int argc, char *argv[]) {
   cudaMalloc((void **)&d_bp, 256*sizeof(float)); // bandpass
   cudaMalloc((void **)&d_wr, 48*2*16*4*16*16*sizeof(half)); // real weight
   cudaMalloc((void **)&d_wi, 48*2*16*4*16*16*sizeof(half)); // imag weight
-  cudaMemcpy(d_antpos, antpos, 64*sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_weights, weights, 64*NW*2*2*sizeof(float), cudaMemcpyHostToDevice);
   cudaMemcpy(d_freqs, freqs, 384*sizeof(float), cudaMemcpyHostToDevice);
   
   float *h_transfer = (float *)malloc(sizeof(float)*256*96*16*NSTREAMS);
   char *h_indata = (char *)malloc(sizeof(char)*16*NANT*96*8*2);
   float *bp = (float *)malloc(sizeof(float)*256);
-  unsigned char *tmp_buf = (unsigned char *)malloc(sizeof(unsigned char)*256*48*NSTREAMS);
-
-  // calculate weights on device
-  calc_weights<<<6144, 256>>>(d_antpos, d_weights, d_freqs, d_wr, d_wi);
-  
-  syslog(LOG_INFO,"Finished with weights");
+  unsigned char *tmp_buf = (unsigned char *)malloc(sizeof(unsigned char)*256*48*4*NSTREAMS);  
   
   // streams and device  
   cudaStream_t stream[NSTREAMS];
   for (int st=0;st<NSTREAMS;st++) {
     cudaStreamCreate(&stream[st]);
     cudaMalloc((void **)&d_indata[st], 16*96*NANT*8*2*sizeof(char)); // data input to bf kernel
-    cudaMalloc((void **)&d_outdata[st], 256*48*sizeof(unsigned char)); // data output from adder
+    cudaMalloc((void **)&d_outdata[st], 256*48*4*sizeof(unsigned char)); // data output from adder
     cudaMalloc((void **)&d_transfer[st], 256*96*16*sizeof(float)); // output from beamformer
     cudaMalloc((void **)&d_inr[st], 16*48*2*64*16*sizeof(half)); // real data
     cudaMalloc((void **)&d_ini[st], 16*48*2*64*16*sizeof(half)); // real data
@@ -638,19 +769,36 @@ int main (int argc, char *argv[]) {
     thrust::fill(d2, d2+16*48*2*64*16, 0.0);
   }
 
-  
-  
+    
   // set up
 
-  int blocks = 0;  
+  int observation_complete=0;
+  int blocks = 0, started = 0;
+  int blockct = 0;
+  
+  syslog(LOG_INFO, "starting observation");
 
-  // calculate BP
-  fread(block,block_size,1,fin);  
+  // init weights
+  init_weights(fnam,antpos,weights,flagants);
+  cudaMemcpy(d_antpos, antpos, 64*sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_weights, weights, 64*NW*2*2*sizeof(float), cudaMemcpyHostToDevice);  
+  calc_weights<<<6144, 256>>>(d_antpos, d_weights, d_freqs, d_wr, d_wi);
+  if (DEBUG) syslog(LOG_INFO,"Finished with weights");
+
+  // open data file and read first block
+  FILE *fin;
+  fin=fopen(finnam,"rb");
+  fread(block,sizeof(char),block_size,fin);
+  fclose(fin);
+  
+  // calculate bp
   for (int i=0;i<256;i++) bp[i] = 0.;
+      
+  // loop over ints
   for (int bst=0;bst<nints/NSTREAMS;bst++) {
+    
     for (int st=0;st<NSTREAMS;st++) {
 
-      // copy to device      
       cudaMemcpyAsync(d_indata[st], block+(bst*NSTREAMS+st)*nbytes_per_int, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
 
       // do promotion
@@ -662,9 +810,9 @@ int main (int argc, char *argv[]) {
       // copy back to host
       cudaMemcpyAsync(h_transfer + st*256*96*16, d_transfer[st], sizeof(float)*393216, cudaMemcpyDeviceToHost, stream[st]);	
 
-      // calc bp
       calc_bp(h_transfer + st*256*96*16,bp,0);
-      
+      ret_med_bp(bp);
+
     }
   }
 
@@ -674,63 +822,59 @@ int main (int argc, char *argv[]) {
     syslog(LOG_INFO,"coeff %d %g",i,bp[i]);
     if (bp[i]!=0.) {
       bp[i] /= 48.*nints; 
-      bp[i] = 128./bp[i];
+      bp[i] = 2.*128./bp[i];
     }
   }
   cudaMemcpy(d_bp, bp, sizeof(float)*256, cudaMemcpyHostToDevice);
 
-  fclose(fin);
+  // open data file and read first block
+  fin=fopen(finnam,"rb");
 
-  // restart file
-  fin=fopen(dnam,"rb");
-  
+  // re-open file and loop over blocks
   while (!feof(fin)) {
 
-    // open block
-    fread(block,block_size,1,fin);
-
+    fread(block,sizeof(char),block_size,fin);
+  
     // loop over ints
     for (int bst=0;bst<nints/NSTREAMS;bst++) {
-      
+
       for (int st=0;st<NSTREAMS;st++) {
 
 	// copy to device
-	//cudaMemcpyAsync(d_indata, h_indata, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
 	cudaMemcpyAsync(d_indata[st], block+(bst*NSTREAMS+st)*nbytes_per_int, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
-	
+
 	// do promotion
 	promoter<<<16*48*NANT, 32, 0, stream[st]>>>(d_indata[st], d_inr[st], d_ini[st]);
-	
+	  
 	// run beamformer kernel
 	beamformer<<<24576, 32, 0, stream[st]>>>(d_inr[st], d_ini[st], d_wr, d_wi, d_transfer[st], stuffants);
-	
+	  	  
 	// run adder kernel
-	adder<<<6144, 32, 0, stream[st]>>>(d_transfer[st], d_outdata[st], d_bp);
-	
+	adder<<<12288, 32, 0, stream[st]>>>(d_transfer[st], d_outdata[st], d_bp);
+	  
 	// copy to host
-	cudaMemcpyAsync(tmp_buf + 256*48*st, d_outdata[st], 256*48*sizeof(unsigned char), cudaMemcpyDeviceToHost, stream[st]);
-	for (int j=0;j<12288;j++)
-	  output_buffer[(bst*NSTREAMS+st)*12288+j] = tmp_buf[j+256*48*st];
-	
-	if (DEBUG && bst*NSTREAMS+st==10) {
-	  for (int j=0;j<48;j++) syslog(LOG_DEBUG,"%hu",output_buffer[(bst*NSTREAMS+st)*12288+BEAM_OUT*48+j]);
-	}        
+	cudaMemcpyAsync(tmp_buf + 256*48*4*st, d_outdata[st], 256*48*4*sizeof(unsigned char), cudaMemcpyDeviceToHost, stream[st]);
+
+	// copy to output
+	for (int jj=0;jj<4;jj++) {
+	  for (int j=0;j<48;j++) {
+	    output_buffer[blocks*512*48 + (bst*NSTREAMS+st)*48*4+ jj*48 + j] = tmp_buf[256*48*4*st + jj*256*48 + obeam*48 + j];
+	  }
+	}
 	
       }
     }
-    
-    // write to output
-    fwrite((char *)(output_buffer),1,block_out,fout);
-    
-    syslog(LOG_INFO, "written block %d",blocks);      
+
     blocks++;
-    
+
   }
 
-
   fclose(fin);
-  fclose(fout);
+  fin=fopen("output.dat","wb");
+  fwrite(output_buffer,sizeof(unsigned char),30*512*48,fin);
+  fclose(fin);
   
+
   for (int st=0;st<NSTREAMS;st++) {
     cudaStreamDestroy(stream[st]);
     cudaFree(d_indata[st]);
@@ -740,7 +884,6 @@ int main (int argc, char *argv[]) {
     cudaFree(d_ini[st]);
   }
   free(fnam);
-  free(block);
   free(flagants);
   free(h_indata);
   free(output_buffer);
@@ -750,6 +893,8 @@ int main (int argc, char *argv[]) {
   free(bp);
   free(h_transfer);
   free(tmp_buf);
+  free(block);
+  free(finnam);
   cudaFree(d_wr);
   cudaFree(d_wi);
   cudaFree(d_antpos);
