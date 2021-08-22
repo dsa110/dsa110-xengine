@@ -82,6 +82,67 @@ using std::endl;
 // global variables
 int DEBUG = 0;
 
+// kernel to calculate median spectrum
+// only works on <NTHREADS_GPU/2 in median
+__global__
+void fix_zspec(float * s0, float * v0, int naver) {
+
+  int block_id = blockIdx.x;
+  int thread_id = threadIdx.x;
+  int tid;
+  int ct_lt = 0;
+  
+  // sorted place
+  int place = (int)(naver/2);
+
+  // copy into shared memory
+  extern __shared__ float vec[];
+
+  // for mean spec
+  if (thread_id<naver) {
+
+    tid=thread_id;
+    vec[thread_id] = s0[tid*NBEAMS_P*NCHAN_P + block_id];
+
+  }
+
+  // for var spec
+  if (thread_id>=naver && thread_id<2*naver) {
+
+    tid=thread_id-naver;
+    vec[thread_id] = v0[tid*NBEAMS_P*NCHAN_P + block_id];
+
+  }
+
+  __syncthreads();
+
+  if (thread_id<naver) {   
+    for (int i=0;i<naver;i++) {
+      if (i!=thread_id) {
+	if (vec[i]<=vec[thread_id]) ct_lt++;
+      }
+    }
+  }
+
+  if (thread_id>=naver && thread_id<2*naver) {   
+    for (int i=naver;i<2*naver;i++) {
+      if (i!=thread_id) {
+	if (vec[i]<=vec[thread_id]) ct_lt++;
+      }
+    }
+  }
+
+  __syncthreads();
+
+
+  if (thread_id<naver) 
+    if (ct_lt==place) s0[block_id] = vec[thread_id];
+  
+  if (thread_id>=naver && thread_id<2*naver)
+    if (ct_lt==place) v0[block_id] = vec[thread_id];
+  
+}
+
 // kernel to calculate mean spectrum
 // launch with NBEAMS_P*NCHAN_P blocks of NTHREADS_GPU threads 
 __global__
@@ -406,11 +467,10 @@ void usage()
 	   " -d send debug messages to syslog\n"
 	   " -i in_key [default dada]\n"
 	   " -o out_key [default caca]\n"
-	   " -n use noise generation rather than zeros\n"
 	   " -t flagging threshold [default 5.0]\n"
-	   " -v variance flagging\n"
 	   "-f output spectra file\n"
-	   "-g output beam power file\n" 
+	   "-g output beam power file\n"
+	   " -n number of blocks in baseline spec aver (must be <=16 and >=1, default 5)\n"
 	   " -h print usage\n");
 }
 
@@ -419,7 +479,6 @@ int main(int argc, char**argv)
 {
 
   // syslog start
-  multilog_t* log = 0;
   openlog ("gpu_flagger", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
   syslog (LOG_NOTICE, "Program started by User %d", getuid ());
   
@@ -435,9 +494,8 @@ int main(int argc, char**argv)
   // command line arguments
   int core = -1;
   int arg = 0;
-  int noise = 0;
   double thresh = 5.0;
-  int varf = 0;
+  int naver = 5;
   char * fnam;
   char * fnam2;
   FILE *fout;
@@ -448,7 +506,7 @@ int main(int argc, char**argv)
   int fwrite = 0;
   int fwrite2 = 0;
   
-  while ((arg=getopt(argc,argv,"c:t:i:o:f:g:vndh")) != -1)
+  while ((arg=getopt(argc,argv,"c:t:i:o:f:g:a:dh")) != -1)
     {
       switch (arg)
 	{
@@ -474,6 +532,18 @@ int main(int argc, char**argv)
 	  else
 	    {
 	      syslog(LOG_ERR,"-f flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'a':
+	  if (optarg)
+	    {
+	      naver = atoi(optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-a flag requires argument");
 	      usage();
 	      return EXIT_FAILURE;
 	    }
@@ -539,14 +609,6 @@ int main(int argc, char**argv)
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
 	  break;
-	case 'n':
-	  noise=1;
-	  syslog (LOG_INFO, "Will generate noise samples");
-	  break;	  
-	case 'v':
-	  varf=1;
-	  syslog (LOG_INFO, "Will do variance flagging");
-	  break;	  
 	case 'h':
 	  usage();
 	  return EXIT_SUCCESS;
@@ -565,7 +627,6 @@ int main(int argc, char**argv)
   // CONNECT AND READ FROM BUFFER
 
   dada_hdu_t* hdu_in = 0;	// header and data unit
-  uint64_t blocksize = NTIMES_P*NCHAN_P*NBEAMS_P;	// size of buffer
   hdu_in  = dada_hdu_create ();
   dada_hdu_set_key (hdu_in, in_key);
   if (dada_hdu_connect (hdu_in) < 0) {
@@ -648,8 +709,8 @@ int main(int argc, char**argv)
   float * h_max = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float * h_oldspec = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float *d_spec0, *d_var0;
-  cudaMalloc((void **)&d_spec0, NBEAMS_P*NCHAN_P*sizeof(float));
-  cudaMalloc((void **)&d_var0, NBEAMS_P*NCHAN_P*sizeof(float));
+  cudaMalloc((void **)&d_spec0, NBEAMS_P*NCHAN_P*naver*sizeof(float));
+  cudaMalloc((void **)&d_var0, NBEAMS_P*NCHAN_P*naver*sizeof(float));
   for (int i=0;i<NBEAMS_P*NCHAN_P;i++) h_oldspec[i] = 0.;
   cudaMemcpy(d_oldspec, h_oldspec, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyHostToDevice);
   float * d_var, * d_max;
@@ -674,6 +735,7 @@ int main(int argc, char**argv)
   int gotDada = 0;
   
   int started = 0;
+  int blockn = 0;
   
   // put rest of the code inside while loop
   while (1) {	
@@ -683,6 +745,7 @@ int main(int argc, char**argv)
       cin_data = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
       in_data = (unsigned char *)(cin_data);
       gotDada=1;
+      blockn++;
     }
     else
       in_data = (unsigned char *)(tmp_indata);
@@ -781,11 +844,19 @@ int main(int argc, char**argv)
     // deal with started and oldspec
     if (started==0 || prestart==2) {
       if (gotDada==1 || prestart==2) {
-	cudaMemcpy(d_spec0, d_spec, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToDevice);
-	cudaMemcpy(d_var0, d_var, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToDevice);
+	if (blockn>0) {
+	  cudaMemcpy(d_spec0 + (blockn-1)*NBEAMS_P*NCHAN_P, d_spec, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToDevice);
+	  cudaMemcpy(d_var0 + (blockn-1)*NBEAMS_P*NCHAN_P, d_var, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToDevice);
+	}
+	if (blockn==0) {
+	  cudaMemcpy(d_spec0, d_spec, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToDevice);
+	  cudaMemcpy(d_var0, d_var, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToDevice);
+	}
       }
-      if (prestart==0 && gotDada==1)
+      if (prestart==0 && gotDada==1 && blockn >= naver) {
 	started=1;
+	if (naver>1) fix_zspec<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU, 2*naver*sizeof(float)>>>(d_spec0, d_var0, naver);
+      }
       else if (prestart==2 && gotDada==0) {
 	prestart=1;
 	syslog(LOG_INFO,"Pre-starting");
@@ -798,7 +869,7 @@ int main(int argc, char**argv)
     
     if (fwrite && prestart==0 && started==1) {
       fout=fopen(fnam,"a");      
-      for (int i=0;i<NCHAN_P;i++) fprintf(fout,"%d %g %g %g\n",h_mask[i],h_subspec[i],h_var[i],h_max[i]);
+      for (int i=0;i<NCHAN_P*NBEAMS_P;i++) fprintf(fout,"%d %g %g %g\n",h_mask[i],h_subspec[i],h_var[i],h_max[i]);
       fclose(fout);
     }
     if (fwrite2) {
