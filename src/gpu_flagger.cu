@@ -362,27 +362,28 @@ void genmask(float *spec, float thresh, float ref, int *mask) {
 }
 
 
-void swap(float *p,float *q) {
-   float t;
-   
-   t=*p; 
-   *p=*q; 
-   *q=t;
-}
+
+float medval(float *a,int n);
 
 float medval(float *a,int n) { 
-	int i,j;
-	float tmp[n];
-	for (i = 0;i < n;i++)
-		tmp[i] = a[i];
-	
-	for(i = 0;i < n-1;i++) {
-		for(j = 0;j < n-i-1;j++) {
-			if(tmp[j] > tmp[j+1])
-				swap(&tmp[j],&tmp[j+1]);
-		}
-	}
-	return tmp[(n+1)/2-1];
+  int i,j;
+  float tmp[n], tt;
+  for (i = 0;i < n;i++)
+    tmp[i] = a[i];
+  
+  for(i = 0;i < n-1;i++) {
+    for(j = 0;j < n-i-1;j++) {
+      if(tmp[j] > tmp[j+1]) {
+
+	tt = tmp[j+1];
+	tmp[j+1] = tmp[j];
+	tmp[j] = tt;
+
+      }
+    }
+  }
+
+  return tmp[(int)((n+1)/2-1)];
 }
 
 void channflag(float* spec, float Thr, int * mask);
@@ -405,21 +406,28 @@ void channflag(float* spec, float Thr, int * mask) {
   
   int ZeroChannels = 128; 
   int nFiltSize = 21;
+  int nFilt, idx;
   
-  // calculate median filtered spectrum and correct spectrum at the same time
-  for (i = 0; i < NBEAMS_P*NCHAN_P-nFiltSize; i++){
-    baselinecorrec[i] = medval(&spec[i],nFiltSize);
-    CorrecSpec[i] = spec[i] - baselinecorrec[i];
+  // calculate median filtered spectrum
+  for (i=0;i<NBEAMS_P;i++) {
+    for (j=ZeroChannels;j<NCHAN_P-ZeroChannels;j++) {
+      
+      if (NCHAN_P-ZeroChannels-j>=nFiltSize)
+	CorrecSpec[i*NCHAN_P+j] = spec[i*NCHAN_P+j] - medval(spec + i*NCHAN_P+j,nFiltSize);
+      else
+	CorrecSpec[i*NCHAN_P+j] = spec[i*NCHAN_P+j] - medval(spec + i*NCHAN_P+NCHAN_P-ZeroChannels-nFiltSize,nFiltSize);
+
+    }
   }
 	
   // calculate median value for each beam
   for (i = 0; i < NBEAMS_P; i++)
-    medspec[i] = medval(&CorrecSpec[i*NCHAN_P],NCHAN_P);
+    medspec[i] = medval(CorrecSpec + i*NCHAN_P + ZeroChannels,NCHAN_P-2*ZeroChannels);
   
   // compute MAD for each beam
   for (i = 0; i < NBEAMS_P; i++){
     for (j = ZeroChannels; j < NCHAN_P-ZeroChannels; j++){
-      normspec[j-ZeroChannels] = abs(CorrecSpec[j]-medspec[i]);
+      normspec[j-ZeroChannels] = fabs(CorrecSpec[i*NCHAN_P+j]-medspec[i]);
     }
     madspec[i] = medval(normspec,NCHAN_P-2*ZeroChannels);
   }
@@ -433,9 +441,6 @@ void channflag(float* spec, float Thr, int * mask) {
     
   }
   
-  //for (i=0;i<NCHAN_P;i++)
-  //  printf("%g %g %g\n",CorrecSpec[i],madspec[0]*Thr,spec[i]);
-
   free(baselinecorrec);
   free(CorrecSpec);
   free(medspec);
@@ -800,7 +805,7 @@ int main(int argc, char**argv)
 	h_subspec[i] = h_spec[i]-h_oldspec[i];
       }
       channflag(h_subspec,thresh,h_mask);
-      channflag(h_var,thresh,h_mask);
+      channflag(h_var,thresh+0.5,h_mask);
       channflag(h_max,thresh,h_mask);      
 
       // apply mask
