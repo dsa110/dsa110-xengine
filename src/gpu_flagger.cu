@@ -505,6 +505,7 @@ int main(int argc, char**argv)
   char * fnam2;
   FILE *fout;
   FILE *fout2;
+  FILE *f0;
   
   fnam = (char *)malloc(sizeof(char)*200);
   fnam2 = (char *)malloc(sizeof(char)*200);
@@ -713,6 +714,8 @@ int main(int argc, char**argv)
   float * h_var = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float * h_max = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float * h_oldspec = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
+  float *h_spec0 = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
+  float *h_var0 = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float *d_spec0, *d_var0;
   cudaMalloc((void **)&d_spec0, NBEAMS_P*NCHAN_P*naver*sizeof(float));
   cudaMalloc((void **)&d_var0, NBEAMS_P*NCHAN_P*naver*sizeof(float));
@@ -843,6 +846,21 @@ int main(int argc, char**argv)
     if (prestart==1) {
       syslog(LOG_INFO,"Finishing with pre-start run-through");
       prestart=0;
+
+      // search for spec0 and var0 file
+      if(access("/home/ubuntu/data/specvar0.dat", F_OK )) {
+
+	f0=fopen("/home/ubuntu/data/specvar0.dat","r");
+	for (int i=0;i<NBEAMS_P*NCHAN_P;i++)
+	  fscanf(f0,"%f %f\n",&h_spec0[i],&h_var0[i]);
+	fclose(f0);
+	cudaMemcpy(d_spec0, h_spec0, NBEAMS_P*NCHAN_P*sizeof(float),cudaMemcpyHostToDevice);
+	cudaMemcpy(d_var0, h_var0, NBEAMS_P*NCHAN_P*sizeof(float),cudaMemcpyHostToDevice);
+	started=1;
+	syslog(LOG_INFO,"Read init weight from file");
+
+      }
+      
     }
 
     
@@ -861,6 +879,16 @@ int main(int argc, char**argv)
       if (prestart==0 && gotDada==1 && blockn >= naver) {
 	started=1;
 	if (naver>1) fix_zspec<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU, 2*naver*sizeof(float)>>>(d_spec0, d_var0, naver);
+
+	// write out weights
+	f0=fopen("/home/ubuntu/data/specvar0.dat","w");
+	cudaMemcpy(h_spec0, d_spec0, NBEAMS_P*NCHAN_P*sizeof(float),cudaMemcpyDeviceToHost);
+	cudaMemcpy(h_var0, d_var0, NBEAMS_P*NCHAN_P*sizeof(float),cudaMemcpyDeviceToHost);
+	for (int i=0;i<NBEAMS_P*NCHAN_P;i++)
+	  fprintf(f0,"%f %f\n",h_spec0[i],h_var0[i]);
+	fclose(f0);
+
+	
       }
       else if (prestart==2 && gotDada==0) {
 	prestart=1;
