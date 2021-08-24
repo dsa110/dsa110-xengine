@@ -848,9 +848,9 @@ int main(int argc, char**argv)
       prestart=0;
 
       // search for spec0 and var0 file
-      if(access("/home/ubuntu/data/specvar0.dat", F_OK )) {
+      if (f0=fopen("/home/ubuntu/data/specvar0.dat","r")) {
 
-	f0=fopen("/home/ubuntu/data/specvar0.dat","r");
+	//f0=fopen("/home/ubuntu/data/specvar0.dat","r");
 	for (int i=0;i<NBEAMS_P*NCHAN_P;i++)
 	  fscanf(f0,"%f %f\n",&h_spec0[i],&h_var0[i]);
 	fclose(f0);
