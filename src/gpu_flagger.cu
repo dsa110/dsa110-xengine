@@ -463,6 +463,36 @@ void gather_mask(int *h_idx, int *h_mask, int *n_mask) {
 
 }
 
+// to medianise zero specs
+void median_calc(float * arr);
+void median_calc(float * arr) {
+
+  int stride = NCHAN_P;
+  float tt;
+  
+  for (int chan=0;chan<NCHAN_P;chan++) {
+
+    for(int i = 0;i < NBEAMS_P-1;i++) {
+      for(int j = 0;j < (NBEAMS_P-i-1);j++) {
+
+	if(arr[j*stride+chan] > arr[(j+1)*stride+chan]) {
+
+	  tt = arr[(j+1)*stride+chan];
+	  arr[(j+1)*stride+chan] = arr[(j)*stride+chan];
+	  arr[(j)*stride+chan] = tt;
+
+	}
+      }
+    }
+
+  }
+
+  memcpy(arr, arr + 31*NCHAN_P*sizeof(float), NCHAN_P*sizeof(float));
+  for (int i=1;i<NBEAMS_P;i++)
+    memcpy(arr + i*NCHAN_P*sizeof(float), arr, NCHAN_P*sizeof(float));
+  
+}
+
 
 void usage()
 {
@@ -879,11 +909,16 @@ int main(int argc, char**argv)
       if (prestart==0 && gotDada==1 && blockn >= naver) {
 	started=1;
 	if (naver>1) fix_zspec<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU, 2*naver*sizeof(float)>>>(d_spec0, d_var0, naver);
-
-	// write out weights
-	f0=fopen("/home/ubuntu/data/specvar0.dat","w");
 	cudaMemcpy(h_spec0, d_spec0, NBEAMS_P*NCHAN_P*sizeof(float),cudaMemcpyDeviceToHost);
 	cudaMemcpy(h_var0, d_var0, NBEAMS_P*NCHAN_P*sizeof(float),cudaMemcpyDeviceToHost);
+	median_calc(h_spec0);
+	median_calc(h_var0);
+	cudaMemcpy(d_spec0, h_spec0, NBEAMS_P*NCHAN_P*sizeof(float),cudaMemcpyHostToDevice);
+	cudaMemcpy(d_var0, h_var0, NBEAMS_P*NCHAN_P*sizeof(float),cudaMemcpyHostToDevice);
+	syslog(LOG_INFO,"writing out weights...");
+	
+	// write out weights
+	f0=fopen("/home/ubuntu/data/specvar.dat","w");
 	for (int i=0;i<NBEAMS_P*NCHAN_P;i++)
 	  fprintf(f0,"%f %f\n",h_spec0[i],h_var0[i]);
 	fclose(f0);
