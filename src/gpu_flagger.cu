@@ -487,11 +487,16 @@ void median_calc(float * arr) {
 
   }
 
-  memcpy(arr, arr + 31*NCHAN_P*sizeof(float), NCHAN_P*sizeof(float));
-  for (int i=1;i<NBEAMS_P;i++)
-    memcpy(arr + i*NCHAN_P*sizeof(float), arr, NCHAN_P*sizeof(float));
-  
+  for (int i=0;i<NCHAN_P;i++)
+    arr[i] = arr[i+31*NCHAN_P];
+
+  for (int j=1;j<NBEAMS_P;j++) {
+    for (int i=0;i<NCHAN_P;i++)
+      arr[j*NCHAN_P + i] = arr[i];
+  }
+
 }
+
 
 
 void usage()
