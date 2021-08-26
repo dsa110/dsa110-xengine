@@ -121,7 +121,7 @@ def get_buf_info(buff):
 
 # this only reads in buffer information
 # TODO: add outputs from code
-def get_monitor_dict(params, corr_num):
+def get_monitor_dict(params, corr_num, my_ds):
     """ prepares monitor dictionary for corr
     
     :param params: corr config params
@@ -160,6 +160,11 @@ def get_monitor_dict(params, corr_num):
         mon_dict['last_seq'] = capstats[3]
         mon_dict['skipped'] = capstats[4]
 
+    # voltage file ct
+    n_trigs = my_ds.get_dict('/mon/corr/'+str(corr_num)+'/voltage_ct')
+    mon_dict['n_trigs'] = n_trigs['n_trigs']
+    
+        
     # stuff Rick wants
     mon_dict['sim'] = 'false'
     mon_dict['corr_num'] = corr_num
@@ -338,7 +343,7 @@ def corr_run(args):
     while True:
 
         key = '/mon/corr/' + str(args.corr_num)
-        md = get_monitor_dict(params,args.corr_num)
+        md = get_monitor_dict(params,args.corr_num,my_ds)
         if md!=-1:
             try:
                 my_ds.put_dict(key, md)

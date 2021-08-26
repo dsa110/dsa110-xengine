@@ -141,6 +141,17 @@ def ld_run(args):
                     nfln = "/home/ubuntu/data/" + cur_trigname + "_data.out" 
                     os.system("mv "+llf+" "+nfln)
 
+                    sleep(1)
+                    
+                    # update etcd keys
+                    f = open('/home/ubuntu/data/'+cur_trigname+'_header.json')
+                    trig_dict = json.load(f)
+                    my_ds.put_dict('/mon/corr/'+str(args.corr_num)+'/voltage',trig_dict)
+                    n_trigs = my_ds.get_dict('/mon/corr/'+str(args.corr_num)+'/voltage_ct')
+                    n_trigs['n_trigs'] += 1
+                    my_ds.put_dict('/mon/corr/'+str(args.corr_num)+'/voltage_ct',n_trigs)
+                    
+
                     sleep(2)
 
         else:
