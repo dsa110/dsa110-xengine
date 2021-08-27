@@ -936,7 +936,7 @@ int main (int argc, char *argv[]) {
 	syslog(LOG_INFO,"coeff %d %g",i,bp[i]);
 	if (bp[i]!=0.) {
 	  bp[i] /= 48.*nints; 
-	  bp[i] = 2.*128./bp[i];
+	  bp[i] = 2.5*128./bp[i];
 	}
       }
       cudaMemcpy(d_bp, bp, sizeof(float)*256, cudaMemcpyHostToDevice);
