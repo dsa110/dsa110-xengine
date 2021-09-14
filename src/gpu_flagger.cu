@@ -471,7 +471,7 @@ void calc_bpwr(float *h_spec, float *h_bpwr) {
     h_bpwr[i] = 0.;
     for (int j=0;j<NCHAN_P;j++) 
       h_bpwr[i] += h_spec[i*NCHAN_P+j];
-    h_bpwr[i] = (h_bpwr[i]/(1.*NCHAN_P))/MN;
+    h_bpwr[i] = (h_bpwr[i]/(1.*(NCHAN_P-256)))/MN;
     
   }
 
