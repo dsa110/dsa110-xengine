@@ -312,7 +312,7 @@ void scaley(unsigned char *data, float *spectrum, float *varspec) {
 // kernel to do flagging
 // launch with n_mask*NTIMES_P/NTHREADS_GPU blocks of NTHREADS_GPU threads 
 __global__
-void flag(unsigned char *data, int * midx, unsigned char *repval) {
+void flag(unsigned char *data, int * midx, unsigned char *repval, float *bpwr) {
 
   int block_id = blockIdx.x;
   int thread_id = threadIdx.x;
@@ -324,7 +324,7 @@ void flag(unsigned char *data, int * midx, unsigned char *repval) {
   int idx = bm*NTIMES_P*NCHAN_P + tm*NCHAN_P + ch;  
 
   // do replacement
-  data[idx] = repval[ch*NTIMES_P+tm];
+  data[idx] = repval[ch*NTIMES_P+tm]*bpwr[bm];
     
 }
 
@@ -463,6 +463,20 @@ void gather_mask(int *h_idx, int *h_mask, int *n_mask) {
 
 }
 
+// to calculate bpwr from spectrum
+void calc_bpwr(float *h_spec, float *h_bpwr);
+void calc_bpwr(float *h_spec, float *h_bpwr) {
+
+  for (int i=0;i<NBEAMS_P;i++) {
+    h_bpwr[i] = 0.;
+    for (int j=0;j<NCHAN_P;j++) 
+      h_bpwr[i] += h_spec[i*NCHAN_P+j];
+    h_bpwr[i] = (h_bpwr[i]/(1.*NCHAN_P))/MN;
+    
+  }
+
+}
+
 // to medianise zero specs
 void median_calc(float * arr);
 void median_calc(float * arr) {
@@ -511,6 +525,7 @@ void usage()
 	   "-f output spectra file\n"
 	   "-g output beam power file\n"
 	   " -n number of blocks in baseline spec aver (must be <=16 and >=1, default 5)\n"
+	   " -p adjust noise level according to power\n"
 	   " -h print usage\n");
 }
 
@@ -546,8 +561,9 @@ int main(int argc, char**argv)
   fnam2 = (char *)malloc(sizeof(char)*200);
   int fwrite = 0;
   int fwrite2 = 0;
+  int pwr = 0;
   
-  while ((arg=getopt(argc,argv,"c:t:i:o:f:g:a:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:t:i:o:f:g:a:dph")) != -1)
     {
       switch (arg)
 	{
@@ -650,6 +666,9 @@ int main(int argc, char**argv)
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
 	  break;
+	case 'p':
+	  pwr=1;
+	  break;
 	case 'h':
 	  usage();
 	  return EXIT_SUCCESS;
@@ -742,6 +761,9 @@ int main(int argc, char**argv)
   float * d_spec, * d_oldspec;
   cudaMalloc((void **)&d_spec, NBEAMS_P*NCHAN_P*sizeof(float));
   cudaMalloc((void **)&d_oldspec, NBEAMS_P*NCHAN_P*sizeof(float));
+  float * h_bpwr = (float *)malloc(sizeof(float)*NBEAMS_P);
+  float * d_bpwr;
+  cudaMalloc((void **)&d_bpwr, NBEAMS_P*sizeof(float));
   float * h_spec = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float * h_beam = (float *)malloc(sizeof(float)*NBEAMS_P);
   float * h_bmask = (float *)malloc(sizeof(float)*NBEAMS_P);
@@ -768,6 +790,7 @@ int main(int argc, char**argv)
   unsigned char *d_repval;
   cudaMalloc((void **)&d_repval, NTIMES_P*NCHAN_P*sizeof(unsigned char));
   genrand<<<NTIMES_P*NCHAN_P/NTHREADS_GPU,NTHREADS_GPU>>>(d_repval,time(NULL));
+  for (int i=0;i<NBEAMS_P;i++) h_bpwr[i] = 1.;
   syslog(LOG_INFO,"done with repvals");
 
   // for pre-start
@@ -844,13 +867,17 @@ int main(int argc, char**argv)
       }
       channflag(h_subspec,thresh,h_mask);
       channflag(h_var,thresh+0.5,h_mask);
-      channflag(h_max,thresh,h_mask);      
+      channflag(h_max,thresh,h_mask);
+
+      // calc bpwr if needed
+      if (pwr) calc_bpwr(h_spec,h_bpwr);
+      cudaMemcpy(d_bpwr, h_bpwr, NBEAMS_P*sizeof(float), cudaMemcpyHostToDevice);
 
       // apply mask
       gather_mask(h_idx, h_mask, &n_mask);
       if (DEBUG) syslog(LOG_INFO,"FLAG_COUNT %d",n_mask);   		
       cudaMemcpy(d_idx, h_idx, n_mask*sizeof(int), cudaMemcpyHostToDevice);
-      flag<<<n_mask*NTIMES_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_idx, d_repval);      
+      flag<<<n_mask*NTIMES_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_idx, d_repval, d_bpwr);      
 
       // write out stuff
       //for (int i=0;i<NBEAMS_P*NCHAN_P;i++)
@@ -976,6 +1003,8 @@ int main(int argc, char**argv)
   free(h_var);
   free(h_max);
   free(h_bm0);
+  free(h_bpwr);
+  cudaFree(d_bpwr);
   cudaFree(d_data);
   cudaFree(d_spec);
   cudaFree(d_var);
