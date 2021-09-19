@@ -553,7 +553,6 @@ void usage()
 	   " -d send debug messages to syslog\n"
 	   " -f filename for antenna stuff [no default]\n"
 	   " -i input data set [no default]\n"
-	   " -o output beam [default 128]\n"
 	   " -z fch1 in MHz [default 1530]\n"
 	   " -a flagants file\n"
 	   " -s stuffants \n"
@@ -596,12 +595,11 @@ int main (int argc, char *argv[]) {
   char * finnam;
   finnam=(char *)malloc(sizeof(char)*100);
   sprintf(finnam,"nofile");
-  int obeam=128;
   char * flagants;
   flagants=(char *)malloc(sizeof(char)*100);
   sprintf(flagants,"nofile");  
 
-  while ((arg=getopt(argc,argv,"c:f:i:o:z:a:tsqdh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:i:z:a:tsqdh")) != -1)
     {
       switch (arg)
 	{
@@ -626,18 +624,6 @@ int main (int argc, char *argv[]) {
 	  else
 	    {
 	      syslog(LOG_ERR,"-i flag requires argument");
-	      usage();
-	      return EXIT_FAILURE;
-	    }
-	case 'o':
-	  if (optarg)
-	    {
-	      obeam = atoi(optarg);
-	      break;
-	    }
-	  else
-	    {
-	      syslog(LOG_ERR,"-o flag requires argument");
 	      usage();
 	      return EXIT_FAILURE;
 	    }
@@ -703,7 +689,6 @@ int main (int argc, char *argv[]) {
   syslog(LOG_INFO,"Forming 256 beams with sep %g arcmin, fch1 %g",sep,fch1);
   syslog(LOG_INFO,"Using calibrations file %s",fnam);
   syslog(LOG_INFO,"Using flagants file %s",flagants);
-  syslog(LOG_INFO,"Output beam %d",obeam);
   syslog(LOG_INFO,"Input file %s",finnam);
   
 
@@ -724,12 +709,13 @@ int main (int argc, char *argv[]) {
   
   // get block sizes and allocate memory
   uint64_t block_size = 198180864;
-  uint64_t block_out = 30*48*512;
+  uint64_t block_out = 30*48*512*256;
+  char * block;
+  block = (char *)malloc(sizeof(char)*block_size);
   syslog(LOG_INFO, "main: have input and output block sizes %llu %llu\n",block_size,block_out);
   int nints = NPACKETS / 16;
   uint64_t nbytes_per_int = block_size / nints;
-  uint64_t nbytes_per_out = block_out / nints;
-  char * block = (char *)malloc(sizeof(char)*block_size);
+  uint64_t nbytes_per_out = block_out / nints;  
   unsigned char * output_buffer;
   output_buffer = (unsigned char *)malloc(sizeof(unsigned char)*block_out);
   memset(output_buffer,0,block_out);
@@ -816,6 +802,7 @@ int main (int argc, char *argv[]) {
     }
   }
 
+
   // adjust bandpass
   syslog(LOG_INFO,"Final BP...");
   for (int i=0;i<256;i++) {
@@ -857,8 +844,10 @@ int main (int argc, char *argv[]) {
 
 	// copy to output
 	for (int jj=0;jj<4;jj++) {
-	  for (int j=0;j<48;j++) {
-	    output_buffer[blocks*512*48 + (bst*NSTREAMS+st)*48*4+ jj*48 + j] = tmp_buf[256*48*4*st + jj*256*48 + obeam*48 + j];
+	  for (int bmn=0;bmn<256;bmn++) {
+	    for (int j=0;j<48;j++) {
+	      output_buffer[blocks*512*48*256 + (bst*NSTREAMS+st)*48*4*256+ jj*48*256 + bmn*48 + j] = tmp_buf[256*48*4*st + jj*256*48 + bmn*48 + j];
+	    }
 	  }
 	}
 	
@@ -868,10 +857,10 @@ int main (int argc, char *argv[]) {
     blocks++;
 
   }
-
+  
   fclose(fin);
-  fin=fopen("output.dat","wb");
-  fwrite(output_buffer,sizeof(unsigned char),30*512*48,fin);
+  fin=fopen("/home/ubuntu/data/tmp/output.dat","wb");
+  fwrite(output_buffer,sizeof(unsigned char),30*512*48*256,fin);
   fclose(fin);
   
 
@@ -882,7 +871,12 @@ int main (int argc, char *argv[]) {
     cudaFree(d_transfer[st]);
     cudaFree(d_inr[st]);
     cudaFree(d_ini[st]);
-  }
+  }  
+
+  
+  //  free(block);
+  
+  
   free(fnam);
   free(flagants);
   free(h_indata);
@@ -892,16 +886,13 @@ int main (int argc, char *argv[]) {
   free(freqs);
   free(bp);
   free(h_transfer);
-  free(tmp_buf);
-  free(block);
-  free(finnam);
+  free(tmp_buf);  
+  free(finnam);            
   cudaFree(d_wr);
   cudaFree(d_wi);
   cudaFree(d_antpos);
   cudaFree(d_freqs);
   cudaFree(d_weights);
-  cudaFree(d_wr);
-  cudaFree(d_wi);
   cudaFree(d_bp);
   
 }

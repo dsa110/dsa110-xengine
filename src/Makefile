@@ -36,6 +36,12 @@ dsaX_filTrigger.o: dsaX_filTrigger.c $(CDEPS1)
 dsaX_filTrigger: dsaX_filTrigger.o
 	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
 
+splice_offline_beams.o: splice_offline_beams.c $(CDEPS1)
+	$(CC) -c -o $@ $< $(CFLAGS1)
+
+splice_offline_beams: splice_offline_beams.o
+	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
+
 dsaX_store.o: dsaX_store.c $(CDEPS1)
 	$(CC) -c -o $@ $< $(CFLAGS1)
 
