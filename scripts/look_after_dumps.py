@@ -147,7 +147,7 @@ def ld_run(args):
                     f = open('/home/ubuntu/data/'+cur_trigname+'_header.json')
                     trig_dict = json.load(f)
                     out_trig_dict = dict({"corrname":socket.gethostname(), "trigger":trig_dict})
-                    my_ds.put_dict('/mon/corr/1/voltage',out_trig_dict)
+                    my_ds.put_dict('/mon/corr/'+str(args.corr_num)+'/voltage',out_trig_dict)
                     n_trigs = my_ds.get_dict('/mon/corr/'+str(args.corr_num)+'/voltage_ct')
                     n_trigs['n_trigs'] += 1
                     my_ds.put_dict('/mon/corr/'+str(args.corr_num)+'/voltage_ct',n_trigs)
