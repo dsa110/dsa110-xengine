@@ -42,11 +42,13 @@ Sequence of events:
 int quit_threads = 0;
 int dump_pending = 0;
 uint64_t specnum = 0;
+uint64_t next_specnum = 0;
 uint64_t procnum = 0;
 int trignum = 0;
 int dumpnum = 0;
 char iP[100];
 char footer_buf[1024];
+char next_footer_buf[1024];
 int DEBUG = 0;
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * in);
@@ -189,8 +191,11 @@ void control_thread (void * arg) {
       syslog(LOG_INFO, "control_thread: received command to dump at %llu src %s",specnum,footer_buf);
     }
 	
-    if (dump_pending)
-      syslog(LOG_ERR, "control_thread: BACKED UP - CANNOT dump at %llu src %s",tmps,tnam);
+    if (dump_pending) {
+      syslog(LOG_ERR, "control_thread: BACKED UP - using %llu src %s as next specnum",tmps,tnam);
+      next_specnum = tmps/4;
+      strcpy(next_footer_buf,tnam);
+    }
   
     if (!dump_pending) dump_pending = 1;
     
@@ -501,6 +506,14 @@ int main (int argc, char *argv[]) {
 	bytes_copied = 0;
 	dump_pending = 0;
 	dumping=0;
+
+	// deal with next specnum
+	if (next_specnum != 0) {
+	  specnum = next_specnum;
+	  strcpy(footer_buf,next_footer_buf);
+	  next_specnum = 0;
+	  dump_pending = 1;
+	}
 	
       }
       

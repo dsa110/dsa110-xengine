@@ -70,7 +70,7 @@
 #define NPACKETS_INTS 2048 // number of packets per xgpu int
 #define NPACKETS_PER_FIL 2
 #define NPACKETS 2048
-#define NOUTBLOCKS 30 // number of input blocks stored by trigger
+#define NOUTBLOCKS 15 // number of input blocks stored by trigger
 #define NANTS 63
 
 // for beamformer
