@@ -67,7 +67,7 @@ void send_coords(double raj, double dej, double az, double za) /*includefile*/
 int main(int argc, char * argv[]) {
 
   // memory
-  uint64_t bsize = 4026531840, bls = 188743680;
+  uint64_t bsize = 2013265920, bls = 94371840;
   unsigned char * allbeams = (unsigned char *)malloc(sizeof(unsigned char)*bsize);  
   memset(allbeams,0,bsize);
   unsigned char * data = (unsigned char *)malloc(sizeof(unsigned char)*bls);  
@@ -83,9 +83,9 @@ int main(int argc, char * argv[]) {
       fclose(fin);      
       
       for (int ibeam=0;ibeam<256;ibeam++) {
-	for (int itime=0;itime<30*512;itime++) {
+	for (int itime=0;itime<15*512;itime++) {
 	  for (int ich=0;ich<48;ich++) {
-	    allbeams[ibeam*30*512*1024 + itime*1024 + i*48 + ich + 128] = data[itime*256*48 + ibeam*48 + ich];
+	    allbeams[ibeam*15*512*1024 + itime*1024 + i*48 + ich + 128] = data[itime*256*48 + ibeam*48 + ich];
 	  }
 	}
       }
@@ -119,7 +119,7 @@ int main(int argc, char * argv[]) {
     send_int("nifs",1);
     send_string("HEADER_END");
 	  
-    fwrite(allbeams + i*30*512*1024,sizeof(unsigned char),30*512*1024,output);
+    fwrite(allbeams + i*15*512*1024,sizeof(unsigned char),15*512*1024,output);
 	  
     fclose(output);
 	  

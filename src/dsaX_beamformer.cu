@@ -70,6 +70,46 @@ using namespace nvcuda;
 // global variables
 int DEBUG = 0;
 
+// kernel for summing for online bp
+// input array has order [beam, 48 frequency, 2 pol, 16 time]
+// need to output to [beam, 48 frequency]
+// run with 256*48=12288 blocks and 32 threads
+__global__
+void badder(float *input, float *output) {
+
+  // get block and thread ids
+  int bidx = blockIdx.x; // assume 256*48=12288
+  int tidx = threadIdx.x; // assume 32
+  //int fidx = 2*(bidx % 24);
+  int beamidx = (int)(bidx / 48);
+  
+  // declare shared mem
+  volatile __shared__ float data[32]; // data block to be summed  
+
+  // transfer from input to shared mem
+  data[tidx] = input[bidx*32+tidx];
+
+  // sync
+  __syncthreads();
+
+  // complete sum
+  if (tidx<16) {
+    data[tidx] += data[tidx+16]; // over pols
+    data[tidx] += data[tidx+8];
+    data[tidx] += data[tidx+4];
+    data[tidx] += data[tidx+2];
+    data[tidx] += data[tidx+1];
+  }
+  // now tidx = 0, 4, 8, 12 are what we want! 
+
+  __syncthreads();
+  
+  // store
+  if (tidx == 0) 
+    output[bidx] += data[0];
+      
+}
+
 
 // kernel for summing and requantizing
 // input array has order [beam, 48 frequency, 2 pol, 16 time]
@@ -388,7 +428,9 @@ int dada_bind_thread_to_core (int core);
 int init_weights(char *fnam, float *antpos, float *weights, char *flagants);
 void reorder_block(char *block);
 void calc_bp(float *data, float *bp, int pr);
-
+void calc_allbp(float *data, float *bp);
+void ret_med_bp(float *bp);
+void ret_many_bp(float *many_bp, float *bp);
 
 // performs massive summation to calculate bp
 // input array has order [beam, 96 frequency, 16 time]
@@ -410,6 +452,22 @@ void calc_bp(float *data, float *bp, int pr) {
 
 }
 
+void calc_allbp(float *data, float *bp) {
+
+  int i=0;
+
+  for (int st=0;st<NSTREAMS;st++) {
+    for (int b=0;b<256;b++) {
+      for (int f=0;f<48;f++) {
+	bp[b] += data[i];
+	i++;
+      }
+    }
+  }
+
+}
+
+
 // for finding median of bandpass
 
 int cmpfunc(const void* elem1, const void* elem2)
@@ -425,6 +483,17 @@ void ret_med_bp(float *bp) {
   float medval = 0.5*(bp[127]+bp[128]);
   for (int i=0;i<256;i++)
     bp[i] = medval;  
+
+}
+
+void ret_many_bp(float *many_bp, float *bp) {
+
+  for (int i=0;i<256;i++) {
+    bp[i] = 0.;
+    for (int j=0;j<NBP;j++)
+      bp[i] += many_bp[j*256+i];
+    bp[i] /= 1.*NBP;
+  }
 
 }
 
@@ -783,6 +852,8 @@ int main (int argc, char *argv[]) {
   unsigned char *d_outdata[NSTREAMS];
   float *d_transfer[NSTREAMS], *d_bp, *d_antpos, *d_weights, *d_freqs;
   half *d_wr, *d_wi, *d_inr[NSTREAMS], *d_ini[NSTREAMS];
+  float *d_added[NSTREAMS], *h_added;
+  h_added = (float *)malloc(sizeof(float)*256*48*NSTREAMS);
   cudaMalloc((void **)&d_antpos, 64*sizeof(float)); // ant positions
   cudaMalloc((void **)&d_weights, 64*NW*2*2*sizeof(float)); // weights
   cudaMalloc((void **)&d_freqs, 384*sizeof(float)); // freqs        
@@ -794,12 +865,15 @@ int main (int argc, char *argv[]) {
   float *h_transfer = (float *)malloc(sizeof(float)*256*96*16*NSTREAMS);
   char *h_indata = (char *)malloc(sizeof(char)*16*NANT*96*8*2);
   float *bp = (float *)malloc(sizeof(float)*256);
+  float *many_bp = (float *)malloc(sizeof(float)*256*NBP);
+  int bpctr = 0;
   unsigned char *tmp_buf = (unsigned char *)malloc(sizeof(unsigned char)*256*48*4*NSTREAMS);  
   
   // streams and device  
   cudaStream_t stream[NSTREAMS];
   for (int st=0;st<NSTREAMS;st++) {
     cudaStreamCreate(&stream[st]);
+    cudaMalloc((void **)&d_added[st], 256*48*sizeof(float)); // added data for each iteration
     cudaMalloc((void **)&d_indata[st], 16*96*NANT*8*2*sizeof(char)); // data input to bf kernel
     cudaMalloc((void **)&d_outdata[st], 256*48*4*sizeof(unsigned char)); // data output from adder
     cudaMalloc((void **)&d_transfer[st], 256*96*16*sizeof(float)); // output from beamformer
@@ -835,32 +909,32 @@ int main (int argc, char *argv[]) {
     cudaMemcpy(d_weights, weights, 64*NW*2*2*sizeof(float), cudaMemcpyHostToDevice);  
     calc_weights<<<6144, 256>>>(d_antpos, d_weights, d_freqs, d_wr, d_wi);
     if (DEBUG) syslog(LOG_INFO,"Finished with weights");
-    
-    if (started==1) {
 
-      // loop over ints
-      for (int bst=0;bst<nints/NSTREAMS;bst++) {
+    // zero out d_added
+    for (int st=0;st<NSTREAMS;st++)
+      cudaMemset(d_added[st], 0,  256*48*sizeof(float));
 
-	for (int st=0;st<NSTREAMS;st++) {
+    // loop over ints
+    for (int bst=0;bst<nints/NSTREAMS;bst++) {
 
+      // loop over streams
+      for (int st=0;st<NSTREAMS;st++) {	
+	
+	// copy to device
+	cudaMemcpyAsync(d_indata[st], block+(bst*NSTREAMS+st)*nbytes_per_int, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
 
+	// do promotion
+	promoter<<<16*48*NANT, 32, 0, stream[st]>>>(d_indata[st], d_inr[st], d_ini[st]);
 	  
-	  // copy to h_indata
-	  //memcpy(h_indata,block+(bst*NSTREAMS+st)*nbytes_per_int,nbytes_per_int);
+	// run beamformer kernel
+	beamformer<<<24576, 32, 0, stream[st]>>>(d_inr[st], d_ini[st], d_wr, d_wi, d_transfer[st], stuffants);
 
-	  // rotate h_indata in place
-	  //reorder_block(h_indata);
-	  
-	  // copy to device
-	  //cudaMemcpyAsync(d_indata, h_indata, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
-	  cudaMemcpyAsync(d_indata[st], block+(bst*NSTREAMS+st)*nbytes_per_int, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
+	// run badder kernel
+	badder<<<12288, 32, 0, stream[st]>>>(d_transfer[st], d_added[st]);
+	       
+	// if sufficient bandpasses...
+	if (started>0) {
 
-	  // do promotion
-	  promoter<<<16*48*NANT, 32, 0, stream[st]>>>(d_indata[st], d_inr[st], d_ini[st]);
-	  
-	  // run beamformer kernel
-	  beamformer<<<24576, 32, 0, stream[st]>>>(d_inr[st], d_ini[st], d_wr, d_wi, d_transfer[st], stuffants);
-	  	  
 	  // run adder kernel
 	  adder<<<12288, 32, 0, stream[st]>>>(d_transfer[st], d_outdata[st], d_bp);
 	  
@@ -876,77 +950,65 @@ int main (int argc, char *argv[]) {
 	  }
 	  if (DEBUG && bst*NSTREAMS+st==10) {
 	    for (int j=0;j<48;j++) syslog(LOG_DEBUG,"%hu",output_buffer[(bst*NSTREAMS+st)*12288+BEAM_OUT*48+j]);
-	  }        
-	  
+	  }
+
 	}
+		  
       }
-
-
     }
-    
+
+    // now deal with bandpass
+
+    // copy to host
+    for (int st=0;st<NSTREAMS;st++)
+      cudaMemcpy(h_added + 256*48*st, d_added[st], 256*48*sizeof(float), cudaMemcpyDeviceToHost);
+
+    // calculate bp
+    for (int i=0;i<256;i++) bp[i] = 0.;
+    calc_allbp(h_added, bp);
+
+    // place in correct location
+    for (int i=0;i<256;i++)
+      many_bp[i + 256*(bpctr % NBP)] = bp[i];
+
+    // deal with bp for data correction
+
     if (started==0) {
       syslog(LOG_INFO,"now in RUN state");
       started=1;
 
-      // calculate bandpass
-
-      for (int i=0;i<256;i++) bp[i] = 0.;
-      
-      // do standard bf but calculate bandpass
-
-      // loop over ints
-      for (int bst=0;bst<nints/NSTREAMS;bst++) {
-
-	for (int st=0;st<NSTREAMS;st++) {
-	  
-	  // copy to h_indata
-	  //memcpy(h_indata,block+(bst*NSTREAMS+st)*nbytes_per_int,nbytes_per_int);
-
-	  // rotate h_indata in place - this is current
-	  //reorder_block(h_indata);
-
-	  // copy to device
-	  //cudaMemcpyAsync(d_indata, h_indata, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
-	  cudaMemcpyAsync(d_indata[st], block+(bst*NSTREAMS+st)*nbytes_per_int, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
-
-	  // do promotion
-	  promoter<<<16*48*NANT, 32, 0, stream[st]>>>(d_indata[st], d_inr[st], d_ini[st]);
-
-	  //if (bst==0 && st==0) 
-	  //  printer<<<3072, 32>>>(d_inr,d_ini);	  
-	  
-	  // run beamformer kernel
-	  beamformer<<<24576, 32, 0, stream[st]>>>(d_inr[st], d_ini[st], d_wr, d_wi, d_transfer[st], stuffants);
-	  
-	  // copy back to host
-	  cudaMemcpyAsync(h_transfer + st*256*96*16, d_transfer[st], sizeof(float)*393216, cudaMemcpyDeviceToHost, stream[st]);	
-
-	  // calculate bandpass
-	  //if (st==0 && bst==0) 
-	  //calc_bp(h_transfer,bp,1);
-	  calc_bp(h_transfer + st*256*96*16,bp,0);
-	  ret_med_bp(bp);
-
-	}
-      }
-
-      // adjust bandpass
-      syslog(LOG_INFO,"Final BP...");
-      for (int i=0;i<256;i++) {
-	syslog(LOG_INFO,"coeff %d %g",i,bp[i]);
-	if (bp[i]!=0.) {
-	  bp[i] /= 48.*nints; 
-	  bp[i] = 2.5*128./bp[i];
-	}
-      }
-      cudaMemcpy(d_bp, bp, sizeof(float)*256, cudaMemcpyHostToDevice);
+      // do median bp
+      ret_med_bp(bp);
       
       // junk into output
       memset(output_buffer,0,block_out);
       
     }
 
-    // write output for debug
+    if (started>0 && bpctr<NBP)
+      ret_med_bp(bp);
+    
+    if (started>0 && bpctr>=NBP) {
+      
+      syslog(LOG_INFO,"now using many BPs for requant");
+      started=2;
+      
+      // do average bp
+      ret_many_bp(many_bp,bp);
+      
+    }
+
+    // finally deal with bp
+    for (int i=0;i<256;i++) {
+      if (bpctr<15) syslog(LOG_INFO,"coeff %d %d %g",bpctr,i,bp[i]);
+      if (bp[i]!=0.) {
+	bp[i] /= 48.*nints; 
+	bp[i] = 2.5*128./bp[i];
+      }
+    }
+    cudaMemcpy(d_bp, bp, sizeof(float)*256, cudaMemcpyHostToDevice);
+
+    bpctr++;
     
     // write to output
     written = ipcio_write (hdu_out->data_block, (char *)(output_buffer), block_out);
@@ -977,6 +1039,7 @@ int main (int argc, char *argv[]) {
     cudaFree(d_transfer[st]);
     cudaFree(d_inr[st]);
     cudaFree(d_ini[st]);
+    cudaFree(d_added[st]);
   }
   free(fnam);
   free(flagants);
@@ -986,7 +1049,9 @@ int main (int argc, char *argv[]) {
   free(weights);
   free(freqs);
   free(bp);
+  free(many_bp);
   free(h_transfer);
+  free(h_added);
   free(tmp_buf);
   cudaFree(d_wr);
   cudaFree(d_wi);

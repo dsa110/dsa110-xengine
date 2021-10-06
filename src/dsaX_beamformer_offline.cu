@@ -709,7 +709,7 @@ int main (int argc, char *argv[]) {
   
   // get block sizes and allocate memory
   uint64_t block_size = 198180864;
-  uint64_t block_out = 30*48*512*256;
+  uint64_t block_out = 15*48*512*256;
   char * block;
   block = (char *)malloc(sizeof(char)*block_size);
   syslog(LOG_INFO, "main: have input and output block sizes %llu %llu\n",block_size,block_out);
@@ -860,7 +860,7 @@ int main (int argc, char *argv[]) {
   
   fclose(fin);
   fin=fopen("/home/ubuntu/data/tmp/output.dat","wb");
-  fwrite(output_buffer,sizeof(unsigned char),30*512*48*256,fin);
+  fwrite(output_buffer,sizeof(unsigned char),15*512*48*256,fin);
   fclose(fin);
   
 

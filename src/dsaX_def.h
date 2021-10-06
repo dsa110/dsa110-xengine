@@ -79,6 +79,7 @@
 #define NANT 63
 #define BEAM_OUT 23
 #define NSTREAMS 4
+#define NBP 8 // number of previous BPs to average
 
 // for second corner turn
 #define FIL_PORT0 6625 // port for first chan group
