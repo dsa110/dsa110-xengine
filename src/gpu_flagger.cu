@@ -78,9 +78,11 @@ using std::endl;
 #define MN 48.0
 #define SIG 6.0
 #define RMAX 16384
+#define NPERMFLAGS 58
 
 // global variables
 int DEBUG = 0;
+int flagchannels[58] = {737,738,753,754,721,722,723,724,725,726,727,728,729,627,628,629,630,631,632,633,634,603,604,605,606,607,608,609,610,578,579,580,581,582,583,584,585,590,591,592,593,594,595,596,597,598,680,681,682,683,684,685,686,687,688,327,328,329};
 
 // kernel to calculate median spectrum
 // only works on <NTHREADS_GPU/2 in median
@@ -437,6 +439,12 @@ void channflag(float* spec, float Thr, int * mask) {
     for (j = ZeroChannels; j < NCHAN_P-ZeroChannels; j++){
       if (CorrecSpec[i*NCHAN_P+j] > Thr * madspec[i] || CorrecSpec[i*NCHAN_P+j] < - Thr * madspec[i])
 	mask[i*NCHAN_P+j] = 1;
+
+      // for permanent flagging
+      for (int kk=0;kk<NPERMFLAGS;kk++) {
+	if (j==flagchannels[kk]) mask[i*NCHAN_P+j] = 1;
+      }
+      
     }
     
   }
