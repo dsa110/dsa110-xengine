@@ -486,13 +486,18 @@ void ret_med_bp(float *bp) {
 
 }
 
-void ret_many_bp(float *many_bp, float *bp) {
+void ret_many_bp(float *many_bp, float *bp, float medbp) {
 
   for (int i=0;i<256;i++) {
     bp[i] = 0.;
     for (int j=0;j<NBP;j++)
       bp[i] += many_bp[j*256+i];
     bp[i] /= 1.*NBP;
+  }
+
+  for (int i=0;i<256;i++) {
+    if (fabs(bp[i]-medbp)/medbp>0.06)
+      bp[i] = medbp;
   }
 
 }
@@ -867,6 +872,7 @@ int main (int argc, char *argv[]) {
   float *bp = (float *)malloc(sizeof(float)*256);
   float *many_bp = (float *)malloc(sizeof(float)*256*NBP);
   int bpctr = 0;
+  float medbp;
   unsigned char *tmp_buf = (unsigned char *)malloc(sizeof(unsigned char)*256*48*4*NSTREAMS);  
   
   // streams and device  
@@ -979,14 +985,16 @@ int main (int argc, char *argv[]) {
 
       // do median bp
       ret_med_bp(bp);
+      medbp = bp[100];
       
       // junk into output
       memset(output_buffer,0,block_out);
       
     }
 
-    if (started>0 && bpctr<NBP)
+    if (started>0 && bpctr<NBP) 
       ret_med_bp(bp);
+      
     
     if (started>0 && bpctr>=NBP) {
       
@@ -994,7 +1002,7 @@ int main (int argc, char *argv[]) {
       started=2;
       
       // do average bp
-      ret_many_bp(many_bp,bp);
+      ret_many_bp(many_bp,bp,medbp);
       
     }
 
