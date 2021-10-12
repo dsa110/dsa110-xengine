@@ -496,7 +496,7 @@ void ret_many_bp(float *many_bp, float *bp, float medbp) {
   }
 
   for (int i=0;i<256;i++) {
-    if (fabs(bp[i]-medbp)/medbp>0.06)
+    if (fabs(bp[i]-medbp)/medbp>0.1)
       bp[i] = medbp;
   }
 
