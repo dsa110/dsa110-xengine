@@ -992,6 +992,7 @@ int main (int argc, char *argv[]) {
       // do median bp
       ret_med_bp(bp);
       medbp = bp[100];
+      for (int i=0;i<256;i++) frozen_bp[i] = medbp;
       
       // junk into output
       memset(output_buffer,0,block_out);
@@ -1007,9 +1008,7 @@ int main (int argc, char *argv[]) {
       syslog(LOG_INFO,"now using many BPs for requant");      
       
       // do average bp
-      ret_many_bp(many_bp,bp,medbp);
-      if (started==1) 
-	for (int i=0;i<256;i++) frozen_bp[i] = bp[i];
+      ret_many_bp(many_bp,bp,medbp);	
 
       started=2;
       
