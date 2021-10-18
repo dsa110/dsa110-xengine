@@ -605,6 +605,7 @@ void usage()
 	   " -a flagants file\n"
 	   " -s stuffants \n"
 	   " -q do incoherent beam \n"
+	   " -g skip AGC \n"
 	   " -t test pattern \n"
 	   " -h print usage\n");
 }
@@ -650,9 +651,10 @@ int main (int argc, char *argv[]) {
   sprintf(fnam,"nofile");  
   char * flagants;
   flagants=(char *)malloc(sizeof(char)*100);
-  sprintf(flagants,"nofile");  
+  sprintf(flagants,"nofile");
+  int AGC = 1;
 
-  while ((arg=getopt(argc,argv,"c:f:i:o:z:a:tsqdh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:i:o:z:a:tsqdgh")) != -1)
     {
       switch (arg)
 	{
@@ -737,6 +739,9 @@ int main (int argc, char *argv[]) {
 	case 'd':
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
+	  break;
+	case 'g':
+	  AGC=0;
 	  break;
 	case 't':
 	  test_pattern=1;
@@ -870,6 +875,7 @@ int main (int argc, char *argv[]) {
   float *h_transfer = (float *)malloc(sizeof(float)*256*96*16*NSTREAMS);
   char *h_indata = (char *)malloc(sizeof(char)*16*NANT*96*8*2);
   float *bp = (float *)malloc(sizeof(float)*256);
+  float *frozen_bp = (float *)malloc(sizeof(float)*256);
   float *many_bp = (float *)malloc(sizeof(float)*256*NBP);
   int bpctr = 0;
   float medbp;
@@ -998,16 +1004,25 @@ int main (int argc, char *argv[]) {
     
     if (started>0 && bpctr>=NBP) {
       
-      syslog(LOG_INFO,"now using many BPs for requant");
-      started=2;
+      syslog(LOG_INFO,"now using many BPs for requant");      
       
       // do average bp
       ret_many_bp(many_bp,bp,medbp);
+      if (started==1) 
+	for (int i=0;i<256;i++) frozen_bp[i] = bp[i];
+
+      started=2;
       
     }
 
+    
+
     // finally deal with bp
     for (int i=0;i<256;i++) {
+
+      if (AGC==0)
+	for (int i=0;i<256;i++) bp[i] = frozen_bp[i];
+      
       if (bpctr<15) syslog(LOG_INFO,"coeff %d %d %g",bpctr,i,bp[i]);
       if (bp[i]!=0.) {
 	bp[i] /= 48.*nints; 
