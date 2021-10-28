@@ -119,7 +119,7 @@ def ld_run(args):
                         json_dictionary = dict({
                             cur_trigname: {
                                 "mjds": get_mjd(
-                                    float(my_ds.get_dict('/mon/snap/1')['armed_mjd']),
+                                    float(my_ds.get_dict('/mon/snap/1/armed_mjd')['armed_mjd']),
                                     int(my_ds.get_dict('/mon/snap/1/utc_start')['utc_start']),
                                     float(cur_specnum)
                                 ),
