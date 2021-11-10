@@ -137,6 +137,7 @@ void * process(void * ptr)
   char * buffer = (char *)malloc((NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW)*sizeof(char));
   int tseq, pseq;
   int pct = 0;
+  int full_blocks = 0;
   int fullBlock;
   int i0, aa;
   int lastPacket, nextBuf, current_tseq = 0, act_tseq; 
@@ -216,7 +217,11 @@ void * process(void * ptr)
 	flush_flag = 1;
 	blockct[i] = 0;
 	// log - hardcoded bdepth
-	syslog(LOG_INFO,"thread %d: Writing global_tseq %d. Blockcts %d %d %d %d %d %d %d %d",thread_id,global_tseq,blockct[0],blockct[1],blockct[2],blockct[3],blockct[4],blockct[5],blockct[6],blockct[7]);
+	full_blocks=0;
+	for (int i=0;i<8;i++) {
+	  if (blockct[i]!=0) full_blocks++;
+	}
+	syslog(LOG_INFO,"thread %d: Writing global_tseq %d. Blockcts_full %d %d %d %d %d %d %d %d %d",thread_id,global_tseq,full_blocks,blockct[0],blockct[1],blockct[2],blockct[3],blockct[4],blockct[5],blockct[6],blockct[7]);
 
 	
       }	

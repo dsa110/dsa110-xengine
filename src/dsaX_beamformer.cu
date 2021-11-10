@@ -211,6 +211,32 @@ __global__ void printer(half *inr, half *ini) {
   
 }
 
+// 16 time, 48 channels, 2 pol, 64 antennas, 16 chunnels
+// launch with 4,32
+__global__ void rms_printer(half *inr, half *ini) {
+
+  int idx = blockIdx.x*32+threadIdx.x;
+  int pol = (int)(idx / 64);
+  int ant = (int)(idx % 64);
+
+  float rms = 0., val;
+  for (int i=0;i<16;i++) {
+
+    idx = 786432 + 49152 + pol*64*16 + ant*16 + i;
+    
+    val = __half2float(inr[idx]);
+    rms += val*val;
+    val = __half2float(ini[idx]);
+    rms += val*val;
+
+  }
+  rms = sqrt(rms/32.);
+
+  printf("ANTPOL_RMS %d %d %f\n",ant,pol,rms);
+  
+}
+
+
 
 // kernel for beamforming
 /*
@@ -937,6 +963,10 @@ int main (int argc, char *argv[]) {
 
 	// do promotion
 	promoter<<<16*48*NANT, 32, 0, stream[st]>>>(d_indata[st], d_inr[st], d_ini[st]);
+
+	// do printing if needed
+	if (bst==0) 
+	  rms_printer<<<4, 32, 0, stream[st]>>>(d_inr[st], d_ini[st]);
 	  
 	// run beamformer kernel
 	beamformer<<<24576, 32, 0, stream[st]>>>(d_inr[st], d_ini[st], d_wr, d_wi, d_transfer[st], stuffants);

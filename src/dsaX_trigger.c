@@ -173,6 +173,7 @@ void control_thread (void * arg) {
     ct = recvfrom(fd,buffer,1024,0,(struct sockaddr*)&src_addr,&src_addr_len);
     
     syslog(LOG_INFO, "control_thread: received buffer string %s",buffer);
+    memset(tbuf,0,bufsize);
     strcpy(tbuf,buffer);
     trignum++;
 
