@@ -23,6 +23,43 @@ my_log = dsl.DsaSyslogger()
 my_log.subsystem('correlator')
 my_log.app('corr.py')
 from astropy.time import Time
+from dsautils import cnf; cc = cnf.Conf()
+antenna_order = cc.get('corr')['antenna_order']
+
+def get_rms_into_etcd(corr_num):
+
+    # open logger
+    my_ds = ds.DsaStore()
+
+    try:
+        oarr = np.zeros(128)
+        full = 0
+        i=1
+        
+        while full < 128:
+                        
+            result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log.log | grep ANTPOL_RMS | tail -n "+str(i)+" | head -n 1 | awk '{print $2,$3,$4}'", shell=True, stderr=subprocess.STDOUT)
+            arr = result.decode("utf-8").split(' ')
+            idx = 2*int(arr[0]) + int(arr[1])
+            if oarr[idx] == 0:
+                oarr[idx] = float(arr[2])
+                full += 1
+
+            i += 1
+
+        for i in range(0,63):
+            
+            anum = antenna_order[i]            
+            adict = my_ds.get_dict('/mon/snp/'+str(anum))            
+            adict['rms_a_corr_'+str(corr_num)] = oarr[2*i+1]
+            adict['rms_b_corr_'+str(corr_num)] = oarr[2*i]
+            my_ds.put_dict('/mon/snp/'+str(anum),adict)
+
+    except:
+        return -1
+
+    return oarr.tolist()
+
 
 def time_to_mjd(t):
     """ converts time.time() to mjd                                                                
@@ -119,6 +156,26 @@ def get_buf_info(buff):
 
     return oarr.tolist()
 
+# for search nodes only
+def get_srch_nodes():
+
+    try:
+
+        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep Blockcts_full | tail -n 1 | awk '{print $12}'}'", shell=True, stderr=subprocess.STDOUT)
+        arr = result.decode("utf-8")
+
+        result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log.log | grep final_space_searched | tail -n 1 | awk '{print $2}'}'", shell=True, stderr=subprocess.STDOUT)
+        arr2 = result.decode("utf-8")
+        
+        oarr = np.zeros(2)
+        oarr[0] = float(arr)
+        oarr[1] = float(arr2)
+        
+    except:
+        return -1
+
+    return oarr.tolist()
+
 # this only reads in buffer information
 # TODO: add outputs from code
 def get_monitor_dict(params, corr_num, my_ds):
@@ -163,7 +220,15 @@ def get_monitor_dict(params, corr_num, my_ds):
     # voltage file ct
     n_trigs = my_ds.get_dict('/mon/corr/'+str(corr_num)+'/voltage_ct')
     mon_dict['n_trigs'] = n_trigs['n_trigs']
-    
+
+    # on search nodes
+    srch_nodes = get_srch_nodes()
+    if srch_nodes==-1:
+        mon_dict['full_blockct'] = 0.0
+        mon_dict['DM_space_searched'] = 0.0
+    else:
+        mon_dict['full_blockct'] = srch_nodes[0]
+        mon_dict['DM_space_searched'] = srch_nodes[1]
         
     # stuff Rick wants
     mon_dict['sim'] = 'false'
@@ -347,6 +412,7 @@ def corr_run(args):
         if md!=-1:
             try:
                 my_ds.put_dict(key, md)
+                get_rms_into_etcd(args.corr_num)
             except:
                 my_log.error('COULD NOT CONNECT TO ETCD')
         key = '/mon/service/corr/' + str(args.corr_num)

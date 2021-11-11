@@ -930,6 +930,7 @@ int main (int argc, char *argv[]) {
   int observation_complete=0;
   int blocks = 0, started = 0;
   int blockct = 0;
+  int slow_down = 0;
   
   syslog(LOG_INFO, "starting observation");
 
@@ -965,7 +966,7 @@ int main (int argc, char *argv[]) {
 	promoter<<<16*48*NANT, 32, 0, stream[st]>>>(d_indata[st], d_inr[st], d_ini[st]);
 
 	// do printing if needed
-	if (bst==0) 
+	if (bst==0 && slow_down==0) 
 	  rms_printer<<<4, 32, 0, stream[st]>>>(d_inr[st], d_ini[st]);
 	  
 	// run beamformer kernel
@@ -1035,7 +1036,7 @@ int main (int argc, char *argv[]) {
     
     if (started>0 && bpctr>=NBP) {
       
-      syslog(LOG_INFO,"now using many BPs for requant");      
+      //syslog(LOG_INFO,"now using many BPs for requant");      
       
       // do average bp
       ret_many_bp(many_bp,bp,medbp);	
@@ -1061,6 +1062,8 @@ int main (int argc, char *argv[]) {
     cudaMemcpy(d_bp, bp, sizeof(float)*256, cudaMemcpyHostToDevice);
 
     bpctr++;
+    slow_down++;
+    if (slow_down>=20) slow_down=0;
     
     // write to output
     written = ipcio_write (hdu_out->data_block, (char *)(output_buffer), block_out);
