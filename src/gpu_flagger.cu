@@ -679,10 +679,13 @@ int main(int argc, char**argv)
   int fwrite2 = 0;
   int pwr = 0;
   
-  while ((arg=getopt(argc,argv,"c:t:i:o:f:g:a:dph")) != -1)
+  while ((arg=getopt(argc,argv,"c:t:i:o:f:g:a:k:dph")) != -1)
     {
       switch (arg)
 	{
+	case 'k':
+	  strcpy(iP,optarg);
+	  break;	
 	case 'c':
 	  if (optarg)
 	    {
