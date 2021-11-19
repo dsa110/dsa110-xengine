@@ -3,7 +3,7 @@
 #include <time.h>
 #include <sys/socket.h>
 #include <math.h>
-#include <pthread.h>
+#include <thread>
 #include <sys/types.h>
 #include <sys/syscall.h>
 #include <sys/mman.h>
@@ -36,6 +36,7 @@
 using std::cout;
 using std::cerr;
 using std::endl;
+#include <thread>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -85,6 +86,23 @@ using std::endl;
 int DEBUG = 0;
 //int flagchannels[58] = {737,738,753,754,721,722,723,724,725,726,727,728,729,627,628,629,630,631,632,633,634,603,604,605,606,607,608,609,610,578,579,580,581,582,583,584,585,590,591,592,593,594,595,596,597,598,680,681,682,683,684,685,686,687,688,327,328,329};
 int flagchannels[1] = {10};
+/* global variables */
+int quit_threads = 0;
+int dump_pending = 0;
+int trignum = 0;
+char iP[100];
+char footer_buf[1024];
+
+// structure for pulse injection
+typedef struct {
+
+  int verbose;
+  float * block;
+
+} dsaX_pulse_t;
+
+
+
 
 // kernel to calculate median spectrum
 // only works on <NTHREADS_GPU/2 in median
@@ -313,6 +331,19 @@ void scaley(unsigned char *data, float *spectrum, float *varspec) {
 
 }
 
+// kernel to add pulse to data
+// launch with NBEAMS_P*NTIMES_P*NCHAN_P/NTHREADS_GPU blocks of NTHREADS_GPU threads
+__global__
+void sumpulse(unsigned char *data, float *summand) {
+
+  int idx = blockIdx.x*NTHREADS_GPU + threadIdx.x;
+  float val = (float)(data[idx]);
+  val += summand[idx];
+  data[idx] = (unsigned char)((__float2uint_rn(2.*val))/2);
+  
+}
+
+
 // kernel to do flagging
 // launch with n_mask*NTIMES_P/NTHREADS_GPU blocks of NTHREADS_GPU threads 
 __global__
@@ -521,6 +552,81 @@ void median_calc(float * arr) {
 
 }
 
+// Thread to control the adding of filterbanks
+void control_thread (dsaX_pulse_t * ctx) {
+
+  syslog(LOG_INFO, "control_thread: starting");
+
+  // buffer for incoming command strings, and setup of socket
+  int bufsize = 1024;
+  char* buffer = (char *) malloc (sizeof(char) * bufsize);
+  char* tbuf = (char *) malloc (sizeof(char) * bufsize);
+  memset(buffer, '\0', bufsize);
+  const char* whitespace = " ";
+  char * command = 0;
+  char * args = 0;
+
+  struct addrinfo hints;
+  struct addrinfo* res=0;
+  memset(&hints,0,sizeof(hints));
+  struct sockaddr_storage src_addr;
+  socklen_t src_addr_len=sizeof(src_addr);
+  hints.ai_family=AF_INET;
+  hints.ai_socktype=SOCK_DGRAM;
+  getaddrinfo(iP,"11228",&hints,&res);
+  int fd;
+  ssize_t ct;
+  char tmpstr;
+  char cmpstr = 'p';
+  char *endptr;
+  uint64_t tmps;
+  char * token;
+
+  FILE *fin;
+  
+  while (!quit_threads) {
+    
+    fd = socket(res->ai_family,res->ai_socktype,res->ai_protocol);
+    bind(fd,res->ai_addr,res->ai_addrlen);
+    memset(buffer,'\0',sizeof(buffer));
+    syslog(LOG_INFO, "control_thread: waiting for packet");
+    ct = recvfrom(fd,buffer,1024,0,(struct sockaddr*)&src_addr,&src_addr_len);
+    
+    syslog(LOG_INFO, "control_thread: received buffer string %s",buffer);
+    strcpy(tbuf,buffer);
+    trignum++;
+
+    // interpret buffer string    
+    
+    if (!dump_pending) {
+      strcpy(footer_buf,tbuf);
+      syslog(LOG_INFO, "control_thread: received command to add pulse %s",footer_buf);
+      if (!(fin=fopen(footer_buf,"rb"))) {
+	syslog(LOG_INFO,"cannot open %s",footer_buf);
+      }
+      else {
+	fread(ctx->block,sizeof(float),1024*256*16384,fin);
+	fclose(fin);
+      }
+    }
+	
+    if (dump_pending) {
+      syslog(LOG_ERR, "control_thread: BACKED UP - ignoring %s",tbuf);
+    }
+  
+    if (!dump_pending) dump_pending = 1;
+    
+    close(fd);
+    
+  }
+
+  free (buffer);
+  free (tbuf);
+
+  if (ctx->verbose)
+    syslog(LOG_INFO, "control_thread: exiting");
+
+}
 
 
 void usage()
@@ -692,7 +798,11 @@ int main(int argc, char**argv)
 	syslog(LOG_ERR,"failed to bind to core %d", core);
       syslog(LOG_NOTICE,"bound to core %d", core);
     }
-  
+
+  dsaX_pulse_t udpdb;
+  udpdb.verbose = DEBUG;
+  float * pulsedata = (float *)malloc(sizeof(float)*256*16384*1024);
+  udpdb.block = pulsedata;
   
   // CONNECT AND READ FROM BUFFER
 
@@ -762,8 +872,10 @@ int main(int argc, char**argv)
 
   // declare stuff for host and GPU
   unsigned char * d_data;
+  float * d_pulse;
   unsigned char * h_bm0 = (unsigned char *)malloc(sizeof(unsigned char)*NTIMES_P*NCHAN_P);
   cudaMalloc((void **)&d_data, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(unsigned char));
+  cudaMalloc((void **)&d_pulse, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(float));
   unsigned char * h_data = (unsigned char *)malloc(sizeof(unsigned char)*NBEAMS_P*NTIMES_P*NCHAN_P);
   int * h_mask = (int *)malloc(sizeof(int)*NBEAMS_P*NCHAN_P);
   int * d_mask;
@@ -803,6 +915,18 @@ int main(int argc, char**argv)
   for (int i=0;i<NBEAMS_P;i++) h_bpwr[i] = 1.;
   syslog(LOG_INFO,"done with repvals");
 
+  // start control thread
+  /*int rval = 0;
+  pthread_t control_thread_id;
+  syslog(LOG_INFO, "starting control_thread()");
+  rval = pthread_create (&control_thread_id, 0, (void *) control_thread, (void *) &udpdb);
+  if (rval != 0) {
+    syslog(LOG_ERR, "Error creating control_thread: %s", strerror(rval));
+    return -1;
+    }*/
+  std::thread threadObj(control_thread, &udpdb);
+
+  
   // for pre-start
   unsigned char * tmp_indata = (unsigned char *)malloc(sizeof(unsigned char)*NBEAMS_P*NTIMES_P*NCHAN_P);
   for (int i=0;i<NBEAMS_P;i++)
@@ -887,13 +1011,19 @@ int main(int argc, char**argv)
       gather_mask(h_idx, h_mask, &n_mask);
       if (DEBUG) syslog(LOG_INFO,"FLAG_COUNT %d",n_mask);   		
       cudaMemcpy(d_idx, h_idx, n_mask*sizeof(int), cudaMemcpyHostToDevice);
-      flag<<<n_mask*NTIMES_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_idx, d_repval, d_bpwr);      
+      flag<<<n_mask*NTIMES_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_idx, d_repval, d_bpwr);
 
-      // write out stuff
-      //for (int i=0;i<NBEAMS_P*NCHAN_P;i++)
-      //	h_mask[0] += h_mask[i];
-      //syslog(LOG_INFO,"FLAG_COUNT %d",h_mask[0]);   		
+      // check whether we want to add pulse
+      if (dump_pending) {
 
+	syslog(LOG_INFO, "adding pulse to data %s", footer_buf);
+	cudaMemcpy(d_data,pulsedata,NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(float), cudaMemcpyHostToDevice);
+	sumpulse<<<n_mask*NTIMES_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_pulse);
+	syslog(LOG_INFO, "added %s", footer_buf);
+	
+	dump_pending=0;
+	
+      }
       
     }
 
@@ -1001,6 +1131,10 @@ int main(int argc, char**argv)
 
   }
 
+  // close control thread
+  syslog(LOG_INFO, "joining control_thread");
+  quit_threads = 1;
+  threadObj.join();
 
   free(fnam);
   free(fnam2);
@@ -1014,6 +1148,7 @@ int main(int argc, char**argv)
   free(h_max);
   free(h_bm0);
   free(h_bpwr);
+  free(pulsedata);
   cudaFree(d_bpwr);
   cudaFree(d_data);
   cudaFree(d_spec);
@@ -1021,5 +1156,6 @@ int main(int argc, char**argv)
   cudaFree(d_mask);
   cudaFree(d_spec0);
   cudaFree(d_var0);
+  cudaFree(d_pulse);
   return 0;    
 } 

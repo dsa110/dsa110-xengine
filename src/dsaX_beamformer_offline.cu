@@ -556,8 +556,10 @@ void usage()
 	   " -z fch1 in MHz [default 1530]\n"
 	   " -a flagants file\n"
 	   " -s stuffants \n"
+	   " -o out beam [default 1]\n"
 	   " -q do incoherent beam \n"
 	   " -t test pattern \n"
+	   " -p output total power time series \n"
 	   " -h print usage\n");
 }
 
@@ -570,18 +572,7 @@ int main (int argc, char *argv[]) {
   openlog ("dsaX_beamformer_offline", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
   syslog (LOG_NOTICE, "Program started by User %d", getuid ());
 
-  // device properties
-  int nDevices;
-
-  cudaGetDeviceCount(&nDevices);
-  for (int i = 0; i < nDevices; i++) {
-    cudaDeviceProp prop;
-    cudaGetDeviceProperties(&prop, i);
-    syslog(LOG_INFO,"Device Number: %d", i);
-    syslog(LOG_INFO,"  Device name: %s", prop.name);
-    syslog(LOG_INFO,"  Memory Clock Rate (KHz): %d",prop.memoryClockRate);
-  }
-  cudaSetDevice(1);
+  cudaSetDevice(0);
   
   // command line arguments
   int core = -1;
@@ -597,9 +588,11 @@ int main (int argc, char *argv[]) {
   sprintf(finnam,"nofile");
   char * flagants;
   flagants=(char *)malloc(sizeof(char)*100);
-  sprintf(flagants,"nofile");  
+  sprintf(flagants,"nofile");
+  int outbm = 1;
+  int outpwr = 0;
 
-  while ((arg=getopt(argc,argv,"c:f:i:z:a:tsqdh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:i:z:a:o:ptsqdh")) != -1)
     {
       switch (arg)
 	{
@@ -636,6 +629,21 @@ int main (int argc, char *argv[]) {
 	  else
 	    {
 	      syslog(LOG_ERR,"-f flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }	  
+	case 'p':
+	  outpwr=1;
+	  break;
+	case 'o':
+	  if (optarg)
+	    {
+	      outbm = atoi(optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-o flag requires argument");
 	      usage();
 	      return EXIT_FAILURE;
 	    }	  
@@ -806,10 +814,10 @@ int main (int argc, char *argv[]) {
   // adjust bandpass
   syslog(LOG_INFO,"Final BP...");
   for (int i=0;i<256;i++) {
-    syslog(LOG_INFO,"coeff %d %g",i,bp[i]);
+    //syslog(LOG_INFO,"coeff %d %g",i,bp[i]);
     if (bp[i]!=0.) {
       bp[i] /= 48.*nints; 
-      bp[i] = 2.*128./bp[i];
+      bp[i] = 2.5*128./bp[i];
     }
   }
   cudaMemcpy(d_bp, bp, sizeof(float)*256, cudaMemcpyHostToDevice);
@@ -818,8 +826,9 @@ int main (int argc, char *argv[]) {
   fin=fopen(finnam,"rb");
 
   // re-open file and loop over blocks
-  while (!feof(fin)) {
+  while (blocks<15) {
 
+    syslog(LOG_INFO,"read blocks %d",blocks);
     fread(block,sizeof(char),block_size,fin);
   
     // loop over ints
@@ -849,7 +858,7 @@ int main (int argc, char *argv[]) {
 	      output_buffer[blocks*512*48*256 + (bst*NSTREAMS+st)*48*4*256+ jj*48*256 + bmn*48 + j] = tmp_buf[256*48*4*st + jj*256*48 + bmn*48 + j];
 	    }
 	  }
-	}
+	}	
 	
       }
     }
@@ -857,11 +866,30 @@ int main (int argc, char *argv[]) {
     blocks++;
 
   }
+
+  syslog(LOG_INFO,"blocks %d",blocks);
   
   fclose(fin);
-  fin=fopen("/home/ubuntu/data/tmp/output.dat","wb");
-  fwrite(output_buffer,sizeof(unsigned char),15*512*48*256,fin);
-  fclose(fin);
+
+  float pwrs = 0;
+  if (!outpwr) { 
+    fin=fopen("/home/ubuntu/data/tmp/output.dat","wb");  
+    for (int i=954;i<954+2048;i++) 
+      fwrite(output_buffer + i*48*256 + outbm*48,sizeof(unsigned char),48,fin);
+    fclose(fin);
+  }
+  else {
+    fin=fopen("/home/ubuntu/data/tmp/output.dat","w");
+    for (int i=0;i<15*512;i++) {
+      for (int j=0;j<256;j++) {
+	pwrs = 0.;
+	for (int k=0;k<48;k++) pwrs += (float)(output_buffer[i*256*48 + j*48 + k]);
+	fprintf(fin,"%f\n",pwrs);
+      }
+    }
+    fclose(fin);
+  }
+   
   
 
   for (int st=0;st<NSTREAMS;st++) {
