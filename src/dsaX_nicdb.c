@@ -48,7 +48,7 @@ switch block when one block is being written out
 #include "dsaX_capture.h"
 #include "dsaX_def.h"
 
-#define bdepth 8
+#define bdepth 16
 
 // global variables
 int DEBUG = 0;

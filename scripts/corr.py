@@ -161,10 +161,10 @@ def get_srch_nodes():
 
     try:
 
-        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep Blockcts_full | tail -n 1 | awk '{print $12}'}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep Blockcts_full | tail -n 1 | awk '{print $12}'", shell=True, stderr=subprocess.STDOUT)
         arr = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log.log | grep final_space_searched | tail -n 1 | awk '{print $2}'}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log.log | grep final_space_searched | tail -n 1 | awk '{print $2}'", shell=True, stderr=subprocess.STDOUT)
         arr2 = result.decode("utf-8")
         
         oarr = np.zeros(2)
