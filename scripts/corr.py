@@ -26,6 +26,8 @@ from astropy.time import Time
 from dsautils import cnf; cc = cnf.Conf()
 antenna_order = cc.get('corr')['antenna_order']
 
+num_rx_trigs = 0
+
 def get_rms_into_etcd(corr_num):
 
     # open logger
@@ -110,7 +112,25 @@ def parse_value(value):
     except ValueError:
         my_log.error("parse_value(): JSON Decode Error. Check JSON. value= {}".format(value))
         return rtn
-                    
+
+def get_nfils():
+    """gets number of filterbankds
+    """
+
+    # open logger                                                                                               
+    my_log.function('get_nfils')
+
+    try:
+        result = subprocess.check_output("find /home/ubuntu/data/fil_* -type d 2> /dev/null | wc -l", shell=True, stderr=subprocess.STDOUT)
+        arr = result.decode("utf-8")
+        
+    except:
+        return -1
+
+    return float(arr)
+    
+
+    
 def get_capture_stats():
 
     """gets capture stats to put in etcd
@@ -220,6 +240,7 @@ def get_monitor_dict(params, corr_num, my_ds):
     # voltage file ct
     n_trigs = my_ds.get_dict('/mon/corr/'+str(corr_num)+'/voltage_ct')
     mon_dict['n_trigs'] = n_trigs['n_trigs']
+    mon_dict['n_rx_trigs'] = num_rx_trigs
 
     # on search nodes
     srch_nodes = get_srch_nodes()
@@ -229,6 +250,11 @@ def get_monitor_dict(params, corr_num, my_ds):
     else:
         mon_dict['full_blockct'] = srch_nodes[0]
         mon_dict['DM_space_searched'] = srch_nodes[1]
+    nfils = get_nfils()
+    if nfils==-1:
+        mon_dict['nfils_written'] = 0.0
+    else:
+        mon_dict['nfils_written'] = nfils
         
     # stuff Rick wants
     mon_dict['sim'] = 'false'
@@ -245,7 +271,8 @@ def process(params, cmd, val, my_ds):
 
     # start up logger
     my_log.function('process')
-
+    global num_rx_trigs
+    
     # to send trigger
     if cmd=='trigger':
         cmdstr = 'echo '+val+' | nc -4u -w1 127.0.0.1 11227 &'
@@ -253,6 +280,7 @@ def process(params, cmd, val, my_ds):
         os.system(cmdstr)
         sleep(0.5)
         my_log.info('Successfully issued trigger (I think)')
+        num_rx_trigs += 1
 
     # to record filterbank
     # val is e.g. 30-TONE-
@@ -275,7 +303,7 @@ def process(params, cmd, val, my_ds):
         except:
             my_log.error("Could not place utc_start into etcd")        
             
-        sleep(0.5)
+        sleep(0.5)        
 
         ret_time = my_ds.get_dict('/mon/snap/1/armed_mjd')['armed_mjd']+float(my_ds.get_dict('/mon/snap/1/utc_start')['utc_start'])*4.*8.192e-6/86400.
         f = open("/home/ubuntu/tmp/mjd.dat","w")
@@ -327,6 +355,7 @@ def process(params, cmd, val, my_ds):
             my_ds.put_dict('/mon/snap/1/utc_start',{'utc_start':10000})
         except:
             my_log.error("Could not place utc_start into etcd")
+        num_rx_trigs = 0
             
         my_log.info('Successfully started (I think)')
 
