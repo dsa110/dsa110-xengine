@@ -218,10 +218,10 @@ void * process(void * ptr)
 	blockct[i] = 0;
 	// log - hardcoded bdepth
 	full_blocks=0;
-	for (int i=0;i<8;i++) {
+	for (int i=0;i<bdepth;i++) {
 	  if (blockct[i]!=0) full_blocks++;
 	}
-	syslog(LOG_INFO,"thread %d: Writing global_tseq %d. Blockcts_full %d %d %d %d %d %d %d %d %d",thread_id,global_tseq,full_blocks,blockct[0],blockct[1],blockct[2],blockct[3],blockct[4],blockct[5],blockct[6],blockct[7]);
+	syslog(LOG_INFO,"thread %d: Writing global_tseq %d. Blockcts_full %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d",thread_id,global_tseq,full_blocks,blockct[0],blockct[1],blockct[2],blockct[3],blockct[4],blockct[5],blockct[6],blockct[7],blockct[8],blockct[9],blockct[10],blockct[11],blockct[12],blockct[13],blockct[14],blockct[15]);
 
 	
       }	
