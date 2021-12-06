@@ -417,10 +417,6 @@ def corr_run(args):
     # open logger
     my_log.function('corr_run')
 
-    # parse argument
-    my_log.debug('instance: '+args.instance)
-    my_log.debug('corr node num '+str(args.corr_num))
-
     # connect to etcd
     my_ds = ds.DsaStore()
     my_cnf = cnf.Conf(use_etcd=True)
@@ -430,26 +426,21 @@ def corr_run(args):
     my_log.info('read params from config file')
     my_log.info(params)
 
-    #register watch callback on cnf
-    my_cnf.add_watch(args.instance,params_cbfunc)
-    
-    # register watch callback on /cmd/corr/corr_num, and /cmd/corr/0
-    my_ds.add_watch('/cmd/corr/'+str(args.corr_num), cb_func(params,my_ds))
-    my_ds.add_watch('/cmd/corr/0', cb_func(params,my_ds))
-
     # infinite monitoring loop
     while True:
 
-        key = '/mon/service/corr/' + str(args.corr_num)
+        key = '/mon/corr/' + str(args.corr_num)
         try:
-            value = {'cadence': 2, 'time': dsa_functions36.current_mjd()}
+            md = get_monitor_dict(params,args.corr_num,my_ds)
         except:
-            print('could not get time')
-            value = {'cadence': 2, 'time': 55000.0}
-        try:
-            my_ds.put_dict(key, value)
-        except:
-            my_log.error('COULD NOT CONNECT TO ETCD')
+            print('could not get monitor dict')
+            md = -1
+        if md!=-1:
+            try:
+                my_ds.put_dict(key, md)
+                get_rms_into_etcd(args.corr_num)
+            except:
+                my_log.error('COULD NOT CONNECT TO ETCD')
         
         sleep(2)
 

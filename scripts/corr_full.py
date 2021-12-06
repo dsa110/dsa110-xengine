@@ -290,6 +290,16 @@ def process(params, cmd, val, my_ds):
         os.system(cmdstr)
         sleep(0.5)
         my_log.info('Successfully issued record (I think)')
+
+    # to inject pulse
+    # val is e.g. <beam>-<path>-
+    if cmd=='inject':
+        cmdstr = 'echo '+val+' | nc -4u -w1 127.0.0.1 11228 &'
+        my_log.info('running: '+cmdstr)
+        os.system(cmdstr)
+        sleep(0.5)
+        my_log.info('Successfully issued injection (I think)')
+
         
     # to set UTC_START
     if cmd=='utc_start':
@@ -324,9 +334,6 @@ def process(params, cmd, val, my_ds):
     # start up stuff
     if cmd=='start':
 
-        # deal with log
-        os.system("rm -rf /home/ubuntu/tmp/log.log")
-        
         # deal with buffers
         for buff in params['buffers']:
             ks = buff.keys()
@@ -349,9 +356,8 @@ def process(params, cmd, val, my_ds):
                 cmdstr = rout['cmd']+' '+rout['args']+' '+rout.get('hostargs')[socket.gethostname()]
             my_log.debug('running: '+cmdstr)
             my_log.info('Starting '+rout['name'])
-            #log = open('/home/ubuntu/tmp/log.log','w')
-            #proc = subprocess.Popen(cmdstr, shell = True, stdout=log, stderr=log)
-            os.system(cmdstr+" >> /home/ubuntu/tmp/log.log &")
+            log = open('/home/ubuntu/tmp/log.log','w')
+            proc = subprocess.Popen(cmdstr, shell = True, stdout=log, stderr=log)
             sleep(0.5)
 
         #zero out utc_start
@@ -371,8 +377,8 @@ def process(params, cmd, val, my_ds):
             cmdstr = 'killall -q '+rout['name']
             my_log.debug('running: '+cmdstr)
             my_log.info('Stopping '+rout['name'])
-            proc = subprocess.run(cmdstr, shell = True)
-            #subprocess.Popen.wait(proc)            
+            proc = subprocess.Popen(cmdstr, shell = True)
+            subprocess.Popen.wait(proc)            
             
         # deal with buffers
         for buff in params['buffers']:
@@ -440,12 +446,16 @@ def corr_run(args):
     # infinite monitoring loop
     while True:
 
+        key = '/mon/corr/' + str(args.corr_num)
+        md = get_monitor_dict(params,args.corr_num,my_ds)
+        if md!=-1:
+            try:
+                my_ds.put_dict(key, md)
+                get_rms_into_etcd(args.corr_num)
+            except:
+                my_log.error('COULD NOT CONNECT TO ETCD')
         key = '/mon/service/corr/' + str(args.corr_num)
-        try:
-            value = {'cadence': 2, 'time': dsa_functions36.current_mjd()}
-        except:
-            print('could not get time')
-            value = {'cadence': 2, 'time': 55000.0}
+        value = {'cadence': 2, 'time': dsa_functions36.current_mjd()}
         try:
             my_ds.put_dict(key, value)
         except:

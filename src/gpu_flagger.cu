@@ -92,6 +92,8 @@ int dump_pending = 0;
 int trignum = 0;
 char iP[100];
 char footer_buf[1024];
+char flnam[1024];
+int dumpbm;
 
 // structure for pulse injection
 typedef struct {
@@ -359,7 +361,8 @@ void flag(unsigned char *data, int * midx, unsigned char *repval, float *bpwr) {
   int idx = bm*NTIMES_P*NCHAN_P + tm*NCHAN_P + ch;  
 
   // do replacement
-  data[idx] = repval[ch*NTIMES_P+tm]*bpwr[bm];
+  //data[idx] = repval[ch*NTIMES_P+tm]*bpwr[bm];
+  data[idx] = MN*bpwr[bm];
     
 }
 
@@ -565,6 +568,7 @@ void control_thread (dsaX_pulse_t * ctx) {
   const char* whitespace = " ";
   char * command = 0;
   char * args = 0;
+  double * tmpblock = (double *)malloc(sizeof(double)*NTIMES_P*NCHAN_P);
 
   struct addrinfo hints;
   struct addrinfo* res=0;
@@ -581,6 +585,7 @@ void control_thread (dsaX_pulse_t * ctx) {
   char *endptr;
   uint64_t tmps;
   char * token;
+  double maxval;
 
   FILE *fin;
   
@@ -597,16 +602,34 @@ void control_thread (dsaX_pulse_t * ctx) {
     trignum++;
 
     // interpret buffer string    
+    char * rest = buffer;
+    int tmp_dumpbm = (float)(strtof(strtok(rest, "-"),&endptr));
+    if (tmp_dumpbm<0 || tmp_dumpbm>63) tmp_dumpbm=32;
+    char * tmp_flnam = strtok(NULL, "-");
     
     if (!dump_pending) {
-      strcpy(footer_buf,tbuf);
-      syslog(LOG_INFO, "control_thread: received command to add pulse %s",footer_buf);
-      if (!(fin=fopen(footer_buf,"rb"))) {
-	syslog(LOG_INFO,"cannot open %s",footer_buf);
+      strcpy(flnam,tmp_flnam);
+      dumpbm = tmp_dumpbm;
+      syslog(LOG_INFO, "control_thread: received command to add pulse %s to beam %d",flnam,dumpbm);
+      if (!(fin=fopen(flnam,"rb"))) {
+	syslog(LOG_INFO,"cannot open %s",flnam);
       }
       else {
-	fread(ctx->block,sizeof(float),1024*256*16384,fin);
+	fread(tmpblock,sizeof(double),1024*16384,fin);
+
+	// do manipulation of data
+	maxval = 0.;
+	for (int i=0;i<16384*1024;i++) {
+	  if (tmpblock[i]>maxval) maxval = tmpblock[i];
+	}
+	for (int i=0;i<16384;i++) {
+	  for (int j=0;j<1024;j++) {
+	    ctx->block[i*1024+j] = (float)(tmpblock[j*16384+i]*2.*SIG/maxval);
+	  }
+	}
+	
 	fclose(fin);
+	syslog(LOG_INFO, "control_thread: finished processing pulse - setting dump_pending");
       }
     }
 	
@@ -622,6 +645,7 @@ void control_thread (dsaX_pulse_t * ctx) {
 
   free (buffer);
   free (tbuf);
+  free(tmpblock);
 
   if (ctx->verbose)
     syslog(LOG_INFO, "control_thread: exiting");
@@ -642,6 +666,7 @@ void usage()
 	   "-g output beam power file\n"
 	   " -n number of blocks in baseline spec aver (must be <=16 and >=1, default 5)\n"
 	   " -p adjust noise level according to power\n"
+	   " -m generate random data\n"
 	   " -h print usage\n");
 }
 
@@ -678,8 +703,9 @@ int main(int argc, char**argv)
   int fwrite = 0;
   int fwrite2 = 0;
   int pwr = 0;
+  int mkrand = 0;
   
-  while ((arg=getopt(argc,argv,"c:t:i:o:f:g:a:k:dph")) != -1)
+  while ((arg=getopt(argc,argv,"c:t:i:o:f:g:a:k:mdph")) != -1)
     {
       switch (arg)
 	{
@@ -787,6 +813,9 @@ int main(int argc, char**argv)
 	  break;
 	case 'p':
 	  pwr=1;
+	  break;
+	case 'm':
+	  mkrand=1;
 	  break;
 	case 'h':
 	  usage();
@@ -1014,15 +1043,23 @@ int main(int argc, char**argv)
       gather_mask(h_idx, h_mask, &n_mask);
       if (DEBUG) syslog(LOG_INFO,"FLAG_COUNT %d",n_mask);   		
       cudaMemcpy(d_idx, h_idx, n_mask*sizeof(int), cudaMemcpyHostToDevice);
-      flag<<<n_mask*NTIMES_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_idx, d_repval, d_bpwr);
+      if (mkrand==0) 
+	flag<<<n_mask*NTIMES_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_idx, d_repval, d_bpwr);
+
+      // replace with random data
+      if (mkrand==1) {
+	for (int i=0;i<NBEAMS_P;i++)
+	  cudaMemcpy(d_data + i*NTIMES_P*NCHAN_P,d_repval,NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyDeviceToDevice);
+      }
 
       // check whether we want to add pulse
       if (dump_pending) {
 
-	syslog(LOG_INFO, "adding pulse to data %s", footer_buf);
-	cudaMemcpy(d_data,pulsedata,NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(float), cudaMemcpyHostToDevice);
-	sumpulse<<<n_mask*NTIMES_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_pulse);
-	syslog(LOG_INFO, "added %s", footer_buf);
+	syslog(LOG_INFO, "adding pulse %s to beam %d", flnam, dumpbm);
+	cudaMemset(d_pulse, 0, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(float));
+	cudaMemcpy(d_pulse + dumpbm*NTIMES_P*NCHAN_P,pulsedata,NTIMES_P*NCHAN_P*sizeof(float), cudaMemcpyHostToDevice);
+	sumpulse<<<NBEAMS_P*NTIMES_P*NCHAN_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_pulse);
+	syslog(LOG_INFO, "added %s to beam %d", flnam, dumpbm);
 	
 	dump_pending=0;
 	
