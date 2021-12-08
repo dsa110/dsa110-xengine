@@ -624,7 +624,8 @@ void control_thread (dsaX_pulse_t * ctx) {
 	}
 	for (int i=0;i<16384;i++) {
 	  for (int j=0;j<1024;j++) {
-	    ctx->block[i*1024+j] = (float)(tmpblock[j*16384+i]*2.*SIG/maxval);
+	    //ctx->block[i*1024+j] = (float)(tmpblock[j*16384+i]*2.*SIG/maxval);
+	    ctx->block[i*1024+j] = (float)(tmpblock[j*16384+i]);
 	  }
 	}
 	

@@ -454,7 +454,10 @@ def corr_run(args):
                 get_rms_into_etcd(args.corr_num)
                 if args.instance=='search':
                     try:
-                        my_ds.put_dict('/mon/T1/'+str(args.corr_num-16),{'DM_space_searched':md['DM_space_searched']})
+                        my_ds.put_dict('/mon/T1/'+str(args.corr_num-16),
+                                       {'DM_space_searched':md['DM_space_searched'],
+                                        't1_num': args.corr_num-16,
+                                        'time': dsa_functions36.current_mjd()})
                     except:
                         my_log.error('COULD NOT write to /mon/t1/')
             except:
