@@ -452,6 +452,11 @@ def corr_run(args):
             try:
                 my_ds.put_dict(key, md)
                 get_rms_into_etcd(args.corr_num)
+                if args.instance=='search':
+                    try:
+                        my_ds.put_dict('/mon/T1/'+str(args.corr_num-16),{'DM_space_searched':md['DM_space_searched']})
+                    except:
+                        my_log.error('COULD NOT write to /mon/t1/')
             except:
                 my_log.error('COULD NOT CONNECT TO ETCD')
         key = '/mon/service/corr/' + str(args.corr_num)

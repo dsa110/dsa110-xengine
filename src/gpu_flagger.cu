@@ -1043,8 +1043,6 @@ int main(int argc, char**argv)
       gather_mask(h_idx, h_mask, &n_mask);
       if (DEBUG) syslog(LOG_INFO,"FLAG_COUNT %d",n_mask);   		
       cudaMemcpy(d_idx, h_idx, n_mask*sizeof(int), cudaMemcpyHostToDevice);
-      if (mkrand==0) 
-	flag<<<n_mask*NTIMES_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_idx, d_repval, d_bpwr);
 
       // replace with random data
       if (mkrand==1) {
@@ -1052,6 +1050,7 @@ int main(int argc, char**argv)
 	  cudaMemcpy(d_data + i*NTIMES_P*NCHAN_P,d_repval,NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyDeviceToDevice);
       }
 
+      
       // check whether we want to add pulse
       if (dump_pending) {
 
@@ -1064,6 +1063,9 @@ int main(int argc, char**argv)
 	dump_pending=0;
 	
       }
+
+      if (mkrand==0) 
+	flag<<<n_mask*NTIMES_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_idx, d_repval, d_bpwr);
       
     }
 
