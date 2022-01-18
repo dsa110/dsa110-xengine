@@ -35,9 +35,37 @@
 #include "dsaX_def.h"
 #include "xgpu.h"
 
+#define N_INTS 128
+
 // global variables
 int DEBUG = 0;
 const int n_all = 3194880;
+
+// to extract autocorrelation data
+void auto_extract(float *output, float *specs);
+
+void auto_extract(float *output, float *specs) {
+
+  int bctr = 0, idx, oidx = 0;
+  for (int a1=0;a1<63;a1++) {
+    for (int a2=0;a2<=a1;a2++) {
+
+      if (a1==a2) {
+	for (int f=0;f<384;f++) {
+	  for (int pol=0;pol<2;pol++) {
+	    idx = 2*((bctr*384+f)*2+pol);
+	    specs[oidx] += output[idx];
+	  }
+	  oidx++;
+	}
+      }
+      bctr++;
+
+    }
+  }
+
+
+}
 
 // for extracting data
 // assumes TRIANGULAR_ORDER for mat (f, baseline, pol, ri)
@@ -114,8 +142,9 @@ int main (int argc, char *argv[]) {
   // command line arguments
   int core = -1;
   int arg = 0;
+  int output_specs = 0;
   
-  while ((arg=getopt(argc,argv,"c:i:o:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:i:o:sdh")) != -1)
     {
       switch (arg)
 	{
@@ -164,6 +193,10 @@ int main (int argc, char *argv[]) {
 	case 'd':
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
+	  break;
+	case 's':
+	  output_specs=1;
+	  syslog (LOG_INFO, "Will output spectra files");
 	  break;
 	case 'h':
 	  usage();
@@ -250,7 +283,13 @@ int main (int argc, char *argv[]) {
   uint64_t written, block_id;
   Complex * cblock;
   float *data = (float *)malloc(sizeof(float)*n_all);
-  
+
+  // spectra outputs
+  FILE *fout, *fmjd;
+  char fnam[100];
+  float *specs = (float *)malloc(sizeof(float)*63*384);
+  float mjd;
+  int ctr = 0;
   
   // set up
 
@@ -268,14 +307,42 @@ int main (int argc, char *argv[]) {
     if (started==0) {
       syslog(LOG_INFO,"now in RUN state");
       started=1;
+
+      if (!(fmjd = fopen("/home/ubuntu/tmp/mjd.dat","r"))) {
+	syslog(LOG_ERR,"could not open fmjd");
+      }
+      fscanf(fmjd,"%f",&mjd);
+      fclose(fmjd);
+      sprintf(fnam,"/home/ubuntu/data/specs_%f.dat",mjd);
+      
     }
 
     // DO STUFF - from block to summed_vis
 
     if (DEBUG) syslog(LOG_DEBUG,"extracting...");
     simple_extract((Complex *)(block), data);
-    if (DEBUG) syslog(LOG_DEBUG,"extracted!");    
+    if (DEBUG) syslog(LOG_DEBUG,"extracted!");
 
+    // write to file if needed
+    if (output_specs==1) {
+
+      if (ctr==0) 
+	for (int i=0;i<63*384;i++) specs[i] = 0.;
+
+      auto_extract(data, specs);
+      ctr += 1;
+
+      if (ctr==N_INTS) {
+	fout = fopen(fnam,"a");
+	for (int i=0;i<63*384;i++) 
+	  fprintf(fout, "%f\n", specs[i]);
+	fclose(fout);
+	ctr=0;
+      }
+	
+    }
+    
+    
     // write to output
     written = ipcio_write (hdu_out->data_block, (char *)data, block_out);
     if (written < block_out)
