@@ -225,6 +225,8 @@ void usage()
 	   " -f file to read packet from [default none]\n"
 	   " -i in_key [default TEST_BLOCK_KEY]\n"
 	   " -o out_key [default REORDER_BLOCK_KEY2]\n"
+	   " -n will not read header\n"
+	   " -b number of blocks to stop after\n"
 	   " -h print usage\n");
 }
 
@@ -251,8 +253,9 @@ int main (int argc, char *argv[]) {
   char fnam[100];
   int arg = 0;
   int rhead = 1;
+  int nblocks = -1;
   
-  while ((arg=getopt(argc,argv,"c:f:i:o:n:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:i:o:nb:dh")) != -1)
     {
       switch (arg)
 	{
@@ -311,7 +314,18 @@ int main (int argc, char *argv[]) {
 	      usage();
 	      return EXIT_FAILURE;
 	    }
-
+	case 'b':
+	  if (optarg)
+	    {
+	      nblocks = atoi(optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-b flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
 	case 'd':
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
@@ -450,15 +464,15 @@ int main (int argc, char *argv[]) {
 */
 
   while (!observation_complete) {
-	if (!(feof(fin))) {
-		fread(packet,block_out,1,fin);
-	}
-	else{
-		fclose(fin);
-		fin=fopen(fnam,"rb");
-		if (rhead) read_header(fin);
-		fread(packet,block_out,1,fin);
-	}
+    if (!(feof(fin))) {
+      fread(packet,block_out,1,fin);
+    }
+    else{
+      fclose(fin);
+      fin=fopen(fnam,"rb");
+      if (rhead) read_header(fin);
+      fread(packet,block_out,1,fin);
+    }
 
     // open block
     block = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
@@ -487,10 +501,9 @@ int main (int argc, char *argv[]) {
       syslog(LOG_DEBUG, "written block %d",blocks);      
     }
     blocks++;
-    
 
-    //if (bytes_read < block_size)
-    //  observation_complete = 1;
+    if (blocks==nblocks)
+      observation_complete = 1;
 
     ipcio_close_block_read (hdu_in->data_block, bytes_read);
 

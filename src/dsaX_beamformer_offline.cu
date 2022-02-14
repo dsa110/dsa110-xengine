@@ -415,8 +415,9 @@ void calc_weights(float *antpos, float *weights, float *freqs, half *wr, half *w
   int i = bidx*256+tidx;
   int widx = ant*NW*2*2 + f*2*2 + pol*2;
   
-  float theta = sep*(127.-beam*1.)*PI/10800.; // radians
-  float afac = -2.*PI*freqs[f*8+4]*theta/CVAC; // factor for rotate
+  //float theta = sep*(127.-beam*1.)*PI/10800.; // radians
+  float theta = sep*(127.-beam*0.1-80.)*PI/10800.; // radians
+  float afac = -2.*PI*freqs[f*8+4]*sinf(theta)/CVAC; // factor for rotate
   float twr = cos(afac*antpos[ant]);
   float twi = sin(afac*antpos[ant]);
 

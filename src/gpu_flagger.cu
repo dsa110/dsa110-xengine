@@ -81,6 +81,8 @@ using std::endl;
 #define RMAX 16384
 //#define NPERMFLAGS 58
 #define NPERMFLAGS 1
+#define TBIN 128
+#define FBIN 8
 
 // global variables
 int DEBUG = 0;
@@ -316,6 +318,64 @@ void calc_maxspec(unsigned char *data, float * maxspec) {
 
 }
 
+// kernel to calculate p-p spec with binning (default 128)
+// launch with NBEAMS_P*NCHAN_P blocks of NTHREADS_GPU threads 
+__global__
+void calc_ppspec(unsigned char *data, float * ppspec) {
+
+  int block_id = blockIdx.x;
+  int thread_id = threadIdx.x;
+  __shared__ float csum[NTHREADS_GPU];
+  csum[thread_id] = 0.;
+
+  int bm =(int)( block_id/NCHAN_P);
+  int ch = (int)(block_id % (NCHAN_P));
+  int tm0 = (int)(thread_id*(NTIMES_P/NTHREADS_GPU));
+  float val=0.;
+
+  // local times start at tm0
+  float vv;
+  int idx0;
+  
+  // find max of local times
+  for (int j=0;j<(NTIMES_P/NTHREADS_GPU)/TBIN;j++) {
+    idx0=bm*NTIMES_P*NCHAN_P + (tm0+j*TBIN)*NCHAN_P + ch;
+    vv = 0.;    
+    for (int i=idx0;i<idx0+NCHAN_P*TBIN;i+=NCHAN_P) 
+      vv += (float)(data[i]);
+    vv /= (1.*TBIN);      
+    if (vv>val) val = vv;
+  }
+  csum[thread_id] = val;
+  
+  __syncthreads();
+  
+  // sum into shared memory
+  int maxn = NTHREADS_GPU/2;
+  int act_maxn = maxn;
+  float v1;
+  if (thread_id<maxn) {
+    while (act_maxn>0) {
+      if (csum[thread_id]<csum[thread_id+act_maxn])
+	csum[thread_id]=csum[thread_id+act_maxn];
+      act_maxn = (int)(act_maxn/2);
+    }
+  }
+  if (thread_id==0) v1=csum[thread_id];
+  act_maxn = maxn;
+  if (thread_id<maxn) {
+    while (act_maxn>0) {
+      if (csum[thread_id]>csum[thread_id+act_maxn])
+	csum[thread_id]=csum[thread_id+act_maxn];
+      act_maxn = (int)(act_maxn/2);
+    }
+  }
+  if (thread_id==0)
+    ppspec[bm*NCHAN_P+ch] = v1-csum[thread_id];
+
+}
+
+
 // kernel to scale data
 // launch with NBEAMS_P*NTIMES_P*NCHAN_P/NTHREADS_GPU blocks of NTHREADS_GPU threads
 __global__
@@ -425,6 +485,57 @@ float medval(float *a,int n) {
 }
 
 void channflag(float* spec, float Thr, int * mask);
+void simple_channflag(float* spec, float Thr, int * mask);
+
+void simple_channflag(float* spec, float Thr, int * mask) {
+	
+  int i, j;
+  float* medspec;			// median values for each beam spectrum
+  float* madspec;			// mad for each beam spectrum
+  float* normspec;			// corrected spec - median value (for MAD calculation)
+
+  medspec = (float *)malloc(sizeof(float)*NBEAMS_P);
+  madspec = (float *)malloc(sizeof(float)*NBEAMS_P);
+  normspec = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
+    
+  int ZeroChannels = 128; 
+  int nFilt, idx;
+  	
+  // calculate median value for each beam
+  for (i = 0; i < NBEAMS_P; i++)
+    medspec[i] = medval(spec + i*NCHAN_P + ZeroChannels,NCHAN_P-2*ZeroChannels);
+  
+  // compute MAD for each beam
+  for (i = 0; i < NBEAMS_P; i++){
+    for (j = ZeroChannels; j < NCHAN_P-ZeroChannels; j++){
+      normspec[j-ZeroChannels] = fabs(spec[i*NCHAN_P+j]-medspec[i]);
+    }
+    madspec[i] = medval(normspec,NCHAN_P-2*ZeroChannels);
+  }
+	
+  // mask
+  float vv;
+  float mythr = Thr/sqrt(1.*FBIN);
+  for (i = 0; i < NBEAMS_P; i++){
+
+    // implement FBIN    
+    for (j = ZeroChannels; j < NCHAN_P-ZeroChannels-FBIN; j++) {
+      vv = 0.;
+      for (int k=0;k<FBIN;k++)
+	vv += spec[i*NCHAN_P+j];
+      vv = (vv/(1.*FBIN)-medspec[i]);
+
+      if (vv > mythr*madspec[i]) mask[i*NCHAN_P+j] = 1;
+      
+    }
+    
+  }
+  
+  free(medspec);
+  free(madspec);
+  free(normspec);
+  
+}
 
 void channflag(float* spec, float Thr, int * mask) {
 	
@@ -492,6 +603,7 @@ void channflag(float* spec, float Thr, int * mask) {
   free(normspec);
   
 }
+
 
 // to gather mask indices
 void gather_mask(int *h_idx, int *h_mask, int *n_mask) {
@@ -925,6 +1037,7 @@ int main(int argc, char**argv)
   float * h_subspec = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float * h_var = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float * h_max = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
+  float * h_pp = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float * h_oldspec = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float *h_spec0 = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
   float *h_var0 = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
@@ -933,9 +1046,10 @@ int main(int argc, char**argv)
   cudaMalloc((void **)&d_var0, NBEAMS_P*NCHAN_P*naver*sizeof(float));
   for (int i=0;i<NBEAMS_P*NCHAN_P;i++) h_oldspec[i] = 0.;
   cudaMemcpy(d_oldspec, h_oldspec, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyHostToDevice);
-  float * d_var, * d_max;
+  float * d_var, * d_max, * d_pp;
   cudaMalloc((void **)&d_var, NBEAMS_P*NCHAN_P*sizeof(float));
   cudaMalloc((void **)&d_max, NBEAMS_P*NCHAN_P*sizeof(float));
+  cudaMalloc((void **)&d_pp, NBEAMS_P*NCHAN_P*sizeof(float));
   int * h_idx = (int *)malloc(sizeof(int)*NBEAMS_P*NCHAN_P);
   int * d_idx;
   cudaMalloc((void **)&d_idx, NBEAMS_P*NCHAN_P*sizeof(int));
@@ -1025,16 +1139,19 @@ int main(int argc, char**argv)
 
       // calc maxspec
       calc_spectrum<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_max);
+      calc_ppspec<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_pp);
 
       // derive channel flags
       cudaMemcpy(h_max, d_max, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
+      cudaMemcpy(h_pp, d_pp, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
       for (int i=0;i<NBEAMS_P*NCHAN_P;i++) {
 	h_mask[i] = 0;
 	h_subspec[i] = h_spec[i]-h_oldspec[i];
       }
       channflag(h_subspec,thresh,h_mask);
-      channflag(h_var,thresh+0.5,h_mask);
+      //channflag(h_var,thresh+0.5,h_mask);
       channflag(h_max,thresh,h_mask);
+      simple_channflag(h_pp,thresh,h_mask);
 
       // calc bpwr if needed
       if (pwr) calc_bpwr(h_spec,h_bpwr);
@@ -1188,11 +1305,14 @@ int main(int argc, char**argv)
   free(h_bmask);
   free(h_spec);
   free(h_var);
+  free(h_pp);
   free(h_max);
   free(h_bm0);
   free(h_bpwr);
   free(pulsedata);
   cudaFree(d_bpwr);
+  cudaFree(d_max);
+  cudaFree(d_pp);
   cudaFree(d_data);
   cudaFree(d_spec);
   cudaFree(d_var);

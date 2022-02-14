@@ -931,11 +931,12 @@ int main (int argc, char *argv[]) {
   int blocks = 0, started = 0;
   int blockct = 0;
   int slow_down = 0;
+  int prestart = 0;
   
   syslog(LOG_INFO, "starting observation");
 
   while (!observation_complete) {
-
+    
     // open block
     block = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
     blockct ++;
