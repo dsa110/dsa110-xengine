@@ -24,5 +24,7 @@ dsaX_beamformer_offline
 dsaX_copydb
 cuda_correlator
 dsaX_beamformer_passon
+dsaX_wrangle
+cuda_correlator
 splice_offline_beams
 

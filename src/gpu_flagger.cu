@@ -1149,7 +1149,7 @@ int main(int argc, char**argv)
 	h_subspec[i] = h_spec[i]-h_oldspec[i];
       }
       channflag(h_subspec,thresh,h_mask);
-      //channflag(h_var,thresh+0.5,h_mask);
+      channflag(h_var,thresh+0.5,h_mask);
       channflag(h_max,thresh,h_mask);
       simple_channflag(h_pp,thresh,h_mask);
 
