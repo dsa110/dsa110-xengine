@@ -474,17 +474,17 @@ void flag(unsigned char *data, int * midx, unsigned char *repval, float *bpwr) {
 }
 
 // kernel to do time-series flagging
-// launch with n_mask*NCHAN_P/NTHREADS_GPU blocks of NTHREADS_GPU threads 
+// launch with n_mask*(NCHAN_P-256)/NTHREADS_GPU blocks of NTHREADS_GPU threads 
 __global__
 void flagts(unsigned char *data, int * midx, unsigned char *repval, float *bpwr) {
 
   int block_id = blockIdx.x;
   int thread_id = threadIdx.x;
-  int midx_idx = (int)(block_id/(NCHAN_P/NTHREADS_GPU));
+  int midx_idx = (int)(block_id/((NCHAN_P-256)/NTHREADS_GPU));
   
   int bm = (int)(midx[midx_idx] / NTIMES_P);
   int tm = (int)(midx[midx_idx] % NTIMES_P);
-  int ch = ((int)(block_id % (NCHAN_P/NTHREADS_GPU)))*NTHREADS_GPU + thread_id;
+  int ch = ((int)(block_id % ((NCHAN_P-256)/NTHREADS_GPU)))*NTHREADS_GPU + thread_id + 128;
   int idx = bm*NTIMES_P*NCHAN_P + tm*NCHAN_P + ch;  
 
   // do replacement
@@ -948,7 +948,7 @@ int main(int argc, char**argv)
   int fwrite2 = 0;
   int pwr = 0;
   int mkrand = 0;
-  int tsflag = 1;
+  int tsflag = 0;
   float tsthresh = 10.;
   
   while ((arg=getopt(argc,argv,"c:t:i:o:f:g:a:k:s:mdph")) != -1)
@@ -1356,7 +1356,7 @@ int main(int argc, char**argv)
 	gather_mask(h_tsidx, h_tsmask, &n_tsmask);	
 	syslog(LOG_INFO,"TS_COUNT %d",n_tsmask);   		
 	cudaMemcpy(d_tsidx, h_tsidx, n_tsmask*sizeof(int), cudaMemcpyHostToDevice);
-	flagts<<<n_tsmask*NCHAN_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_tsidx, d_repval, d_bpwr);
+	flagts<<<n_tsmask*(NCHAN_P-256)/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_tsidx, d_repval, d_bpwr);
 	syslog(LOG_INFO,"flagged ts");
 	
       }
