@@ -406,6 +406,53 @@ void sumpulse(unsigned char *data, float *summand) {
 }
 
 
+
+
+// kernel to make time series from data
+// run with NBEAMS_P*NTIMES_P blocks of 32 threads
+__global__
+void make_ts(unsigned char *data, float *ts) {
+
+  int block_id = blockIdx.x;
+  int thread_id = threadIdx.x;
+  int idx = blockIdx.x*NTHREADS_GPU + threadIdx.x;
+  int bm = (int)(blockIdx.x/NTIMES_P);
+  int tm = (int)(blockIdx.x % NTIMES_P);
+  int ch0 = (int)(thread_id*(NCHAN_P/NTHREADS_GPU));
+
+  __shared__ float csum[NTHREADS_GPU];
+  csum[thread_id] = 0.;
+  
+  // find sum of local chans
+  int idx0 = bm*NTIMES_P*NCHAN_P + tm*NCHAN_P + ch0;
+  for (int ch=0; ch<NCHAN_P/NTHREADS_GPU; ch++) {    
+    csum[thread_id] += (float)(data[idx0]);
+    idx0++;
+  }
+
+  __syncthreads();
+  
+  // sum into shared memory
+  if (thread_id<16) {
+    csum[thread_id] += csum[thread_id+16];
+    __syncthreads();
+    csum[thread_id] += csum[thread_id+8];
+      __syncthreads();
+    csum[thread_id] += csum[thread_id+4];
+      __syncthreads();
+    csum[thread_id] += csum[thread_id+2];
+      __syncthreads();
+    csum[thread_id] += csum[thread_id+1];
+      __syncthreads();
+  }
+  
+  if (thread_id==0) {    
+    ts[bm*NTIMES_P+tm] = csum[thread_id] / (1.*NCHAN_P);
+  }
+  
+}
+
+
 // kernel to do flagging
 // launch with n_mask*NTIMES_P/NTHREADS_GPU blocks of NTHREADS_GPU threads 
 __global__
@@ -425,6 +472,27 @@ void flag(unsigned char *data, int * midx, unsigned char *repval, float *bpwr) {
   data[idx] = MN*bpwr[bm];
     
 }
+
+// kernel to do time-series flagging
+// launch with n_mask*NCHAN_P/NTHREADS_GPU blocks of NTHREADS_GPU threads 
+__global__
+void flagts(unsigned char *data, int * midx, unsigned char *repval, float *bpwr) {
+
+  int block_id = blockIdx.x;
+  int thread_id = threadIdx.x;
+  int midx_idx = (int)(block_id/(NCHAN_P/NTHREADS_GPU));
+  
+  int bm = (int)(midx[midx_idx] / NTIMES_P);
+  int tm = (int)(midx[midx_idx] % NTIMES_P);
+  int ch = ((int)(block_id % (NCHAN_P/NTHREADS_GPU)))*NTHREADS_GPU + thread_id;
+  int idx = bm*NTIMES_P*NCHAN_P + tm*NCHAN_P + ch;  
+
+  // do replacement
+  //data[idx] = repval[ch*NTIMES_P+tm]*bpwr[bm];
+  data[idx] = MN*bpwr[bm];
+    
+}
+
 
 // kernel to make random numbers
 // launch with NTIMES_P*NCHAN_P/NTHREADS_GPU blocks of NTHREADS_GPU threads 
@@ -486,6 +554,7 @@ float medval(float *a,int n) {
 
 void channflag(float* spec, float Thr, int * mask);
 void simple_channflag(float* spec, float Thr, int * mask);
+void simple_tsflag(float* ts, float Thr, int * mask);
 
 void simple_channflag(float* spec, float Thr, int * mask) {
 	
@@ -536,6 +605,52 @@ void simple_channflag(float* spec, float Thr, int * mask) {
   free(normspec);
   
 }
+
+void simple_tsflag(float* spec, float Thr, int * mask) {
+	
+  int i, j;
+  float* medspec;			// median values for each beam spectrum
+  float* madspec;			// mad for each beam spectrum
+  float* normspec;			// corrected spec - median value (for MAD calculation)
+
+  medspec = (float *)malloc(sizeof(float)*NBEAMS_P);
+  madspec = (float *)malloc(sizeof(float)*NBEAMS_P);
+  normspec = (float *)malloc(sizeof(float)*NBEAMS_P*NTIMES_P);
+    
+  int nFilt, idx;
+  	
+  // calculate median value for each beam
+  for (i = 0; i < NBEAMS_P; i++)
+    medspec[i] = medval(spec + i*NTIMES_P,NTIMES_P/16);
+  
+  // compute MAD for each beam
+  for (i = 0; i < NBEAMS_P; i++){
+    for (j = 0; j < NTIMES_P/16; j++){
+      normspec[j] = fabs(spec[i*NTIMES_P+j]-medspec[i]);
+    }
+    madspec[i] = medval(normspec,NTIMES_P/16);
+  }
+	
+  // mask
+  float vv;
+  float mythr = Thr;
+  for (i = 0; i < NBEAMS_P; i++){
+
+    for (j = 0; j < NTIMES_P; j++) {
+
+      vv = spec[i*NTIMES_P+j]-medspec[i];
+      if (vv > mythr*madspec[i]) mask[i*NTIMES_P+j] = 1;
+      
+    }
+    
+  }
+  
+  free(medspec);
+  free(madspec);
+  free(normspec);
+  
+}
+
 
 void channflag(float* spec, float Thr, int * mask) {
 	
@@ -618,6 +733,21 @@ void gather_mask(int *h_idx, int *h_mask, int *n_mask) {
   }
 
 }
+
+// to gather ts mask indices
+void gather_tsmask(int *h_idx, int *h_mask, int *n_mask) {
+
+  (*n_mask) = 0;
+  for (int i=0;i<NBEAMS_P*NTIMES_P;i++) {
+    if (h_mask[i]==1) {      
+      h_idx[(*n_mask)] = i;
+      //if (DEBUG) syslog(LOG_INFO,"%d %d %d",i,h_mask[i],(*n_mask));
+      (*n_mask) += 1;
+    }
+  }
+
+}
+
 
 // to calculate bpwr from spectrum
 void calc_bpwr(float *h_spec, float *h_bpwr);
@@ -780,6 +910,7 @@ void usage()
 	   " -n number of blocks in baseline spec aver (must be <=16 and >=1, default 5)\n"
 	   " -p adjust noise level according to power\n"
 	   " -m generate random data\n"
+	   " -s time-series flagging and threshold [no default]\n"
 	   " -h print usage\n");
 }
 
@@ -817,8 +948,10 @@ int main(int argc, char**argv)
   int fwrite2 = 0;
   int pwr = 0;
   int mkrand = 0;
+  int tsflag = 1;
+  float tsthresh = 10.;
   
-  while ((arg=getopt(argc,argv,"c:t:i:o:f:g:a:k:mdph")) != -1)
+  while ((arg=getopt(argc,argv,"c:t:i:o:f:g:a:k:s:mdph")) != -1)
     {
       switch (arg)
 	{
@@ -924,6 +1057,20 @@ int main(int argc, char**argv)
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
 	  break;
+	case 's':
+	  if (optarg)
+	    {
+	      tsthresh = atof(optarg);
+	      tsflag=1;
+	      syslog(LOG_INFO,"TSTHRESH is %g",tsthresh);
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-s flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
 	case 'p':
 	  pwr=1;
 	  break;
@@ -1025,13 +1172,19 @@ int main(int argc, char**argv)
   int * h_mask = (int *)malloc(sizeof(int)*NBEAMS_P*NCHAN_P);
   int * d_mask;
   cudaMalloc((void **)&d_mask, NBEAMS_P*NCHAN_P*sizeof(int));
+  int * h_tsmask = (int *)malloc(sizeof(int)*NBEAMS_P*NTIMES_P);
+  int * d_tsmask;
+  cudaMalloc((void **)&d_tsmask, NBEAMS_P*NTIMES_P*sizeof(int));
   float * d_spec, * d_oldspec;
   cudaMalloc((void **)&d_spec, NBEAMS_P*NCHAN_P*sizeof(float));
   cudaMalloc((void **)&d_oldspec, NBEAMS_P*NCHAN_P*sizeof(float));
+  float * d_ts;
+  cudaMalloc((void **)&d_ts, NBEAMS_P*NTIMES_P*sizeof(float));
   float * h_bpwr = (float *)malloc(sizeof(float)*NBEAMS_P);
   float * d_bpwr;
   cudaMalloc((void **)&d_bpwr, NBEAMS_P*sizeof(float));
   float * h_spec = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
+  float * h_ts = (float *)malloc(sizeof(float)*NBEAMS_P*NTIMES_P);
   float * h_beam = (float *)malloc(sizeof(float)*NBEAMS_P);
   float * h_bmask = (float *)malloc(sizeof(float)*NBEAMS_P);
   float * h_subspec = (float *)malloc(sizeof(float)*NBEAMS_P*NCHAN_P);
@@ -1053,7 +1206,11 @@ int main(int argc, char**argv)
   int * h_idx = (int *)malloc(sizeof(int)*NBEAMS_P*NCHAN_P);
   int * d_idx;
   cudaMalloc((void **)&d_idx, NBEAMS_P*NCHAN_P*sizeof(int));
+  int * h_tsidx = (int *)malloc(sizeof(int)*NBEAMS_P*NTIMES_P);
+  int * d_tsidx;
+  cudaMalloc((void **)&d_tsidx, NBEAMS_P*NTIMES_P*sizeof(int));
   int n_mask = 0;
+  int n_tsmask = 0;
 
   // random numbers
   unsigned char *d_repval;
@@ -1184,6 +1341,26 @@ int main(int argc, char**argv)
 
       if (mkrand==0) 
 	flag<<<n_mask*NTIMES_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_idx, d_repval, d_bpwr);
+
+      // ts flagging if needed
+      if (tsflag) {
+
+	make_ts<<<NBEAMS_P*NTIMES_P,NTHREADS_GPU>>>(d_data,d_ts);
+	syslog(LOG_INFO,"made ts");
+	cudaMemcpy(h_ts, d_ts, NBEAMS_P*NTIMES_P*sizeof(float), cudaMemcpyDeviceToHost);
+	syslog(LOG_INFO,"copied ts");
+	for (int i=0;i<NBEAMS_P*NTIMES_P;i++) 
+	  h_tsmask[i] = 0;
+	simple_tsflag(h_ts,tsthresh,h_tsmask);
+	syslog(LOG_INFO,"tsflagged");
+	gather_mask(h_tsidx, h_tsmask, &n_tsmask);	
+	syslog(LOG_INFO,"TS_COUNT %d",n_tsmask);   		
+	cudaMemcpy(d_tsidx, h_tsidx, n_tsmask*sizeof(int), cudaMemcpyHostToDevice);
+	flagts<<<n_tsmask*NCHAN_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_tsidx, d_repval, d_bpwr);
+	syslog(LOG_INFO,"flagged ts");
+	
+      }
+      
       
     }
 
@@ -1309,7 +1486,13 @@ int main(int argc, char**argv)
   free(h_max);
   free(h_bm0);
   free(h_bpwr);
+  free(h_ts);
+  free(h_tsidx);
+  free(h_tsmask);
   free(pulsedata);
+  cudaFree(d_ts);
+  cudaFree(d_tsidx);
+  cudaFree(d_tsmask);
   cudaFree(d_bpwr);
   cudaFree(d_max);
   cudaFree(d_pp);
