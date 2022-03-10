@@ -875,7 +875,7 @@ int main (int argc, char *argv[]) {
   float pwrs = 0;
   if (!outpwr) { 
     fin=fopen("/home/ubuntu/data/tmp/output.dat","wb");  
-    for (int i=954;i<954+2048;i++) 
+    for (int i=0;i<8192;i++) 
       fwrite(output_buffer + i*48*256 + outbm*48,sizeof(unsigned char),48,fin);
     fclose(fin);
   }

@@ -3,7 +3,7 @@
 #include <time.h>
 #include <sys/socket.h>
 #include <math.h>
-#include <thread>
+1;95;0c#include <thread>
 #include <sys/types.h>
 #include <sys/syscall.h>
 #include <sys/mman.h>
@@ -1353,7 +1353,7 @@ int main(int argc, char**argv)
 	  h_tsmask[i] = 0;
 	simple_tsflag(h_ts,tsthresh,h_tsmask);
 	syslog(LOG_INFO,"tsflagged");
-	gather_mask(h_tsidx, h_tsmask, &n_tsmask);	
+	gather_tsmask(h_tsidx, h_tsmask, &n_tsmask);	
 	syslog(LOG_INFO,"TS_COUNT %d",n_tsmask);   		
 	cudaMemcpy(d_tsidx, h_tsidx, n_tsmask*sizeof(int), cudaMemcpyHostToDevice);
 	flagts<<<n_tsmask*(NCHAN_P-256)/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_tsidx, d_repval, d_bpwr);

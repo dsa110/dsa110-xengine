@@ -9,7 +9,7 @@ if sys.argv[1]=='stop':
     output0 = subprocess.Popen('killall -q dumpfil',shell=True)
     subprocess.Popen.wait(output0)
     
-    output0 = subprocess.Popen('killall -q gpu_flagger',shell=True)
+    output0 = subprocess.Popen('killall -q test_flagger',shell=True)
     subprocess.Popen.wait(output0)
     
     output0 = subprocess.Popen('killall -q fil2dada',shell=True)
@@ -27,16 +27,16 @@ if sys.argv[1]=='create':
 
     # create buffers - check dsaX_def for correct block sizes
 
-    os.system('dada_db -k aada -b 268435456 -l -p -c 0 -n 4') # 2048 packets
-    os.system('dada_db -k bada -b 268435456 -l -p -c 0 -n 4') # 2048 packets
-    os.system('dada_db -k cada -b 268435456 -l -p -c 0 -n 4') # 2048 packets
+    os.system('dada_db -k aada -b 1073741824 -l -p -c 0 -n 4') # 2048 packets
+    os.system('dada_db -k bada -b 1073741824 -l -p -c 0 -n 4') # 2048 packets
+    os.system('dada_db -k cada -b 1073741824 -l -p -c 0 -n 4') # 2048 packets
 
 if sys.argv[1]=='start':
     
     # start code    
-    junk = 'dada_junkdb -t 1200 -k aada -r 20 /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/spectrometer_header.txt'
-    fil = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/fil2dada -f /data/dsa110/other/filterbanks/corr01_J1136+5051_0_1265.fil -i aada -o bada'
-    flag = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/gpu_flagger -i bada -o cada -t 4.5 -d -f /home/ubuntu/tmp/test.dat -v -n -k 10.41.0.182'
+    junk = 'dada_junkdb -t 1200 -k aada -r 80 /home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/spectrometer_header.txt'
+    fil = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/fil2dada -f /home/ubuntu/data/op.fil -i aada -o bada'
+    flag = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/test_flagger -i bada -o cada -t 4.5 -d -f /home/ubuntu/tmp/test.dat -v -a 1 -k 10.41.0.182 -s 10.0 -p'
     heimdall = 'dada_dbnull -k cada'
     #heimdall = '/home/ubuntu/proj/dsa110-shell/dsa110-mbheimdall/bin/heimdall -k cada -gpu_id 0 -nsamps_gulp 4096 -output_dir /home/ubuntu/data -dm 10 1000 -dm_tol 1.35 -max_giant_rate 20000000 -nbeams 64'
     #heimdall = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/src/dumpfil -n 3 -f /home/ubuntu/data/test.fil -i cada -g'
