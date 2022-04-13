@@ -138,16 +138,25 @@ def get_capture_stats():
 
     # open logger
     my_log.function('get_capture_stats')
-    
+
+    oarr = np.zeros(6)
     try:
         result = subprocess.check_output("tail -n 50000 /var/log/syslog | grep CAPSTATS | tail -n 1 | awk '{print $7,$10,$13,$15,$17}'", shell=True, stderr=subprocess.STDOUT)
-        arr = result.decode("utf-8").split(' ')
-        oarr = np.zeros(5)
+        arr = result.decode("utf-8").split(' ')        
         for i in range(5):
             oarr[i] = float(arr[i])
     except:
         #my_log.warning('buffer not accessible: '+buff)
         return -1
+
+    try:
+        result = subprocess.check_output("tail -n 50000 /var/log/syslog | grep dsaX_trigger | grep current_specnum | tail -n 1 | awk '{print $7}'", shell=True, stderr=subprocess.STDOUT)
+        arr = result.decode("utf-8").split('\n')
+        oarr[5] = float(arr[0])
+    except:
+        #my_log.warning('buffer not accessible: '+buff)
+        return -1
+    
 
     return oarr.tolist()
     
@@ -230,12 +239,14 @@ def get_monitor_dict(params, corr_num, my_ds):
         mon_dict['drop_count'] = 0
         mon_dict['last_seq'] = 0
         mon_dict['skipped'] = 0
+        mon_dict['current_specnum'] = 0
     else:
         mon_dict['capture_rate'] = capstats[0]
         mon_dict['drop_rate'] = capstats[1]*8.
         mon_dict['drop_count'] = capstats[2]
         mon_dict['last_seq'] = capstats[3]
         mon_dict['skipped'] = capstats[4]
+        mon_dict['current_specnum'] = capstats[5]
 
     # voltage file ct
     n_trigs = my_ds.get_dict('/mon/corr/'+str(corr_num)+'/voltage_ct')
@@ -272,7 +283,18 @@ def process(params, cmd, val, my_ds):
     # start up logger
     my_log.function('process')
     global num_rx_trigs
-    
+
+    # to record voltage data set
+    if cmd=='ctrltrigger':
+        specnum = int(my_ds.get_dict('/mon/corr/1')['current_specnum'])+262144
+        trigstr = f'{specnum}-{val}-'
+        cmdstr = 'echo '+trigstr+' | nc -4u -w1 127.0.0.1 11227 &'
+        my_log.info('running: '+cmdstr)
+        os.system(cmdstr)
+        sleep(0.5)
+        my_log.info('Successfully issued trigger (I think)')
+        num_rx_trigs += 1
+        
     # to send trigger
     if cmd=='trigger':
         cmdstr = 'echo '+val+' | nc -4u -w1 127.0.0.1 11227 &'
