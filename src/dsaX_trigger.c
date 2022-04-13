@@ -463,7 +463,7 @@ int main (int argc, char *argv[]) {
 	}
 	
 	// if this is the first block to dump
-	if (specnum > current_specnum && specnum < current_specnum+specs_per_block) {
+	if (specnum >= current_specnum && specnum < current_specnum+specs_per_block) {
 
 	  dumping = 1;
 	  

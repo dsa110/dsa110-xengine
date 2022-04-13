@@ -286,7 +286,7 @@ def process(params, cmd, val, my_ds):
 
     # to record voltage data set
     if cmd=='ctrltrigger':
-        specnum = int(my_ds.get_dict('/mon/corr/1')['current_specnum'])+262144
+        specnum = int(my_ds.get_dict('/mon/corr/1')['current_specnum'])+262154
         trigstr = f'{specnum}-{val}-'
         cmdstr = 'echo '+trigstr+' | nc -4u -w1 127.0.0.1 11227 &'
         my_log.info('running: '+cmdstr)
