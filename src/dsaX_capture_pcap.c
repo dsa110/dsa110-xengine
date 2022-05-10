@@ -64,6 +64,7 @@ volatile uint64_t writeBlock = 0;
 const int nth = 1;
 const int nwth = 1;
 const int TEMP_MAXY = 1000;
+volatile int skipped = 0;
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * out);
 int dada_bind_thread_to_core (int core);
@@ -258,7 +259,7 @@ void stats_thread(void * arg) {
     gb_rcv_ps /= 1000000000;    
 
     /* determine how much memory is free in the receivers */
-    syslog (LOG_NOTICE,"CAPSTATS %6.3f [Gb/s], D %4.1f [MB/s], D %"PRIu64" pkts, %"PRIu64" skipped 0", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, last_seq);
+    syslog (LOG_NOTICE,"CAPSTATS %6.3f [Gb/s], D %4.1f [MB/s], D %"PRIu64" pkts, %"PRIu64" skipped %d", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, last_seq, skipped);
 
     sleep(1);
   }
@@ -372,7 +373,7 @@ void packet_callback(u_char *args, const struct pcap_pkthdr* header, const u_cha
     
   // check for starting condition
   if (canWrite==0) {
-    if (seq_no >= UTC_START-50 && UTC_START != 10000) {
+    if (seq_no >= UTC_START-500 && UTC_START != 10000) {
       canWrite=1;	      
     }
   }
@@ -422,6 +423,8 @@ void packet_callback(u_char *args, const struct pcap_pkthdr* header, const u_cha
 	      "temp_idx=%d", seq_no, ant_id,
 	      udpdb->block_count, udpdb->temp_idx);
 
+      if (writeBlock!=0) skipped++;
+      
       // set writeBlock
       if (udpdb->tblock_idx==0) {
 	writeBlock = 1;
@@ -547,7 +550,7 @@ void pcap_thread(void * arg) {
     ip = 0;
     subnet_mask = 0;
   }
-  handle = pcap_open_live(dev, 4659, 0, 1000, error_buffer);
+  handle = pcap_open_live(dev, 4659, 0, 1, error_buffer);
   if (handle == NULL) {
     syslog(LOG_ERR,"Could not open %s - %s", dev, error_buffer);
     return 2;
