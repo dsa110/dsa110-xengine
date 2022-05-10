@@ -216,7 +216,7 @@ void * process(void * ptr)
       if (blockct[i]!=0) full_blocks++;
     }	
     for (int i=0;i<bdepth;i++) {
-      if ((blockct[i] == NCLIENTS*NSAMPS_PER_BLOCK/NSAMPS_PER_TRANSMIT) || (blockct[i] >= (NCLIENTS-1)*NSAMPS_PER_BLOCK/NSAMPS_PER_TRANSMIT && full_blocks>MAX_FULLBLOCK)) {
+      if ((blockct[i] == NCLIENTS*NSAMPS_PER_BLOCK/NSAMPS_PER_TRANSMIT)) {
 
 	// need to write this block and reset blockct
 	flush_flag = 1;
