@@ -67,6 +67,8 @@ using std::endl;
 #include <cuda_runtime_api.h>
 using namespace nvcuda;
 
+#define sep 1.0
+
 // global variables
 int DEBUG = 0;
 

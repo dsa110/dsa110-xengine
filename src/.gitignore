@@ -27,4 +27,5 @@ dsaX_beamformer_passon
 dsaX_wrangle
 cuda_correlator
 splice_offline_beams
+dsaX_capture_pcap
 

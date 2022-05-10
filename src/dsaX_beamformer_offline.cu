@@ -67,6 +67,8 @@ using std::endl;
 #include <cuda_runtime_api.h>
 using namespace nvcuda;
 
+#define sep 1.0
+
 // global variables
 int DEBUG = 0;
 
@@ -416,7 +418,7 @@ void calc_weights(float *antpos, float *weights, float *freqs, half *wr, half *w
   int widx = ant*NW*2*2 + f*2*2 + pol*2;
   
   //float theta = sep*(127.-beam*1.)*PI/10800.; // radians
-  float theta = sep*(127.-beam*0.1-80.)*PI/10800.; // radians
+  float theta = sep*(127.-beam*1.)*PI/10800.; // radians
   float afac = -2.*PI*freqs[f*8+4]*sinf(theta)/CVAC; // factor for rotate
   float twr = cos(afac*antpos[ant]);
   float twi = sin(afac*antpos[ant]);
