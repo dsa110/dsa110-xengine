@@ -155,7 +155,7 @@ def get_capture_stats():
         oarr[5] = float(arr[0])
     except:
         #my_log.warning('buffer not accessible: '+buff)
-        return -1
+        oarr[5] = 0.0
 
     return oarr.tolist()
     

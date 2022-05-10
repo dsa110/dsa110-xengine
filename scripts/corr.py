@@ -388,6 +388,12 @@ def process(params, cmd, val, my_ds):
     # stop stuff
     if cmd=='stop':
 
+        # hack for pcap packet capture
+        cmdstr = 'sudo killall -q dsaX_capture_pcap'
+        my_log.debug('running: '+cmdstr)
+        my_log.info('Stopping pcap')
+        proc = subprocess.run(cmdstr, shell = True)
+                
         # deal with processes
         for rout in params['routines']:
             cmdstr = 'killall -q '+rout['name']
