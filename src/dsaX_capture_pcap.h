@@ -47,6 +47,7 @@ typedef struct {
   uint64_t          block_start_byte;
   uint64_t          block_end_byte;
   uint64_t          block_count;
+  int               nblocks_written;
   
   int               verbose;            // verbosity flag 
 

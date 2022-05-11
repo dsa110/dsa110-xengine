@@ -60,11 +60,14 @@ volatile int canWrite = 0;
 volatile  unsigned capture_started = 0;
 volatile char * wblock;
 volatile uint64_t last_seq;
-volatile uint64_t writeBlock = 0;
 const int nth = 1;
 const int nwth = 1;
 const int TEMP_MAXY = 1000;
 volatile int skipped = 0;
+const int NBLOCKS = 8;
+volatile uint64_t writeBlock[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+volatile int delayBlock = 0;
+volatile int behindBlock = 0;
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * out);
 int dada_bind_thread_to_core (int core);
@@ -259,7 +262,7 @@ void stats_thread(void * arg) {
     gb_rcv_ps /= 1000000000;    
 
     /* determine how much memory is free in the receivers */
-    syslog (LOG_NOTICE,"CAPSTATS %6.3f [Gb/s], D %4.1f [MB/s], D %"PRIu64" pkts, %"PRIu64" skipped %d", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, last_seq, skipped);
+    syslog (LOG_NOTICE,"CAPSTATS %6.3f [Gb/s], D %4.1f [MB/s], D %"PRIu64" pkts, %"PRIu64" skipped %d %d", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, last_seq, behindBlock, skipped);
 
     sleep(1);
   }
@@ -398,7 +401,7 @@ void packet_callback(u_char *args, const struct pcap_pkthdr* header, const u_cha
     if ((seq_byte <= udpdb->block_end_byte) && (seq_byte >= udpdb->block_start_byte))
       {
 	byte_offset = seq_byte - (udpdb->block_start_byte);
-	memcpy(udpdb->tblock + udpdb->tblock_idx*UDP_DATA + byte_offset, buf + UDP_HEADER, UDP_DATA);	
+	memcpy(udpdb->tblock + udpdb->tblock_idx*NPACKETS_PER_BLOCK*NSNAPS*UDP_DATA + byte_offset, buf + UDP_HEADER, UDP_DATA);	
 	//memcpy(wblock + byte_offset, buf + UDP_HEADER, UDP_DATA);
 	udpdb->block_count++;
       }
@@ -423,25 +426,20 @@ void packet_callback(u_char *args, const struct pcap_pkthdr* header, const u_cha
 	      "temp_idx=%d", seq_no, ant_id,
 	      udpdb->block_count, udpdb->temp_idx);
 
-      if (writeBlock!=0) skipped++;
+      // set write block on this block
+      if (writeBlock[udpdb->tblock_idx]==1)
+	skipped++;
+      writeBlock[udpdb->tblock_idx] = 1;
       
-      // set writeBlock
-      if (udpdb->tblock_idx==0) {
-	writeBlock = 1;
-	udpdb->tblock_idx = NPACKETS_PER_BLOCK*NSNAPS;
-      }
-      else if (udpdb->tblock_idx==NPACKETS_PER_BLOCK*NSNAPS) {
-	writeBlock = 2;
+      // increment tblock_idx
+      udpdb->tblock_idx+=1;
+      if (udpdb->tblock_idx==NBLOCKS)
 	udpdb->tblock_idx = 0;
-      }
-      /*
-      // get new block
-      if (dsaX_udpdb_new_buffer (udpdb) < 0)
-	{
-	  syslog(LOG_ERR, "receive_obs: dsaX_udpdb_new_buffer failed");
-	  return EXIT_FAILURE;
-	}
-      */
+
+      // get delay_block
+      udpdb->nblocks_written++;
+      behindBlock = udpdb->nblocks_written - delayBlock;
+      
       // deal with counters
       uint64_t dropped = udpdb->packets_per_buffer - (udpdb->block_count);
       udpdb->packets->received += (udpdb->block_count);
@@ -458,8 +456,7 @@ void packet_callback(u_char *args, const struct pcap_pkthdr* header, const u_cha
 	seq_byte = udpdb->temp_seq_byte[i];
 	byte_offset = seq_byte - udpdb->block_start_byte;
 	if (byte_offset < udpdb->hdu_bufsz && byte_offset >= 0) {
-	  //memcpy(wblock + byte_offset, udpdb->temp_buffers + i*UDP_DATA, UDP_DATA);
-	  memcpy(udpdb->tblock + udpdb->tblock_idx*UDP_DATA + byte_offset, udpdb->temp_buffers + i*UDP_DATA, UDP_DATA);
+	  memcpy(udpdb->tblock + udpdb->tblock_idx*NPACKETS_PER_BLOCK*NSNAPS*UDP_DATA + byte_offset, udpdb->temp_buffers + i*UDP_DATA, UDP_DATA);
 	  udpdb->block_count++;
 	}
       }
@@ -491,15 +488,15 @@ void write_thread(void * arg) {
   if (CPU_ISSET(core_id, &cpuset))
     syslog(LOG_INFO,"thread %d: successfully set thread",core_id);
 
-  int a;
+  int a, lWriteBlock=0;
   while (!quit_threads) {
 
     // busywait
-    while (writeBlock==0)
+    while (writeBlock[lWriteBlock]==0)
       a=1;
 
     // write block
-    memcpy(wblock, udpdb->tblock + (writeBlock-1)*UDP_DATA*NSNAPS*NPACKETS_PER_BLOCK, UDP_DATA*NSNAPS*NPACKETS_PER_BLOCK);
+    memcpy(wblock, udpdb->tblock + lWriteBlock*UDP_DATA*NSNAPS*NPACKETS_PER_BLOCK, UDP_DATA*NSNAPS*NPACKETS_PER_BLOCK);
 
     // get new block
     if (dsaX_udpdb_new_buffer (udpdb) < 0)
@@ -508,7 +505,12 @@ void write_thread(void * arg) {
 	return EXIT_FAILURE;
       }
 
-    writeBlock = 0;
+    // increment counters    
+    writeBlock[lWriteBlock] = 0;
+    lWriteBlock++;
+    if (lWriteBlock==NBLOCKS)
+      lWriteBlock = 0;
+    delayBlock++;
     
   }
 }
@@ -764,7 +766,7 @@ int main (int argc, char *argv[]) {
   stats_t * bytes = init_stats_t();
   reset_stats_t(packets);
   reset_stats_t(bytes);
-  char * tblock = (char *)malloc(sizeof(char)*2*(ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block)));
+  char * tblock = (char *)malloc(sizeof(char)*NBLOCKS*(ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block)));
   char * temp_buffers = (char *)malloc(sizeof(char)*TEMP_MAXY*UDP_DATA);
   char * temp_seq_byte = (uint64_t *)malloc(sizeof(uint64_t)*TEMP_MAXY);
   
@@ -788,6 +790,7 @@ int main (int argc, char *argv[]) {
     udpdb[i].packets_per_buffer = udpdb[i].hdu_bufsz / UDP_DATA;
     udpdb[i].packets = packets;
     udpdb[i].bytes = bytes;
+    udpdb[i].nblocks_written = 0;
 
   }    
   dsaX_udpdb_open_buffer (&udpdb[0]);

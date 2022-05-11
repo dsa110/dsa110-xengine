@@ -275,6 +275,21 @@ int main (int argc, char *argv[]) {
   cudaMalloc((void **)&d_din, context.array_len*sizeof(char));
   cudaMalloc((void **)&d_dout, 2*context.array_len*sizeof(char)); 
 
+  // do prestart
+  syslog(LOG_INFO, "pre-starting...");
+  char * tmp_data = (char *)malloc(sizeof(char)*context.array_len);
+  memset(tmp_data, 1, context.array_len);
+  for (int i=0;i<10;i++) {
+
+    cudaMemcpy(d_din, tmp_data, context.array_len*sizeof(char),cudaMemcpyHostToDevice);
+    promoter<<<6291456,32>>>(d_din,d_dout);
+    xgpu_error = xgpuCudaXengine(&context, (ComplexInput *)d_dout, syncOp);
+    xgpuClearDeviceIntegrationBuffer(&context);
+
+  }
+
+  free(tmp_data);
+  syslog(LOG_INFO, "finished with pre-start");
   
   // get things started
   bool observation_complete=0;
