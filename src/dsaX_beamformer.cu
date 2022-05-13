@@ -69,6 +69,7 @@ using namespace nvcuda;
 
 // global variables
 int DEBUG = 0;
+const float sep = 1.0;
 
 // kernel for summing for online bp
 // input array has order [beam, 48 frequency, 2 pol, 16 time]
