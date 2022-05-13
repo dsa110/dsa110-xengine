@@ -67,8 +67,6 @@ using std::endl;
 #include <cuda_runtime_api.h>
 using namespace nvcuda;
 
-#define sep 1.0
-
 // global variables
 int DEBUG = 0;
 
@@ -934,25 +932,6 @@ int main (int argc, char *argv[]) {
   int blockct = 0;
   int slow_down = 0;
   int prestart = 0;
-
-  // run modified version of pipeline for prestart
-  syslog(LOG_INFO, "pre-starting...");
-  char * tmp_data = (char *)malloc(sizeof(char)*16*96*NANT*8*2);
-  memset(tmp_data, 1, 16*96*NANT*8*2);
-  init_weights(fnam,antpos,weights,flagants);
-  cudaMemcpy(d_antpos, antpos, 64*sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_weights, weights, 64*NW*2*2*sizeof(float), cudaMemcpyHostToDevice);  
-  calc_weights<<<6144, 256>>>(d_antpos, d_weights, d_freqs, d_wr, d_wi);
-
-  for (int i=0;i<5;i++) {
-    for (int st=0;st<NSTREAMS;st++) {
-      cudaMemcpyAsync(d_indata[st], tmp_data, 24576*NANT*sizeof(char), cudaMemcpyHostToDevice, stream[st]);
-      promoter<<<16*48*NANT, 32, 0, stream[st]>>>(d_indata[st], d_inr[st], d_ini[st]);
-      beamformer<<<24576, 32, 0, stream[st]>>>(d_inr[st], d_ini[st], d_wr, d_wi, d_transfer[st], stuffants);
-    }
-  }
-  free(tmp_data);
-  syslog(LOG_INFO, "Finished with pre-start run-through");
   
   syslog(LOG_INFO, "starting observation");
 
