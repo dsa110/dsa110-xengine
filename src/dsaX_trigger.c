@@ -91,6 +91,7 @@ void usage()
 	   " -d debug\n"
 	   " -f full_pct [default 0.8]\n"
 	   " -n output file name [no default]\n"
+	   " -s skip N blocks [default 0]\n"
 	   " -h print usage\n");
 }
 
@@ -237,8 +238,9 @@ int main (int argc, char *argv[]) {
   int core = -1;
   float full_pct = 0.8;
   int arg=0;
+  int skips = 0;
 
-  while ((arg=getopt(argc,argv,"i:c:j:o:f:d:h")) != -1)
+  while ((arg=getopt(argc,argv,"i:c:j:o:f:d:s:h")) != -1)
     {
       switch (arg)
 	{
@@ -265,7 +267,18 @@ int main (int argc, char *argv[]) {
 	    }
 	  else
 	    {
-	      syslog (LOG_ERR,"ERROR: -c flag requires argument\n");
+	      syslog (LOG_ERR,"ERROR: -f flag requires argument\n");
+	      return EXIT_FAILURE;
+	    }
+	case 's':
+	  if (optarg)
+	    {
+	      skips = atoi(optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog (LOG_ERR,"ERROR: -s flag requires argument\n");
 	      return EXIT_FAILURE;
 	    }
 	case 'd':
@@ -423,7 +436,7 @@ int main (int argc, char *argv[]) {
   struct cdata cstruct;
   cstruct.in = out_data;
   cstruct.hdu_out = hdu_out;  
-  rval = 0;
+  rval = 0;  
   pthread_t copy_thread_id;
   syslog(LOG_INFO, "starting copy_thread()");
   rval = pthread_create (&copy_thread_id, 0, (void *) copy_thread, (void *) &cstruct);
@@ -435,7 +448,7 @@ int main (int argc, char *argv[]) {
 
   // main reading loop
   float pc_full = 0.;
-  
+  int block_count = 0;
   syslog(LOG_INFO, "main: starting observation");
 
   while (!observation_complete) {
@@ -538,7 +551,11 @@ int main (int argc, char *argv[]) {
 
       // update current spec
       syslog(LOG_INFO,"current_specnum %llu",current_specnum);
-      current_specnum += specs_per_block;
+      if (block_count < skips) {
+	block_count++;
+      }
+      else
+	current_specnum += specs_per_block;
       
 
       // for exiting

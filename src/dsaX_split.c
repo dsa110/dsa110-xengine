@@ -200,6 +200,7 @@ void usage()
 	   " -o out_key [default CAPTURED_BLOCK_KEY]\n"
 	   " -j out_key2 [default REORDER_BLOCK_KEY2]\n"
 	   " -s stats\n"
+	   " -f send fake blocks through [default 0]\n"
 	   " -h print usage\n");
 }
 
@@ -229,8 +230,9 @@ int main (int argc, char *argv[]) {
   int arg = 0;
   int reorder = 0;
   int mwrite = 0;
+  int fake = 0;
   
-  while ((arg=getopt(argc,argv,"c:i:o:j:smdbrh")) != -1)
+  while ((arg=getopt(argc,argv,"c:i:o:j:f:smdbrh")) != -1)
     {
       switch (arg)
 	{
@@ -258,6 +260,18 @@ int main (int argc, char *argv[]) {
 	  else
 	    {
 	      syslog(LOG_ERR,"-i flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'f':
+	  if (optarg)
+	    {
+	      fake = atoi(optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-f flag requires argument");
 	      usage();
 	      return EXIT_FAILURE;
 	    }
@@ -453,6 +467,20 @@ int main (int argc, char *argv[]) {
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
   void* result=0;
   
+  // send through fake blocks
+
+  if (fake>0) {
+    syslog(LOG_INFO,"sending %d fake blocks",fake);
+    for (int i=0;i<fake;i++) {
+      o1 = ipcio_open_block_write (hdu_out->data_block, &block_id);
+      memcpy(o1, output, block_out);
+      ipcio_close_block_write (hdu_out->data_block, block_out);
+      usleep(10000);
+    }
+    syslog(LOG_INFO,"Finished with fake blocks");
+  }
+  
+  
   
   // set up
 
@@ -467,6 +495,7 @@ int main (int argc, char *argv[]) {
   while (!observation_complete) {
 
     // open block
+    
     block = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
 
     if (started==0) {
@@ -511,7 +540,8 @@ int main (int argc, char *argv[]) {
 	args[i].thread_id = i;
       }
       
-      if (DEBUG) syslog(LOG_DEBUG,"creating %d threads",nth);
+      //if (DEBUG) syslog(LOG_DEBUG,"creating %d threads",nth);
+      syslog(LOG_INFO, "creating threads");
       
       for(int i=0; i<nth; i++){
 	if (pthread_create(&threads[i], &attr, &massage, (void *)(&args[i]))) {
