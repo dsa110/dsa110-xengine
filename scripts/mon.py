@@ -448,7 +448,7 @@ def corr_run(args):
         if md!=-1:
             try:
                 my_ds.put_dict(key, md)
-                get_rms_into_etcd(args.corr_num)
+                #get_rms_into_etcd(args.corr_num)
             except:
                 my_log.error('COULD NOT CONNECT TO ETCD')
         
