@@ -216,9 +216,11 @@ void * process(void * ptr)
       if (blockct[i]!=0) full_blocks++;
     }	
     for (int i=0;i<bdepth;i++) {
-      if ((blockct[i] == NCLIENTS*NSAMPS_PER_BLOCK/NSAMPS_PER_TRANSMIT)) {
+      if ((blockct[i] == NCLIENTS*NSAMPS_PER_BLOCK/NSAMPS_PER_TRANSMIT) || (full_blocks>=MAX_FULLBLOCK && blockct[i] >= (NCLIENTS-1)*NSAMPS_PER_BLOCK/NSAMPS_PER_TRANSMIT)) {
 
 	// need to write this block and reset blockct
+	while (flush_flag==1)
+	  aa==1;
 	flush_flag = 1;
 	blockct[i] = 0;
 	// log - hardcoded bdepth
