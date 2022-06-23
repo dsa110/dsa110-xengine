@@ -466,12 +466,12 @@ int main (int argc, char *argv[]) {
 	
 	// DO THE WRITING
 
-	sprintf(dirnam,"mkdir -p %s_%s",of,footer_buf);
+	sprintf(dirnam,"mkdir -p %s/%s",of,footer_buf);
 	system(dirnam);
 	
 	for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
 	  
-	  sprintf(foutnam,"%s_%s/%s_%d.fil",of,footer_buf,footer_buf,beamn+i);
+	  sprintf(foutnam,"%s/%s/%s_%d.fil",of,footer_buf,footer_buf,beamn+i);
 	  output = fopen(foutnam,"wb");
 	  
 	  send_string("HEADER_START");
