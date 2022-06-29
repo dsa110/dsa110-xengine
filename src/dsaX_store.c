@@ -68,7 +68,7 @@ int main (int argc, char *argv[]) {
 
   // command line arguments
   uint64_t blocksize;
-  uint64_t bout = NPACKETS*NSNAPS*4608; // output block size - assume input is a multiple.
+  uint64_t bout = 64*NSNAPS*4608; // output block size - assume input is a multiple.
   int core = -1;
   int arg=0;
 
@@ -191,6 +191,7 @@ int main (int argc, char *argv[]) {
       memcpy(outbuf, cpbuf+gulp*bout, bout);
 
       // write
+      usleep(50000);
       fwrite(outbuf, 1, bout, fout);
 
     }
