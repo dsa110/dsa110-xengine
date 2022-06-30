@@ -905,12 +905,13 @@ void usage()
 	   " -i in_key [default dada]\n"
 	   " -o out_key [default caca]\n"
 	   " -t flagging threshold [default 5.0]\n"
-	   "-f output spectra file\n"
-	   "-g output beam power file\n"
+	   " -f output spectra file\n"
+	   " -g output beam power file\n"
 	   " -n number of blocks in baseline spec aver (must be <=16 and >=1, default 5)\n"
 	   " -p adjust noise level according to power\n"
 	   " -m generate random data\n"
 	   " -s time-series flagging and threshold [no default]\n"
+	   " -q modulation index threshold for tot pwr flagging [default 0.0005]\n"
 	   " -h print usage\n");
 }
 
@@ -935,6 +936,7 @@ int main(int argc, char**argv)
   int core = -1;
   int arg = 0;
   double thresh = 5.0;
+  float mod_thresh = 0.0005;
   int naver = 5;
   char * fnam;
   char * fnam2;
@@ -980,6 +982,18 @@ int main(int argc, char**argv)
 	  else
 	    {
 	      syslog(LOG_ERR,"-f flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'q':
+	  if (optarg)
+	    {
+	      mod_thresh = atof(optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-q flag requires argument");
 	      usage();
 	      return EXIT_FAILURE;
 	    }
@@ -1211,6 +1225,7 @@ int main(int argc, char**argv)
   cudaMalloc((void **)&d_tsidx, NBEAMS_P*NTIMES_P*sizeof(int));
   int n_mask = 0;
   int n_tsmask = 0;
+  float prev_tpwr = 0., tpwr = 0.;
 
   // random numbers
   unsigned char *d_repval;
@@ -1288,85 +1303,101 @@ int main(int argc, char**argv)
     calc_varspec<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_spec, d_var);
     cudaMemcpy(h_spec, d_spec, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(h_var, d_var, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
+    if (started==0) {
+      for (int i=0;i<NBEAMS_P;i++) {
+	for (int j=0;j<NCHAN_P;j++) prev_tpwr += h_spec[i*NCHAN_P+j];
+      }
+    }
 
     if (DEBUG) syslog(LOG_INFO,"done spec and var");
     
     // if not first block
     if (started==1 || prestart==1) {
 
-      // calc maxspec
-      calc_spectrum<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_max);
-      calc_ppspec<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_pp);
-
-      // derive channel flags
-      cudaMemcpy(h_max, d_max, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
-      cudaMemcpy(h_pp, d_pp, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
-      for (int i=0;i<NBEAMS_P*NCHAN_P;i++) {
-	h_mask[i] = 0;
-	h_subspec[i] = h_spec[i]-h_oldspec[i];
-      }
-      channflag(h_subspec,thresh,h_mask);
-      channflag(h_var,thresh+0.5,h_mask);
-      channflag(h_max,thresh,h_mask);
-      simple_channflag(h_pp,thresh,h_mask);
-
-      // calc bpwr if needed
-      if (pwr) calc_bpwr(h_spec,h_bpwr);
-      cudaMemcpy(d_bpwr, h_bpwr, NBEAMS_P*sizeof(float), cudaMemcpyHostToDevice);
-
-      // apply mask
-      gather_mask(h_idx, h_mask, &n_mask);
-      if (DEBUG) syslog(LOG_INFO,"FLAG_COUNT %d",n_mask);   		
-      cudaMemcpy(d_idx, h_idx, n_mask*sizeof(int), cudaMemcpyHostToDevice);
-
-      // replace with random data
-      if (mkrand==1) {
-	for (int i=0;i<NBEAMS_P;i++)
-	  cudaMemcpy(d_data + i*NTIMES_P*NCHAN_P,d_repval,NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyDeviceToDevice);
+      // do total power check
+      for (int i=0;i<NBEAMS_P;i++) {
+	for (int j=0;j<NCHAN_P;j++) tpwr += h_spec[i*NCHAN_P+j];
       }
 
-      
-      // check whether we want to add pulse
-      if (dump_pending) {
+      if (fabs(tpwr-prev_tpwr)/prev_tpwr < mod_thresh) {
+             
+	// calc maxspec
+	calc_spectrum<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_max);
+	calc_ppspec<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_pp);
 
-	syslog(LOG_INFO, "adding pulse %s to beam %d", flnam, dumpbm);
-	cudaMemset(d_pulse, 0, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(float));
-	cudaMemcpy(d_pulse + dumpbm*NTIMES_P*NCHAN_P,pulsedata,NTIMES_P*NCHAN_P*sizeof(float), cudaMemcpyHostToDevice);
-	sumpulse<<<NBEAMS_P*NTIMES_P*NCHAN_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_pulse);
-	syslog(LOG_INFO, "added %s to beam %d", flnam, dumpbm);
+	// derive channel flags
+	cudaMemcpy(h_max, d_max, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
+	cudaMemcpy(h_pp, d_pp, NBEAMS_P*NCHAN_P*sizeof(float), cudaMemcpyDeviceToHost);
+	for (int i=0;i<NBEAMS_P*NCHAN_P;i++) {
+	  h_mask[i] = 0;
+	  h_subspec[i] = h_spec[i]-h_oldspec[i];
+	}
+	channflag(h_subspec,thresh,h_mask);
+	channflag(h_var,thresh+0.5,h_mask);
+	channflag(h_max,thresh,h_mask);
+	simple_channflag(h_pp,thresh,h_mask);
 	
-	dump_pending=0;
+	// calc bpwr if needed
+	if (pwr) calc_bpwr(h_spec,h_bpwr);
+	cudaMemcpy(d_bpwr, h_bpwr, NBEAMS_P*sizeof(float), cudaMemcpyHostToDevice);
 	
+	// apply mask
+	gather_mask(h_idx, h_mask, &n_mask);
+	if (DEBUG) syslog(LOG_INFO,"FLAG_COUNT %d",n_mask);   		
+	cudaMemcpy(d_idx, h_idx, n_mask*sizeof(int), cudaMemcpyHostToDevice);
+	
+	// replace with random data
+	if (mkrand==1) {
+	  for (int i=0;i<NBEAMS_P;i++)
+	    cudaMemcpy(d_data + i*NTIMES_P*NCHAN_P,d_repval,NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyDeviceToDevice);
+	}
+	
+	
+	// check whether we want to add pulse
+	if (dump_pending) {
+	  
+	  syslog(LOG_INFO, "adding pulse %s to beam %d", flnam, dumpbm);
+	  cudaMemset(d_pulse, 0, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(float));
+	  cudaMemcpy(d_pulse + dumpbm*NTIMES_P*NCHAN_P,pulsedata,NTIMES_P*NCHAN_P*sizeof(float), cudaMemcpyHostToDevice);
+	  sumpulse<<<NBEAMS_P*NTIMES_P*NCHAN_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_pulse);
+	  syslog(LOG_INFO, "added %s to beam %d", flnam, dumpbm);
+	  
+	  dump_pending=0;
+	  
+	}
+	
+	if (mkrand==0) 
+	  flag<<<n_mask*NTIMES_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_idx, d_repval, d_bpwr);
+	
+	// ts flagging if needed
+	if (tsflag) {
+	  
+	  make_ts<<<NBEAMS_P*NTIMES_P,NTHREADS_GPU>>>(d_data,d_ts);
+	  syslog(LOG_INFO,"made ts");
+	  cudaMemcpy(h_ts, d_ts, NBEAMS_P*NTIMES_P*sizeof(float), cudaMemcpyDeviceToHost);
+	  syslog(LOG_INFO,"copied ts");
+	  for (int i=0;i<NBEAMS_P*NTIMES_P;i++) 
+	    h_tsmask[i] = 0;
+	  simple_tsflag(h_ts,tsthresh,h_tsmask);
+	  syslog(LOG_INFO,"tsflagged");
+	  gather_tsmask(h_tsidx, h_tsmask, &n_tsmask);	
+	  syslog(LOG_INFO,"TS_COUNT %d",n_tsmask);   		
+	  cudaMemcpy(d_tsidx, h_tsidx, n_tsmask*sizeof(int), cudaMemcpyHostToDevice);
+	  flagts<<<n_tsmask*(NCHAN_P-256)/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_tsidx, d_repval, d_bpwr);
+	  syslog(LOG_INFO,"flagged ts");
+	  
+	}
+      
       }
 
-      if (mkrand==0) 
-	flag<<<n_mask*NTIMES_P/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_idx, d_repval, d_bpwr);
-
-      // ts flagging if needed
-      if (tsflag) {
-
-	make_ts<<<NBEAMS_P*NTIMES_P,NTHREADS_GPU>>>(d_data,d_ts);
-	syslog(LOG_INFO,"made ts");
-	cudaMemcpy(h_ts, d_ts, NBEAMS_P*NTIMES_P*sizeof(float), cudaMemcpyDeviceToHost);
-	syslog(LOG_INFO,"copied ts");
-	for (int i=0;i<NBEAMS_P*NTIMES_P;i++) 
-	  h_tsmask[i] = 0;
-	simple_tsflag(h_ts,tsthresh,h_tsmask);
-	syslog(LOG_INFO,"tsflagged");
-	gather_tsmask(h_tsidx, h_tsmask, &n_tsmask);	
-	syslog(LOG_INFO,"TS_COUNT %d",n_tsmask);   		
-	cudaMemcpy(d_tsidx, h_tsidx, n_tsmask*sizeof(int), cudaMemcpyHostToDevice);
-	flagts<<<n_tsmask*(NCHAN_P-256)/NTHREADS_GPU, NTHREADS_GPU>>>(d_data, d_tsidx, d_repval, d_bpwr);
-	syslog(LOG_INFO,"flagged ts");
-	
-      }
-      
-      
     }
 
+    // deal with tpwr
+    prev_tpwr = tpwr;
+    
     // copy data to host and write to buffer
     cudaMemcpy(h_data, d_data, NBEAMS_P*NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyDeviceToHost);
-
+    
     // deal with bm0
     //memcpy(h_data,h_bm0,NTIMES_P*NCHAN_P);
     
