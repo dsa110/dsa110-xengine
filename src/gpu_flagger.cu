@@ -1319,7 +1319,13 @@ int main(int argc, char**argv)
 	for (int j=0;j<NCHAN_P;j++) tpwr += h_spec[i*NCHAN_P+j];
       }
 
-      if (fabs(tpwr-prev_tpwr)/prev_tpwr < mod_thresh) {
+      if (fabs(tpwr-prev_tpwr)/prev_tpwr >= mod_thresh) {
+
+	for (int i=0;i<NBEAMS_P;i++)
+	  cudaMemcpy(d_data + i*NTIMES_P*NCHAN_P,d_repval,NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyDeviceToDevice);	
+
+      }
+      else {
              
 	// calc maxspec
 	calc_spectrum<<<NBEAMS_P*NCHAN_P, NTHREADS_GPU>>>(d_data, d_max);
