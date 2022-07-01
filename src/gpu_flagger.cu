@@ -1315,11 +1315,14 @@ int main(int argc, char**argv)
     if (started==1 || prestart==1) {
 
       // do total power check
+      tpwr = 0.;
       for (int i=0;i<NBEAMS_P;i++) {
 	for (int j=0;j<NCHAN_P;j++) tpwr += h_spec[i*NCHAN_P+j];
       }
 
       if (fabs(tpwr-prev_tpwr)/prev_tpwr >= mod_thresh) {
+
+	syslog(LOG_INFO,"mod_idx %f (threshold %f), noise replacement",fabs(tpwr-prev_tpwr)/prev_tpwr,mod_thresh);
 
 	for (int i=0;i<NBEAMS_P;i++)
 	  cudaMemcpy(d_data + i*NTIMES_P*NCHAN_P,d_repval,NTIMES_P*NCHAN_P*sizeof(unsigned char), cudaMemcpyDeviceToDevice);	
