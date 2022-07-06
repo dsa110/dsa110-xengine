@@ -280,6 +280,12 @@ def process(params, cmd, val, my_ds):
         os.system(cmdstr)
         sleep(0.5)
         my_log.info('Successfully issued trigger (I think)')
+
+        # make output dir
+        trigname=val.split('-')[1]
+        sleep(numpy.random.uniform())
+        os.system("mkdir -p /operations/T1/"+trigname)
+        
         num_rx_trigs += 1
 
     # to record filterbank
@@ -468,7 +474,10 @@ def corr_run(args):
             my_ds.put_dict(key, value)
         except:
             my_log.error('COULD NOT CONNECT TO ETCD')
-        
+
+        mvcmd = "for trig in `ls -d /home/ubuntu/data/*/ | grep 22 | tr '/' ' ' | awk '{print $4}'`; do if [ -d /operations/T1/${trig} ]; then rsync /home/ubuntu/data/${trig}/* /operations/T1/${trig}/; fi; done"
+        os.system(mvcmd)
+            
         sleep(2)
 
                                                         
