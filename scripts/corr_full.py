@@ -283,7 +283,7 @@ def process(params, cmd, val, my_ds):
 
         # make output dir
         trigname=val.split('-')[1]
-        sleep(numpy.random.uniform())
+        sleep(np.random.uniform())
         os.system("mkdir -p /operations/T1/"+trigname)
         
         num_rx_trigs += 1
