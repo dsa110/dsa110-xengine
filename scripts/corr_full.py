@@ -475,8 +475,8 @@ def corr_run(args):
         except:
             my_log.error('COULD NOT CONNECT TO ETCD')
 
-        mvcmd = "for trig in `ls -d /home/ubuntu/data/*/ | grep 22 | tr '/' ' ' | awk '{print $4}'`; do if [ -d /operations/T1/${trig} ]; then rsync /home/ubuntu/data/${trig}/* /operations/T1/${trig}/; fi; done"
-        os.system(mvcmd)
+        #mvcmd = "for trig in `ls -d /home/ubuntu/data/*/ | grep 22 | tr '/' ' ' | awk '{print $4}'`; do if [ -d /operations/T1/${trig} ]; then rsync /home/ubuntu/data/${trig}/* /operations/T1/${trig}/; fi; done"
+        #os.system(mvcmd)
             
         sleep(2)
 

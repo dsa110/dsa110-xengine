@@ -479,7 +479,7 @@ def corr_run(args):
         except:
             my_log.error('COULD NOT CONNECT TO ETCD')
 
-        os.system("a=`ls -rt /home/ubuntu/data/*.hdf5 | grep -v incomplete | wc -l`; if test ${a} -gt 0; then fl=`ls -rt /home/ubuntu/data/*.hdf5 | grep -v incomplete | tail -n 1`; mv ${fl} /operations/correlator; fi")
+        #os.system("a=`ls -rt /home/ubuntu/data/*.hdf5 | grep -v incomplete | wc -l`; if test ${a} -gt 0; then fl=`ls -rt /home/ubuntu/data/*.hdf5 | grep -v incomplete | tail -n 1`; mv ${fl} /operations/correlator; fi")
             
         sleep(2)
 
