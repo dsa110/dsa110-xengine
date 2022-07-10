@@ -50,12 +50,12 @@ char iP[100];
 int DEBUG = 0;
 int HISTOGRAM[16];
 int writeBlock = 0;
-const int nth = 4;
-const int nwth = 8;
+const int nth = 8;
+const int nwth = 4;
 int cores[8] = {30,31,32,33,34,35,36,37};
 int write_cores[4] = {17,18,19,39};
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-volatile int blockStatus[64];
+volatile int doWrite = 0;
 volatile int skipBlock = 0;
 volatile int skipping = 0;
 volatile int lWriteBlock = 0;
@@ -137,7 +137,7 @@ dsaX_sock_t * dsaX_make_sock (udpdb_t * ctx)
   }
   
   // set the socket size to 256 MB
-  int sock_buf_size = 2*256*1024*1024;
+  int sock_buf_size = 256*1024*1024;
   syslog(LOG_INFO, "prepare: setting buffer size to %d", sock_buf_size);
   dada_udp_sock_set_buffer_size (ctx->log, b->fd, ctx->verbose, sock_buf_size);
 
@@ -148,9 +148,6 @@ dsaX_sock_t * dsaX_make_sock (udpdb_t * ctx)
   // clear any packets buffered by the kernel
   syslog(LOG_INFO, "prepare: clearing packets at socket");
   size_t cleared = dada_sock_clear_buffered_packets(b->fd, UDP_PAYLOAD);
-
-  // clear blockStatus
-  for (int i=0;i<64;i++) blockStatus[i] = 0;
 
   return b;
 }
@@ -431,7 +428,7 @@ void recv_thread(void * arg) {
     
   // set affinity
   const pthread_t pid = pthread_self();
-  const int core_id = write_cores[thread_id];
+  const int core_id = cores[thread_id];
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(core_id, &cpuset);
@@ -602,10 +599,8 @@ void recv_thread(void * arg) {
 
 	      // write block
 	      // check whether doWrite has been released. If not, skip this block
-	      if (blockStatus[writeBlock % 64] > 0)
-		blockStatus[writeBlock % 64] += 1;
-	      else
-		blockStatus[writeBlock % 64] = 1;
+	      if (doWrite==1) skipBlock=1;
+	      else doWrite=1;
 	      
 	      uint64_t dropped = udpdb->packets_per_buffer - (block_count);
 	      udpdb->packets->received += (block_count);
@@ -687,7 +682,7 @@ void write_thread(void * arg) {
 
   // set affinity
   const pthread_t pid = pthread_self();
-  const int core_id = cores[thread_id];
+  const int core_id = write_cores[thread_id];
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(core_id, &cpuset);
@@ -706,15 +701,14 @@ void write_thread(void * arg) {
   while (!quit_threads)
   {
 
-    mod_WB = lWriteBlock % 64;
-    
-    while (blockStatus[mod_WB]==0) {
+    while (!doWrite) {
       a=1;
     }    
 
     // assume everything is set up
     // wblock is assigned, write_ct=0
-        
+    
+    mod_WB = lWriteBlock % 64;
     memcpy(wblock + thread_id*udpdb->hdu_bufsz/nwth, udpdb->tblock + mod_WB*udpdb->hdu_bufsz  + thread_id*udpdb->hdu_bufsz/nwth, udpdb->hdu_bufsz/nwth);
 
     pthread_mutex_lock(&mutex);
@@ -741,11 +735,15 @@ void write_thread(void * arg) {
 
       syslog(LOG_INFO,"write thread %d: written block... %d",thread_id,lWriteBlock);
       lWriteBlock++;
+
+      // check for skipBlock - only log existence
+      if (skipBlock) {
+	skipct++;	
+      }
       
       // update doWrite and skipBlock
-      skipct = 0;
-      for (int i=0;i<64;i++) skipct += blockStatus[i];
-      blockStatus[mod_WB] -= 1;
+      doWrite=0;
+      skipBlock=0;
       write_ct = 0;
 
     }
