@@ -144,6 +144,12 @@ dsaX_wrangle.o: dsaX_wrangle.c $(CDEPS1)
 dsaX_wrangle: dsaX_wrangle.o
 	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
 
+dsaX_testdada.o: dsaX_testdada.c $(CDEPS1)
+	$(CC) -c -o $@ $< $(CFLAGS1)
+
+dsaX_testdada: dsaX_testdada.o
+	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
+
 dsaX_writeFil.o: dsaX_writeFil.c $(CDEPS1)
 	$(CC) -c -o $@ $< $(CFLAGS1)
 
