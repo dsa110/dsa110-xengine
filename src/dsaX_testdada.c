@@ -118,6 +118,7 @@ int main (int argc, char *argv[]) {
   dada_hdu_set_key (hdu_in, in_key);
   dada_hdu_connect (hdu_in);
 
+  /*
   // deal with header
   dada_hdu_lock_write(hdu_in);
   char * header_out = ipcbuf_get_next_write (hdu_in->header_block);
@@ -131,6 +132,7 @@ int main (int argc, char *argv[]) {
   char * header_in = ipcbuf_get_next_read (hdu_in->header_block, &header_size);
   ipcbuf_mark_cleared (hdu_in->header_block);
   dada_hdu_unlock_read(hdu_in);
+  */
 
   // do four reads and four writes
 
