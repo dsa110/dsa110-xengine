@@ -319,6 +319,10 @@ def process(params, cmd, val, my_ds):
         my_log.info('running: '+cmdstr)
         os.system('pkill nc')
         os.system(cmdstr)
+        cmdstr = 'echo UTC_START-'+val+' | nc -4u -w1 127.0.0.1 11224 &'
+        my_log.info('running: '+cmdstr)
+        os.system('pkill nc')
+        os.system(cmdstr)
         #set utc_start
         try:
             my_ds.put_dict('/mon/snap/1/utc_start',{'utc_start':int(val)})
