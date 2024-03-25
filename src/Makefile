@@ -4,7 +4,7 @@ CC=gcc
 CFLAGS1 = -g -O3 -Wall -pthread -march=native -I/usr/local/include -I/usr/local/include/src -I/usr/local/cfitsio-3.47/include/
 CDEPS1=dsaX_def.h dsaX_capture_manythread.h
 CDEPS2=dsaX_def.h dsaX_capture.h
-LIBS = -L/usr/local/lib -lpsrdada -L/usr/lib/gcc/x86_64-linux-gnu/5 -lgfortran -L/usr/local/cuda/lib64 -lcudart -lm -L/usr/local/cfitsio-3.47/lib -lcfitsio -lsigproc -lxgpu
+LIBS = -L/usr/local/lib -lpsrdada -L/usr/lib/gcc/x86_64-linux-gnu/5 -lgfortran -L/usr/local/cuda/lib64 -lcudart -lcublas -lm -L/usr/local/cfitsio-3.47/lib -lcfitsio -lsigproc -lxgpu
 
 LIBS2 = -L/home/ubuntu/PF_RING/userland/libpcap-1.9.1 -lpcap
 CDEPS3=dsaX_def.h dsaX_capture_pcap.h
@@ -106,6 +106,11 @@ dsaX_split.o: dsaX_split.c $(CDEPS1)
 dsaX_split: dsaX_split.o
 	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
 
+dsaX_merge.o: dsaX_merge.c $(CDEPS1)
+	$(CC) -c -o $@ $< $(CFLAGS1)
+
+dsaX_merge: dsaX_merge.o
+	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
 
 dsaX_simplesplit.o: dsaX_simplesplit.c $(CDEPS1)
 	$(CC) -c -o $@ $< $(CFLAGS1)
@@ -189,6 +194,9 @@ gpu_flagger: gpu_flagger.cu
 dsaX_beamformer: dsaX_beamformer.cu
 	$(CCU) -o $@ $^ $(CFLAGS2) $(LIBS)
 
+dsaX_bfCorr: dsaX_bfCorr.cu
+	$(CCU) -o $@ $^ $(CFLAGS2) $(LIBS)
+
 dsaX_beamformer_passon: dsaX_beamformer_passon.cu
 	$(CCU) -o $@ $^ $(CFLAGS2) $(LIBS)
 
@@ -198,9 +206,9 @@ dsaX_beamformer_offline: dsaX_beamformer_offline.cu
 .PHONY: clean all
 
 clean:
-	rm -f *.o *~ dsaX_beamformer dsaX_beamformer_passon dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle fil2dada gpu_flagger dumpfil dsaX_simplesplit dsaX_store dsaX_trigger dsaX_beamformer_offline dsaX_splice dsaX_filTrigger cuda_correlator dsaX_copydb dsaX_capture_pcap
+	rm -f *.o *~ dsaX_beamformer dsaX_beamformer_passon dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle fil2dada gpu_flagger dumpfil dsaX_simplesplit dsaX_store dsaX_trigger dsaX_beamformer_offline dsaX_splice dsaX_filTrigger cuda_correlator dsaX_copydb dsaX_capture_pcap dsaX_bfCorr dsaX_merge
 
-all: dsaX_beamformer dsaX_beamformer_passon dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_capture_thread dsaX_capture_manythread dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle fil2dada gpu_flagger dumpfil dsaX_simplesplit dsaX_store dsaX_trigger dsaX_filTrigger dsaX_beamformer_offline dsaX_splice dsaX_splitup cuda_correlator dsaX_copydb dsaX_capture_pcap
+all: dsaX_beamformer dsaX_beamformer_passon dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_capture_thread dsaX_capture_manythread dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle fil2dada gpu_flagger dumpfil dsaX_simplesplit dsaX_store dsaX_trigger dsaX_filTrigger dsaX_beamformer_offline dsaX_splice dsaX_splitup cuda_correlator dsaX_copydb dsaX_capture_pcap dsaX_bfCorr dsaX_merge
 
 
 

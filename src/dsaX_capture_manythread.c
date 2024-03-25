@@ -41,6 +41,7 @@ control_thread: deals with control commands
 #include "dsaX_def.h"
 
 /* global variables */
+int dPort, cPort;
 int quit_threads = 0;
 char STATE[20];
 uint64_t UTC_START = 10000;
@@ -50,10 +51,10 @@ char iP[100];
 int DEBUG = 0;
 int HISTOGRAM[16];
 int writeBlock = 0;
-const int nth = 4;
-const int nwth = 8;
-int cores[8] = {30,31,32,33,34,35,36,37};
-int write_cores[4] = {17,18,19,39};
+const int nth = 8;
+const int nwth = 4;
+int cores[16] = {22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37};
+int write_cores[8] = {10,11,12,13,14,15,16,17};
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 volatile int blockStatus[64];
 volatile int skipBlock = 0;
@@ -90,7 +91,9 @@ void usage()
 	   "dsaX_capture [options]\n"
 	   " -c core   bind process to CPU core [no default]\n"
 	   " -j IP to listen on for data packets [no default]\n"
-	   " -i IP to listen on for control commands [no default]\n"	
+	   " -i IP to listen on for control commands [no default]\n"
+	   " -p PORT for data\n"
+	   " -q PORT for control\n"
 	   " -f filename of template dada header [no default]\n"
 	   " -o out_key [default CAPTURE_BLOCK_KEY]\n"
 	   " -d send debug messages to syslog\n"
@@ -114,10 +117,10 @@ dsaX_sock_t * dsaX_make_sock (udpdb_t * ctx)
   b->fd = 0;
 
   // connect to socket
-  syslog(LOG_INFO, "dsaX_make_sock(): connecting to socket %s:%d", ctx->interface, ctx->port);
+  syslog(LOG_INFO, "dsaX_make_sock(): connecting to socket %s:%d", ctx->interface, dPort);
 
   // open socket
-  syslog(LOG_INFO, "prepare: creating udp socket on %s:%d", ctx->interface, ctx->port);
+  syslog(LOG_INFO, "prepare: creating udp socket on %s:%d", ctx->interface, dPort);
   b->fd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
   assert(b->fd>=0);
 
@@ -128,7 +131,7 @@ dsaX_sock_t * dsaX_make_sock (udpdb_t * ctx)
   struct sockaddr_in udp_sock;
   bzero(&(udp_sock.sin_zero), 8);                     // clear the struct
   udp_sock.sin_family = AF_INET;                      // internet/IP
-  udp_sock.sin_port = htons(ctx->port);                    // set the port number
+  udp_sock.sin_port = htons(dPort);                    // set the port number
   udp_sock.sin_addr.s_addr = inet_addr(ctx->interface);  // from a specific IP address 
 
   if (bind(b->fd, (struct sockaddr *)&udp_sock, sizeof(udp_sock)) == -1) {
@@ -350,7 +353,7 @@ void control_thread (void * arg) {
   syslog(LOG_INFO, "control_thread: starting");
 
   // port on which to listen for control commands
-  int port = CAPTURE_CONTROL_PORT;
+  int port = cPort;
   char sport[10];
   sprintf(sport,"%d",port);
 
@@ -431,7 +434,11 @@ void recv_thread(void * arg) {
     
   // set affinity
   const pthread_t pid = pthread_self();
-  const int core_id = write_cores[thread_id];
+  int core_id;
+  if (dPort==4011)
+    core_id = cores[thread_id];
+  else
+    core_id = cores[thread_id+nth];
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(core_id, &cpuset);
@@ -446,13 +453,24 @@ void recv_thread(void * arg) {
 
   // set up socket
   dsaX_sock_t * sock = dsaX_make_sock(udpdb);
+
+    // lookup table for ant order
+  uint64_t ant_lookup[100], vv;
+  for (int i=0;i<100;i++) ant_lookup[i] = 0;
+  for (int i=0;i<NSNAPS/2;i++) {
+    for (int j=0;j<2;j++) {
+      vv = (i*2+j)*3;
+      ant_lookup[vv] = (uint64_t)(i);
+    }
+  }
+
   
   // DEFINITIONS
   uint64_t tpack = 0;
   uint64_t act_seq_no = 0;
   uint64_t block_seq_no = 0;
   uint64_t seq_no = 0;
-  uint64_t ant_id = 0;
+  uint64_t ant_id = 0, aid;
   unsigned char * b = (unsigned char *) sock->buf;
   size_t got = 0; // data received from a recv_from call
   int errsv; // determine the sequence number boundaries for curr and next buffers
@@ -472,6 +490,7 @@ void recv_thread(void * arg) {
   int canWrite = 0;
   int ct_snaps=0;
   int mod_WB;
+  int ctAnts = 0;
 
   // infinite loop to receive packets
 
@@ -529,9 +548,13 @@ void recv_thread(void * arg) {
 	  ant_id = 0;
 	  ant_id |= (unsigned char) (sock->buf[6]) << 8;
 	  ant_id |= (unsigned char) (sock->buf[7]);
+	  //aid = ant_lookup[(int)(ant_id)];
+	  aid = ant_id/3;
 	  
-	  act_seq_no = seq_no*NCHANG*NSNAPS/2 + ant_id*NCHANG/3; // actual seq no
-	  block_seq_no = UTC_START*NCHANG*NSNAPS/2; // seq no corresponding to ant 0 and start of block
+	  if (UTC_START==0) UTC_START = seq_no+10000;
+	  
+	  act_seq_no = seq_no*NSNAPS/2 + aid; // actual seq no
+	  block_seq_no = UTC_START*NSNAPS/2; // seq no corresponding to ant 0 and start of block
 
 	  // set shared last_seq
 	  pthread_mutex_lock(&mutex);
@@ -588,7 +611,15 @@ void recv_thread(void * arg) {
 		      temp_seq_byte[temp_idx] = seq_byte;
 		      temp_idx++;
 		    }
-		}	    
+		}
+	      // packet is too late
+	      /*else
+		{
+		  if (ctAnts<100) {
+		    syslog (LOG_INFO, "receive_obs: TOO LATE %"PRIu64"  %"PRIu64"", seq_no, ant_id);
+		    ctAnts++;
+		  }
+		  }*/
 	    }
 	  
 	  // threadsafe end of block
@@ -617,7 +648,8 @@ void recv_thread(void * arg) {
 		}
 
 	      // increment counters
-	      dsaX_udpdb_increment(udpdb);	      	
+	      dsaX_udpdb_increment(udpdb);
+	      ctAnts = 0;
 
 	      // write temp queue for this thread
 	      //syslog(LOG_INFO,"thread %d: packets in this block %"PRIu64", temp_idx %d",thread_id,tpack,temp_idx);
@@ -687,7 +719,11 @@ void write_thread(void * arg) {
 
   // set affinity
   const pthread_t pid = pthread_self();
-  const int core_id = cores[thread_id];
+  int core_id;
+  if (dPort==4011)
+    core_id = write_cores[thread_id];
+  else
+    core_id = write_cores[thread_id+nwth];
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(core_id, &cpuset);
@@ -778,7 +814,7 @@ int main (int argc, char *argv[]) {
   char dada_fnam[200]; // filename for dada header
   char iface[100]; // IP for data packets
   
-  while ((arg=getopt(argc,argv,"c:j:i:f:o:g:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:j:i:f:o:g:p:q:dh")) != -1)
     {
       switch (arg)
 	{
@@ -845,6 +881,30 @@ int main (int argc, char *argv[]) {
 	      usage();
 	      return EXIT_FAILURE;
 	    }      	
+	case 'p':
+	  if (optarg)
+	    {
+	      dPort = atoi(optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-p flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }      	
+	case 'q':
+	  if (optarg)
+	    {
+	      cPort = atoi(optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-q flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }      	
 	case 'f':
 	  if (optarg)
 	    {	      
@@ -878,7 +938,7 @@ int main (int argc, char *argv[]) {
     syslog(LOG_ERR, "Error creating control_thread: %s", strerror(rval));
     return -1;
   }
-  syslog(LOG_NOTICE, "Created control thread, listening on %s:%d",iP,CAPTURE_CONTROL_PORT);
+  syslog(LOG_NOTICE, "Created control thread, listening on %s:%d",iP,cPort);
   
   // Bind to cpu core
   if (core >= 0)
@@ -895,7 +955,7 @@ int main (int argc, char *argv[]) {
   
   hdu_out  = dada_hdu_create ();
   if (DEBUG) syslog(DEBUG,"Created hdu");
-  dada_hdu_set_key (hdu_out, CAPTURE_BLOCK_KEY);
+  dada_hdu_set_key (hdu_out, out_key);
   if (dada_hdu_connect (hdu_out) < 0) {
     syslog(LOG_ERR,"could not connect to output dada buffer");
     return EXIT_FAILURE;
@@ -988,7 +1048,7 @@ int main (int argc, char *argv[]) {
     udpdb[i].tblock = tblock;
 
     // the rest
-    udpdb[i].port = CAPTURE_PORT;
+    udpdb[i].port = dPort;
     udpdb[i].interface = strdup(iface);
     udpdb[i].hdu_bufsz = bufsz;
     udpdb[i].packets_per_buffer = udpdb[i].hdu_bufsz / UDP_DATA;

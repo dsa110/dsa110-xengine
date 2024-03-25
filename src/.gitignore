@@ -29,4 +29,5 @@ cuda_correlator
 splice_offline_beams
 dsaX_capture_pcap
 dsaX_testdada
-
+dsaX_bfCorr
+dsaX_merge

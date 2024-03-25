@@ -37,7 +37,7 @@
 // TODO
 #define XGPU_SIZE 835584 // size of single output vector (post-GPU)
 #define XGPU_IN_INC 1 // size of input increment
-#define NBASE 136 // nant*(nant+1)/2
+#define NBASE 4656 // nant*(nant+1)/2
 #define NPOL 2
 #define NCHAN 1536 // regardless of NCHANG
 
@@ -53,7 +53,7 @@
 #define NCHANG 1
 
 // number of SNAPs to expect
-#define NSNAPS 21
+#define NSNAPS 32
 
 /* expect consecutive channel groups */
 #define CHOFF 1024 // offset in channels of first group
@@ -71,7 +71,9 @@
 #define NPACKETS_PER_FIL 2
 #define NPACKETS 2048
 #define NOUTBLOCKS 15 // number of input blocks stored by trigger
-#define NANTS 63
+#define NANTS 96
+#define NCHAN_PER_PACKET 384
+#define NBEAMS 512
 
 // for beamformer
 //#define sep 1.0 // arcmin

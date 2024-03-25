@@ -1,6 +1,6 @@
 /* dsaX_capture.c: Code to capture packets over a socket and write to a dada buffer.
 
-main: runs capture loop, and interfaces dada buffer
+1;95;0cmain: runs capture loop, and interfaces dada buffer
 control_thread: deals with control commands
 
 */
@@ -41,7 +41,7 @@ control_thread: deals with control commands
 #include "dsaX_def.h"
 //#include "multilog.h"
 
-#define unhappies 30
+#define unhappies 3000
 #define skips 6
 #define sleeps 1.5
 
@@ -54,6 +54,8 @@ int MONITOR = 0;
 char iP[100];
 int DEBUG = 0;
 int HISTOGRAM[16];
+int cPort = CAPTURE_CONTROL_PORT;
+int dPort = CAPTURE_PORT;
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * out);
 int dada_bind_thread_to_core (int core);
@@ -77,11 +79,12 @@ void usage()
 	   "dsaX_capture [options]\n"
 	   " -c core   bind process to CPU core [no default]\n"
 	   " -j IP to listen on for data packets [no default]\n"
+	   " -p PORT to listen to for data packets [default 4011]\n"
+	   " -q PORT to listen to for control commands [default CAPTURE_CONTROL_PORT]\n"
 	   " -i IP to listen on for control commands [no default]\n"	
 	   " -f filename of template dada header [no default]\n"
-	   " -o out_key [default CAPTURE_BLOCK_KEY]\n"
+	   " -o out_key [default CAPTURE_BLOCK_KEY]\n"	   
 	   " -d send debug messages to syslog\n"
-	   " -g chgroup [default 0]\n"
 	   " -h print usage\n");
 }
 
@@ -139,6 +142,9 @@ int dsaX_udpdb_init_receiver (udpdb_t * ctx)
   // allocate required memory strucutres
   ctx->packets = init_stats_t();
   ctx->bytes   = init_stats_t();
+
+  syslog(LOG_INFO,"receiver inited");
+  
   return 0;
 }
 
@@ -389,6 +395,8 @@ void stats_thread(void * arg) {
   float mb_rcv_ps = 0;
   float mb_drp_ps = 0;
 
+  syslog(LOG_INFO,"stats_thread: starting loop");
+  
   while (!quit_threads)
   {
 
@@ -434,7 +442,7 @@ void control_thread (void * arg) {
   syslog(LOG_INFO, "control_thread: starting");
 
   // port on which to listen for control commands
-  int port = CAPTURE_CONTROL_PORT;
+  int port = cPort;
   char sport[10];
   sprintf(sport,"%d",port);
 
@@ -525,12 +533,11 @@ int main (int argc, char *argv[]) {
 
   // command line arguments
   int core = -1;
-  int chgroup = 0;
   int arg=0;
   char dada_fnam[200]; // filename for dada header
   char iface[100]; // IP for data packets
   
-  while ((arg=getopt(argc,argv,"c:j:i:f:o:g:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:j:i:f:o:g:p:q:dh")) != -1)
     {
       switch (arg)
 	{
@@ -561,15 +568,27 @@ int main (int argc, char *argv[]) {
 	      usage();
 	      return EXIT_FAILURE;
 	    }
-	case 'g':
+	case 'p':
 	  if (optarg)
 	    {	      
-	      chgroup = atoi(optarg);
+	      dPort = atoi(optarg);
 	      break;
 	    }
 	  else
 	    {
-	      syslog(LOG_ERR,"-g flag requires argument");
+	      syslog(LOG_ERR,"-p flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
+	case 'q':
+	  if (optarg)
+	    {	      
+	      cPort = atoi(optarg);
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-q flag requires argument");
 	      usage();
 	      return EXIT_FAILURE;
 	    }
@@ -634,7 +653,7 @@ int main (int argc, char *argv[]) {
     syslog(LOG_ERR, "Error creating control_thread: %s", strerror(rval));
     return -1;
   }
-  syslog(LOG_NOTICE, "Created control thread, listening on %s:%d",iP,CAPTURE_CONTROL_PORT);
+  syslog(LOG_NOTICE, "Created control thread, listening on %s:%d",iP,cPort);
 
   // start the stats thread
   rval = pthread_create (&stats_thread_id, 0, (void *) stats_thread, (void *) &udpdb);
@@ -664,16 +683,16 @@ int main (int argc, char *argv[]) {
   
   // OPEN CONNECTION TO DADA DB FOR WRITING
 
-  if (DEBUG) syslog(LOG_DEBUG,"Creating HDU");
+  if (DEBUG) syslog(LOG_INFO,"Creating HDU");
   
   hdu_out  = dada_hdu_create ();
-  if (DEBUG) syslog(DEBUG,"Created hdu");
-  dada_hdu_set_key (hdu_out, CAPTURE_BLOCK_KEY);
+  if (DEBUG) syslog(LOG_INFO,"Created hdu");
+  dada_hdu_set_key (hdu_out, out_key);
   if (dada_hdu_connect (hdu_out) < 0) {
     syslog(LOG_ERR,"could not connect to output dada buffer");
     return EXIT_FAILURE;
   }
-  if (DEBUG) syslog(LOG_DEBUG,"Connected HDU");
+  if (DEBUG) syslog(LOG_INFO,"Connected HDU");
   if (dada_hdu_lock_write(hdu_out) < 0) {
     dsaX_dbgpu_cleanup (hdu_out);
     syslog(LOG_ERR,"could not lock to output dada buffer");
@@ -685,7 +704,7 @@ int main (int argc, char *argv[]) {
   // DEAL WITH DADA HEADER
   char *hout;
   hout = (char *)malloc(sizeof(char)*4096);
-  if (DEBUG) syslog(DEBUG,"read header2");
+  if (DEBUG) syslog(LOG_INFO,"read header2");
 
   if (fileread (dada_fnam, hout, 4096) < 0)
     {
@@ -695,7 +714,7 @@ int main (int argc, char *argv[]) {
     }
 
   
-  if (DEBUG) syslog(DEBUG,"read header3");
+  if (DEBUG) syslog(LOG_INFO,"read header3");
 
   
   
@@ -732,7 +751,7 @@ int main (int argc, char *argv[]) {
   
   // put information in udpdb struct
   udpdb.hdu = hdu_out;
-  udpdb.port = CAPTURE_PORT;
+  udpdb.port = dPort;
   udpdb.interface = strdup(iface);
   udpdb.hdu_bufsz = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
   // determine number of packets per block, must 
@@ -768,13 +787,23 @@ int main (int argc, char *argv[]) {
 
   // DEFINITIONS
 
+  // lookup table for ant order
+  uint64_t ant_lookup[100], vv;
+  for (int i=0;i<100;i++) ant_lookup[i] = 0;
+  for (int i=0;i<NSNAPS/2;i++) {
+    for (int j=0;j<2;j++) {
+      vv = (i*2+j)*3;
+      ant_lookup[vv] = (uint64_t)(i);
+    }
+  }
+  
   int unhappies_ct = 0;
   int unhappy = 0;
   uint64_t act_seq_no = 0;
   uint64_t block_seq_no = 0;
   uint64_t seq_no = 0;
   uint64_t ch_id = 0;
-  uint64_t ant_id = 0;
+  uint64_t ant_id = 0, aid;
   unsigned char * b = (unsigned char *) udpdb.sock->buf;
   size_t got = 0; // data received from a recv_from call
   int errsv; // determine the sequence number boundaries for curr and next buffers
@@ -782,7 +811,7 @@ int main (int argc, char *argv[]) {
   uint64_t seq_byte = 0; // offset of current packet in bytes from start of obs
   // for "saving" out of order packets near edges of blocks
   unsigned int temp_idx = 0;
-  unsigned int temp_max = 5;
+  unsigned int temp_max = 1000;
   char ** temp_buffers; //[temp_max][UDP_DATA];
   uint64_t * temp_seq_byte;
   temp_buffers = (char **)malloc(sizeof(char *)*temp_max);
@@ -867,10 +896,13 @@ int main (int argc, char *argv[]) {
 	  ant_id = 0;
 	  ant_id |= (unsigned char) (udpdb.sock->buf[6]) << 8;
 	  ant_id |= (unsigned char) (udpdb.sock->buf[7]);
+	  aid = ant_lookup[(int)(ant_id)];
+
+	  if (UTC_START==0) UTC_START = seq_no + 10000;
 	  
 	  //act_seq_no = seq_no*NCHANG*NSNAPS/2 + ant_id*NCHANG/3 + (ch_id-CHOFF)/384; // actual seq no
-	  act_seq_no = seq_no*NCHANG*NSNAPS/2 + ant_id*NCHANG/3; // actual seq no
-	  block_seq_no = UTC_START*NCHANG*NSNAPS/2; // seq no corresponding to ant 0 and start of block
+	  act_seq_no = seq_no*NSNAPS/4 + aid; // actual seq no
+	  block_seq_no = UTC_START*NSNAPS/4; // seq no corresponding to ant 0 and start of block
 
 	  // check for starting or stopping condition, using continue
 	  //if (DEBUG) printf("%"PRIu64" %"PRIu64" %d\n",seq_no,act_seq_no,ch_id);//syslog(LOG_DEBUG, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
@@ -882,8 +914,7 @@ int main (int argc, char *argv[]) {
 	  //if (seq_no > UTC_START && UTC_START != 10000) canWrite=1;	  
 	  udpdb.last_seq = seq_no;
 	  //syslog(LOG_INFO,"SEQ_NO_DBG %"PRIu64"",seq_no);
-	  if (act_seq_no * UDP_DATA >= udpdb.block_start_byte-1000*UDP_DATA) unhappy = 0; 
-	  if (canWrite == 0 || unhappy == 1) continue;
+	  if (canWrite == 0) continue;
 	  //if (seq_no == UTC_STOP) canWrite=0;
 	  //if (udpdb.packets->received<100) syslog(LOG_INFO, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
 	  
