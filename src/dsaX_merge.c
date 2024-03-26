@@ -86,7 +86,7 @@ void * massage (void *args) {
     for (int j=0;j<3*NSNAPS/2;j++) {
       iidx = i*(NSNAPS/2)*4608 + j*1536;
       oidx = i*NSNAPS*4608 + ao1[j]*1536;
-      memcpy(out + oidx, in + iidx, ncpy); 
+      memcpy(out + oidx, in + iidx, ncpy);
       oidx = i*NSNAPS*4608 + ao2[j]*1536;
       memcpy(out + oidx, in2 + iidx, ncpy); 
     }
@@ -451,14 +451,6 @@ int main (int argc, char *argv[]) {
   ao2[46] = 79;
   ao2[47] = 80;
 
-
-  
-  int j = 47;
-  for (int i=0;i<48;i++) {
-    ao1[i] = j;
-    ao2[i] = j;
-    j -= 1;
-  }
   
   // get block sizes and allocate memory
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
