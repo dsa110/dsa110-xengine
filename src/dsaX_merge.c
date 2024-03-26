@@ -530,16 +530,16 @@ int main (int argc, char *argv[]) {
       args[i].ant_order1 = ao1;
       args[i].ant_order2 = ao2;
       
-      if (mwrite) {
+      if (mwrite) 
 	args[i].out = o1;	
-      }
       else
 	args[i].out = output;
-	args[i].n_threads = nth;
-	args[i].thread_id = i;
+
+      args[i].n_threads = nth;
+      args[i].thread_id = i;
     }
     
-    syslog(LOG_INFO, "creating threads");
+    //syslog(LOG_INFO, "creating threads");
     
     for(int i=0; i<nth; i++){
       if (pthread_create(&threads[i], &attr, &massage, (void *)(&args[i]))) {
@@ -562,8 +562,9 @@ int main (int argc, char *argv[]) {
     else {
       ipcio_close_block_write (hdu_out->data_block, block_out);
     }
-    
-    if (DEBUG) syslog(LOG_DEBUG, "written block %d",blocks);      
+
+    if (blocks % 10 == 0)
+      syslog(LOG_INFO, "written block %d",blocks);      
     blocks++;
     
     
