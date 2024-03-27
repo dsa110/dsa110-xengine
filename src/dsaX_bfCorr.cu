@@ -474,15 +474,15 @@ void dcorrelator(dmem * d) {
 			    d->d_i,ldb,strideB,&beta1,
 			    d->d_outr,ldc,strideC,
 			    batchCount);
-  // -bc
+  // bc
   cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			    &malpha,d->d_i,lda,strideA,
+			    &alpha,d->d_i,lda,strideA,
 			    d->d_r,ldb,strideB,&beta0,
 			    d->d_outi,ldc,strideC,
 			    batchCount);
-  // ad
+  // -ad
   cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			    &alpha,d->d_r,lda,strideA,
+			    &malpha,d->d_r,lda,strideA,
 			    d->d_i,ldb,strideB,&beta1,
 			    d->d_outi,ldc,strideC,
 			    batchCount);
