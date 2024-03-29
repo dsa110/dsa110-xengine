@@ -49,7 +49,7 @@ struct data {
   int n_threads;
   int thread_id;
 };
-int cores[8] = {2, 3, 4, 5, 6, 7, 8, 9};
+int cores[4] = {17, 18, 37, 38};
 
 
 void * massage (void *args) {
