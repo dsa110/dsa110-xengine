@@ -166,7 +166,7 @@ int dsaX_udpdb_prepare (udpdb_t * ctx)
 
   
   // set the socket size to 256 MB
-  int sock_buf_size = 256*1024*1024;
+  int sock_buf_size = 4*1024*1024;
   syslog(LOG_INFO, "prepare: setting buffer size to %d", sock_buf_size);
   dada_udp_sock_set_buffer_size (ctx->log, ctx->sock->fd, ctx->verbose, sock_buf_size);
 
@@ -421,7 +421,7 @@ void stats_thread(void * arg) {
     gb_rcv_ps /= 1000000000;
 
     /* determine how much memory is free in the receivers */
-    syslog (LOG_NOTICE,"CAPSTATS %6.3f [Gb/s], D %4.1f [MB/s], D %"PRIu64" pkts, %"PRIu64"", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, ctx->last_seq);
+    syslog (LOG_NOTICE,"CAPSTATS %6.3f [Gb/s], D %4.1f [MB/s], D %"PRIu64" pkts, %"PRIu64" skipped 0", gb_rcv_ps, mb_drp_ps, ctx->packets->dropped, ctx->last_seq);
 
     sleep(1);
   }
@@ -908,8 +908,8 @@ int main (int argc, char *argv[]) {
 	  //if (DEBUG) printf("%"PRIu64" %"PRIu64" %d\n",seq_no,act_seq_no,ch_id);//syslog(LOG_DEBUG, "seq_byte=%"PRIu64", num_inputs=%d, seq_no=%"PRIu64", ant_id =%"PRIu64", ch_id =%"PRIu64"",seq_byte,udpdb.num_inputs,seq_no,ant_id, ch_id);
 	  //if (seq_no == UTC_START && UTC_START != 10000 && ant_id == 0) canWrite=1;
 	  if (canWrite==0) {
-	    if (seq_no >= UTC_START-50 && UTC_START != 10000) ct_snaps++;
-	    if (ct_snaps >= 10) canWrite=1;
+	    if (seq_no >= UTC_START-5 && UTC_START != 10000) ct_snaps++;
+	    if (ct_snaps >= 32) canWrite=1;
 	  }
 	  //if (seq_no > UTC_START && UTC_START != 10000) canWrite=1;	  
 	  udpdb.last_seq = seq_no;
