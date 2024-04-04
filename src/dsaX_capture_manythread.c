@@ -51,10 +51,10 @@ char iP[100];
 int DEBUG = 0;
 int HISTOGRAM[16];
 int writeBlock = 0;
-const int nth = 8;
-const int nwth = 2;
-int cores[16] = {10,11,12,13,6,7,8,9,30,31,32,33,26,27,28,29};
-int write_cores[4] = {15,16,35,36};
+const int nth = 4;
+const int nwth = 4;
+int cores[16] = {10,12,11,13,6,7,8,9,30,31,32,33,26,27,28,29};
+int write_cores[8] = {15,16,35,36};
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 volatile int blockStatus[64];
 volatile int skipBlock = 0;
@@ -548,13 +548,13 @@ void recv_thread(void * arg) {
 	  ant_id = 0;
 	  ant_id |= (unsigned char) (sock->buf[6]) << 8;
 	  ant_id |= (unsigned char) (sock->buf[7]);
-	  aid = ant_lookup[(int)(ant_id)];
-	  //aid = ant_id/3;
+	  //aid = ant_lookup[(int)(ant_id)];
+	  aid = ant_id/3;
 	  
-	  if (UTC_START==0) UTC_START = seq_no+10000;
+	  if (UTC_START==0) UTC_START = seq_no+30000;
 	  
-	  act_seq_no = seq_no*NSNAPS/4 + aid; // actual seq no
-	  block_seq_no = UTC_START*NSNAPS/4; // seq no corresponding to ant 0 and start of block
+	  act_seq_no = seq_no*NSNAPS/2 + aid; // actual seq no
+	  block_seq_no = UTC_START*NSNAPS/2; // seq no corresponding to ant 0 and start of block
 
 	  // set shared last_seq
 	  pthread_mutex_lock(&mutex);
