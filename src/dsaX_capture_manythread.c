@@ -53,7 +53,7 @@ int HISTOGRAM[16];
 int writeBlock = 0;
 const int nth = 4;
 const int nwth = 4;
-int cores[16] = {10,12,11,13,6,7,8,9,30,31,32,33,26,27,28,29};
+int cores[16] = {6,7,8,9,10,12,11,13,30,31,32,33,26,27,28,29};
 int write_cores[8] = {15,16,35,36};
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 volatile int blockStatus[64];
@@ -139,8 +139,8 @@ dsaX_sock_t * dsaX_make_sock (udpdb_t * ctx)
     return -1;
   }
   
-  // set the socket size to 256 MB
-  int sock_buf_size = 2*256*1024*1024;
+  // set the socket size to 64 MB
+  int sock_buf_size = 64*1024*1024;
   syslog(LOG_INFO, "prepare: setting buffer size to %d", sock_buf_size);
   dada_udp_sock_set_buffer_size (ctx->log, b->fd, ctx->verbose, sock_buf_size);
 
