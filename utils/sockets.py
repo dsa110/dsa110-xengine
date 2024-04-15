@@ -1,5 +1,4 @@
 import socket, numpy as np
-from progress.bar import Bar
 
 # ip as string, port as int, buf as int
 def capture(n=100,ip=None,port=None,buf=4616):
@@ -17,15 +16,12 @@ def capture(n=100,ip=None,port=None,buf=4616):
 
     captured=0
     packs = []
-    bar = Bar('Capturing '+str(n)+' packets...', max=n)
     while captured<n:
 
         data, addr = sock.recvfrom(buf)
         packs.append(data)
         captured += 1
-        bar.next()
 
-    bar.finish()
 
     return(packs)
 

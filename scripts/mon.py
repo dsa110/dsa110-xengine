@@ -141,7 +141,7 @@ def get_capture_stats():
 
     oarr = np.zeros(6)
     try:
-        result = subprocess.check_output("tail -n 50000 /var/log/syslog | grep CAPSTATS | tail -n 1 | awk '{print $7,$10,$13,$15,$17}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("sudo tail -n 50000 /var/log/syslog | grep CAPSTATS | tail -n 1 | awk '{print $7,$10,$13,$15,$17}'", shell=True, stderr=subprocess.STDOUT)
         arr = result.decode("utf-8").split(' ')        
         for i in range(5):
             oarr[i] = float(arr[i])
@@ -150,7 +150,7 @@ def get_capture_stats():
         return -1
 
     try:
-        result = subprocess.check_output("tail -n 50000 /var/log/syslog | grep dsaX_trigger | grep current_specnum | tail -n 1 | awk '{print $7}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("sudo tail -n 50000 /var/log/syslog | grep dsaX_trigger | grep current_specnum | tail -n 1 | awk '{print $7}'", shell=True, stderr=subprocess.STDOUT)
         arr = result.decode("utf-8").split('\n')
         oarr[5] = float(arr[0])
     except:
@@ -189,7 +189,7 @@ def get_srch_nodes():
 
     try:
 
-        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep Blockcts_full | tail -n 1 | awk '{print $12}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("sudo tail -n 1000 /var/log/syslog | grep Blockcts_full | tail -n 1 | awk '{print $12}'", shell=True, stderr=subprocess.STDOUT)
         arr = result.decode("utf-8")
 
         result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log.log | grep final_space_searched | tail -n 1 | awk '{print $2}'", shell=True, stderr=subprocess.STDOUT)
