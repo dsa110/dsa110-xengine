@@ -26,6 +26,11 @@ control_thread: deals with control commands
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <syslog.h>
+#include <arpa/inet.h>
+#include <linux/if_packet.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include <netinet/ether.h>
 
 
 #include "sock.h"
@@ -62,6 +67,7 @@ volatile int skipping = 0;
 volatile int lWriteBlock = 0;
 volatile int write_ct = 0;
 volatile uint64_t last_seq = 0;
+//volatile uint64_t npackets = 0;
 volatile int skipct = 0;
 volatile uint64_t block_count = 0;
 volatile uint64_t block_start_byte=0, block_end_byte=0;
@@ -110,7 +116,7 @@ dsaX_sock_t * dsaX_make_sock (udpdb_t * ctx)
   syslog(LOG_INFO, "dsaX_make_sock(): preparing sock structure");
   dsaX_sock_t * b = (dsaX_sock_t *) malloc(sizeof(dsaX_sock_t));
   assert(b != NULL);
-  b->bufsz = sizeof(char) * UDP_PAYLOAD;
+  b->bufsz = sizeof(char) * (UDP_PAYLOAD+28);
   b->buf = (char *) malloc (b->bufsz);
   assert(b->buf != NULL);
   b->have_packet = 0;
@@ -120,24 +126,31 @@ dsaX_sock_t * dsaX_make_sock (udpdb_t * ctx)
   syslog(LOG_INFO, "dsaX_make_sock(): connecting to socket %s:%d", ctx->interface, dPort);
 
   // open socket
+
+  struct ifreq ifr;
+  struct sockaddr_ll sa;
+  size_t if_name_len=strlen(ctx->interface);
+  int ss = 0;
+  
   syslog(LOG_INFO, "prepare: creating udp socket on %s:%d", ctx->interface, dPort);
-  b->fd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
-  assert(b->fd>=0);
+  b->fd = socket( AF_PACKET, SOCK_DGRAM, htons(ETH_P_IP) );
+  memcpy(ifr.ifr_name,ctx->interface,if_name_len);
+  ifr.ifr_name[if_name_len]=0;
+  ioctl( b->fd, SIOCGIFINDEX, &ifr );
+  memset( &sa, 0, sizeof( sa ) );
+  sa.sll_family=AF_PACKET;
+  sa.sll_protocol = 0x0000;
+  sa.sll_ifindex = ifr.ifr_ifindex;
+  sa.sll_hatype = 0;
+  sa.sll_pkttype = PACKET_HOST;
 
   // for multiple connections
   int one = 1;
   setsockopt(b->fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &one, sizeof(one));
-  
-  struct sockaddr_in udp_sock;
-  bzero(&(udp_sock.sin_zero), 8);                     // clear the struct
-  udp_sock.sin_family = AF_INET;                      // internet/IP
-  udp_sock.sin_port = htons(dPort);                    // set the port number
-  udp_sock.sin_addr.s_addr = inet_addr(ctx->interface);  // from a specific IP address 
 
-  if (bind(b->fd, (struct sockaddr *)&udp_sock, sizeof(udp_sock)) == -1) {
-    syslog(LOG_ERR, "prepare: failed to bind to socket");
-    return -1;
-  }
+  // bind
+  bind( b->fd ,(const struct sockaddr *)&sa, sizeof( sa ) );
+  ss = setsockopt( b->fd, SOL_SOCKET, SO_BINDTODEVICE, ctx->interface, strlen(ctx->interface) );
   
   // set the socket size to 64 MB
   int sock_buf_size = 64*1024*1024;
@@ -145,12 +158,12 @@ dsaX_sock_t * dsaX_make_sock (udpdb_t * ctx)
   dada_udp_sock_set_buffer_size (ctx->log, b->fd, ctx->verbose, sock_buf_size);
 
   // set the socket to non-blocking
-  syslog(LOG_INFO, "prepare: setting non_block");
-  sock_nonblock(b->fd);
+  //syslog(LOG_INFO, "prepare: setting non_block");
+  //sock_nonblock(b->fd);
 
   // clear any packets buffered by the kernel
-  syslog(LOG_INFO, "prepare: clearing packets at socket");
-  size_t cleared = dada_sock_clear_buffered_packets(b->fd, UDP_PAYLOAD);
+  //syslog(LOG_INFO, "prepare: clearing packets at socket");
+  //size_t cleared = dada_sock_clear_buffered_packets(b->fd, UDP_PAYLOAD);
 
   // clear blockStatus
   for (int i=0;i<64;i++) blockStatus[i] = 0;
@@ -504,9 +517,9 @@ void recv_thread(void * arg) {
 	{
 	 
 	  // receive 1 packet into the socket buffer
-	  got = recvfrom ( sock->fd, sock->buf, UDP_PAYLOAD, 0, NULL, NULL );
+	  got = recvfrom ( sock->fd, sock->buf, UDP_PAYLOAD+28, 0, NULL, NULL );
 
-	  if (got == UDP_PAYLOAD) 
+	  if (got == UDP_PAYLOAD+28) 
 	    {
 	      sock->have_packet = 1;
 	    } 
@@ -528,8 +541,8 @@ void recv_thread(void * arg) {
 	    } 
 	  else // we received a packet of the WRONG size, ignore it
 	    {
-	      syslog (LOG_NOTICE, "receive_obs: received %d bytes, expected %d", got, UDP_PAYLOAD);
-	    }
+	      syslog (LOG_NOTICE, "receive_obs: received %d bytes, expected %d", got, UDP_PAYLOAD+28);
+	  }
 	}
       timeouts = 0;
 
@@ -540,14 +553,14 @@ void recv_thread(void * arg) {
 	  // decode packet header (64 bits)
 	  // 35 bits seq_no (for first spectrum in packet); 13 bits ch_id (for first channel in packet); 16 bits ant ID (for first antenna in packet)
 	  seq_no = 0;
-	  seq_no |=  (((uint64_t)(sock->buf[4]) & 224) >> 5) & 7;
-	  seq_no |=  (((uint64_t)(sock->buf[3])) << 3) & 2040;
-	  seq_no |=  (((uint64_t)(sock->buf[2])) << 11) & 522240;
-	  seq_no |=  (((uint64_t)(sock->buf[1])) << 19) & 133693440;
-	  seq_no |=  (((uint64_t)(sock->buf[0])) << 27) & 34225520640;
+	  seq_no |=  (((uint64_t)(sock->buf[4+28]) & 224) >> 5) & 7;
+	  seq_no |=  (((uint64_t)(sock->buf[3+28])) << 3) & 2040;
+	  seq_no |=  (((uint64_t)(sock->buf[2+28])) << 11) & 522240;
+	  seq_no |=  (((uint64_t)(sock->buf[1+28])) << 19) & 133693440;
+	  seq_no |=  (((uint64_t)(sock->buf[0+28])) << 27) & 34225520640;
 	  ant_id = 0;
-	  ant_id |= (unsigned char) (sock->buf[6]) << 8;
-	  ant_id |= (unsigned char) (sock->buf[7]);
+	  ant_id |= (unsigned char) (sock->buf[6+28]) << 8;
+	  ant_id |= (unsigned char) (sock->buf[7+28]);
 	  aid = ant_lookup[(int)(ant_id)];
 	  //aid = ant_id/3;
 	  
@@ -559,6 +572,7 @@ void recv_thread(void * arg) {
 	  // set shared last_seq
 	  pthread_mutex_lock(&mutex);
 	  last_seq = seq_no;
+	  //npackets++;
 	  //syslog(LOG_INFO,"last_seq %"PRIu64"",last_seq);
 	  pthread_mutex_unlock(&mutex);
 	  
@@ -593,7 +607,7 @@ void recv_thread(void * arg) {
 		{
 		  byte_offset = seq_byte - (block_start_byte);
 		  mod_WB = writeBlock % 64;
-		  memcpy (udpdb->tblock + byte_offset + mod_WB*udpdb->hdu_bufsz, sock->buf + UDP_HEADER, UDP_DATA);		  
+		  memcpy (udpdb->tblock + byte_offset + mod_WB*udpdb->hdu_bufsz, sock->buf + UDP_HEADER+28, UDP_DATA);		  
 		  pthread_mutex_lock(&mutex);		  
 		  block_count++;
 		  //syslog(LOG_INFO,"block count %"PRIu64"",block_count);
@@ -607,7 +621,7 @@ void recv_thread(void * arg) {
 		  if (temp_idx < temp_max)
 		    {
 		      // save packet to temp buffer
-		      memcpy (temp_buffers[temp_idx], sock->buf + UDP_HEADER, UDP_DATA);
+		      memcpy (temp_buffers[temp_idx], sock->buf + UDP_HEADER+28, UDP_DATA);
 		      temp_seq_byte[temp_idx] = seq_byte;
 		      temp_idx++;
 		    }
