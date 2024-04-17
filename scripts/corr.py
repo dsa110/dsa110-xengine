@@ -392,10 +392,10 @@ def process(params, cmd, val, my_ds):
     # stop stuff
     if cmd=='stop':
 
-        # hack for pcap packet capture
-        cmdstr = 'sudo killall -q dsaX_capture_pcap'
+        # hack for packet capture
+        cmdstr = 'sudo pkill -9 -f dsaX_capture_manythread'
         my_log.debug('running: '+cmdstr)
-        my_log.info('Stopping pcap')
+        my_log.info('Stopping packet capture')
         proc = subprocess.run(cmdstr, shell = True)
                 
         # deal with processes

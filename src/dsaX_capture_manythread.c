@@ -158,8 +158,8 @@ dsaX_sock_t * dsaX_make_sock (udpdb_t * ctx)
   dada_udp_sock_set_buffer_size (ctx->log, b->fd, ctx->verbose, sock_buf_size);
 
   // set the socket to non-blocking
-  //syslog(LOG_INFO, "prepare: setting non_block");
-  //sock_nonblock(b->fd);
+  syslog(LOG_INFO, "prepare: setting non_block");
+  sock_nonblock(b->fd);
 
   // clear any packets buffered by the kernel
   //syslog(LOG_INFO, "prepare: clearing packets at socket");
