@@ -51,7 +51,7 @@ int DEBUG = 0;
 typedef struct dmem {
 
   // initial data and streams
-  char * h_input; // host input pointer
+  char * h_input, * h_pinned_input; // host input pointer
   char * d_input, * d_tx; // [NPACKETS_PER_BLOCK, NANTS, NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex]
   
   // correlator pointers
@@ -79,12 +79,44 @@ typedef struct dmem {
   
 } dmem;
 
+/*! register the data_block in the hdu via cudaHostRegister */
+int dada_cuda_dbregister (dada_hdu_t * hdu)
+{
+  ipcbuf_t * db = (ipcbuf_t *) hdu->data_block;
+
+  // ensure that the data blocks are SHM locked
+  if (ipcbuf_lock (db) < 0)
+  {
+    syslog(LOG_ERR,"dada_dbregister: ipcbuf_lock failed");
+    return -1;
+  }
+
+  size_t bufsz = db->sync->bufsz;
+  unsigned int flags = 0;
+  cudaError_t rval;
+
+  // lock each data block buffer as cuda memory
+  uint64_t ibuf;
+  for (ibuf = 0; ibuf < db->sync->nbufs; ibuf++)
+  {
+    rval = cudaHostRegister ((void *) db->buffer[ibuf], bufsz, flags);
+    if (rval != cudaSuccess)
+    {
+      syslog(LOG_ERR,"dada_dbregister:  cudaHostRegister failed");
+      return -1;
+    }
+  }
+  
+  return 0;
+}
+
 
 // allocate device memory
 void initialize(dmem * d, int bf) {
   
   // for correlator
   if (bf==0) {
+    cudaMallocHost((void**)&d->h_pinned_input, sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
     cudaMalloc((void **)(&d->d_input), sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
     cudaMalloc((void **)(&d->d_r), sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2);
     cudaMalloc((void **)(&d->d_i), sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2);
@@ -94,6 +126,14 @@ void initialize(dmem * d, int bf) {
     cudaMalloc((void **)(&d->d_outi), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
     cudaMalloc((void **)(&d->d_tx_outr), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
     cudaMalloc((void **)(&d->d_tx_outi), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
+
+    // timers
+    d->cp = 0.;
+    d->prep = 0.;
+    d->outp = 0.;
+    d->cubl = 0.;
+
+    
   }
 
   // for beamformer
@@ -141,6 +181,7 @@ void deallocate(dmem * d, int bf) {
     cudaFree(d->d_outi);
     cudaFree(d->d_tx_outr);
     cudaFree(d->d_tx_outi);
+    cudaFreeHost(d->h_pinned_input);
   }
   if (bf==1) {
     cudaFree(d->d_tx);
@@ -426,21 +467,34 @@ void reorder_output(dmem * d) {
 // workflow: copy to device, reorder, stridedBatchedGemm, reorder
 void dcorrelator(dmem * d) {
 
+  // timing
+  // copy, prepare, cublas, output
+  clock_t begin, end;
+
   // zero out output arrays
   cudaMemset(d->d_outr,0,NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*sizeof(half));
   cudaMemset(d->d_outi,0,NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*sizeof(half));
   cudaMemset(d->d_output,0,NCHAN_PER_PACKET*2*NANTS*NANTS*sizeof(float));
   
-  // copy to device
+  // copy to device  
+  //memcpy(d->h_pinned_input,d->h_input,NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
+  begin = clock();
   cudaMemcpy(d->d_input,d->h_input,NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2,cudaMemcpyHostToDevice);
-
+  end = clock();
+  d->cp += (float)(end - begin) / CLOCKS_PER_SEC;
+  
   // reorder input
+  begin = clock();
   reorder_input(d->d_input,d->d_tx,d->d_r,d->d_i);
-
+  
   // not sure if essential
   cudaDeviceSynchronize();
+  end = clock();
+  d->prep += (float)(end - begin) / CLOCKS_PER_SEC;
   
   // set up for gemm
+
+  begin = clock();
   cublasHandle_t cublasH = NULL;
   cudaStream_t stream = NULL;
   cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
@@ -495,13 +549,18 @@ void dcorrelator(dmem * d) {
 
   // shown to be essential
   cudaDeviceSynchronize();
+  end = clock();
+  d->cubl += (float)(end - begin) / CLOCKS_PER_SEC;
 
   // destroy stream
   cudaStreamDestroy(stream);
   cublasDestroy(cublasH);
   
   // reorder output data
+  begin = clock();
   reorder_output(d);
+  end = clock();
+  d->outp += (float)(end - begin) / CLOCKS_PER_SEC;
   
 }
 
@@ -1177,6 +1236,9 @@ int main (int argc, char *argv[]) {
     }
 
   syslog(LOG_INFO,"dealt with dada stuff - now in LISTEN state");  
+
+  // register input with gpu
+  dada_cuda_dbregister(hdu_in);
   
   // get block sizes and allocate memory
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
@@ -1223,7 +1285,7 @@ int main (int argc, char *argv[]) {
     }
     //end = clock();
     //time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-    cout << "spent time " << d.cp << " " << d.prep << " " << d.cubl << " " << d.outp << " s" << endl;
+    //cout << "spent time " << d.cp << " " << d.prep << " " << d.cubl << " " << d.outp << " s" << endl;
     
     // write to output
     
