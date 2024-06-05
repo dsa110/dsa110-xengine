@@ -160,7 +160,7 @@ int main (int argc, char *argv[]) {
   
   syslog (LOG_INFO, "creating in and out hdus");
   
-  hdu_in  = dada_hdu_create ();
+  hdu_in  = dada_hdu_create (0);
   dada_hdu_set_key (hdu_in, in_key);
   if (dada_hdu_connect (hdu_in) < 0) {
     syslog (LOG_ERR,"could not connect to dada buffer in");
@@ -171,7 +171,7 @@ int main (int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  hdu_out  = dada_hdu_create ();
+  hdu_out  = dada_hdu_create (0);
   dada_hdu_set_key (hdu_out, out_key);
   if (dada_hdu_connect (hdu_out) < 0) {
     syslog (LOG_ERR,"could not connect to output  buffer");
@@ -220,7 +220,7 @@ int main (int argc, char *argv[]) {
   // get block sizes and allocate memory
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
   uint64_t block_out = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
-  syslog(LOG_INFO, "main: have input and output block sizes %llu %llu\n",block_size,block_out);
+  syslog(LOG_INFO, "main: have input and output block sizes %lu %lu\n",block_size,block_out);
   uint64_t  bytes_read = 0;
   uint64_t nsplits = block_size/block_out;
   char * block, * output_buffer;

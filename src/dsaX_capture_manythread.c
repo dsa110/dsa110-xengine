@@ -427,7 +427,7 @@ void control_thread (void * arg) {
 /* 
  *  Thread to capture data
  */
-void recv_thread(void * arg) {
+int recv_thread(void * arg) {
 
   udpdb_t * udpdb = (udpdb_t *) arg;
   int thread_id = udpdb->thread_id;
@@ -528,7 +528,7 @@ void recv_thread(void * arg) {
 	    } 
 	  else // we received a packet of the WRONG size, ignore it
 	    {
-	      syslog (LOG_NOTICE, "receive_obs: received %d bytes, expected %d", got, UDP_PAYLOAD);
+	      syslog (LOG_NOTICE, "receive_obs: received %lu bytes, expected %d", got, UDP_PAYLOAD);
 	    }
 	}
       timeouts = 0;
@@ -953,7 +953,7 @@ int main (int argc, char *argv[]) {
 
   if (DEBUG) syslog(LOG_DEBUG,"Creating HDU");
   
-  hdu_out  = dada_hdu_create ();
+  hdu_out  = dada_hdu_create (0);
   if (DEBUG) syslog(DEBUG,"Created hdu");
   dada_hdu_set_key (hdu_out, out_key);
   if (dada_hdu_connect (hdu_out) < 0) {

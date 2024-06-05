@@ -186,11 +186,11 @@ void control_thread (void * arg) {
       //specnum = (uint64_t)(strtoull(buffer,&endptr,0)*16);
       specnum = tmps;
       strcpy(footer_buf,tbuf);
-      syslog(LOG_INFO, "control_thread: received command to dump at %llu",specnum);
+      syslog(LOG_INFO, "control_thread: received command to dump at %lu",specnum);
     }
 	
     if (dump_pending)
-      syslog(LOG_ERR, "control_thread: BACKED UP - CANNOT dump at %llu",tmps);
+      syslog(LOG_ERR, "control_thread: BACKED UP - CANNOT dump at %lu",tmps);
   
     if (!dump_pending) dump_pending = 1;
     
@@ -341,7 +341,7 @@ int main (int argc, char *argv[]) {
 
   // open connection to the in/read DBs
   
-  hdu_in  = dada_hdu_create ();
+  hdu_in  = dada_hdu_create (0);
   dada_hdu_set_key (hdu_in, in_key);
   if (dada_hdu_connect (hdu_in) < 0) {
     syslog (LOG_ERR,"could not connect to dada buffer");
@@ -352,7 +352,7 @@ int main (int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  hdu_out  = dada_hdu_create ();
+  hdu_out  = dada_hdu_create (0);
   dada_hdu_set_key (hdu_out, out_key);
   if (dada_hdu_connect (hdu_out) < 0) {
     syslog (LOG_ERR,"could not connect to output dada buffer");
@@ -525,9 +525,9 @@ int main (int argc, char *argv[]) {
 	  // DO writing using thread
 	  docopy = 1;
 	  
-	  syslog(LOG_INFO, "written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s", specnum, trignum-1, dumpnum, footer_buf);
+	  syslog(LOG_INFO, "written trigger from specnum %lu TRIGNUM%d DUMPNUM%d %s", specnum, trignum-1, dumpnum, footer_buf);
 	  ofile = fopen("/home/ubuntu/data/dumps.dat","a");
-	  fprintf(ofile,"written trigger from specnum %llu TRIGNUM%d DUMPNUM%d %s\n", specnum, trignum-1, dumpnum, footer_buf);
+	  fprintf(ofile,"written trigger from specnum %lu TRIGNUM%d DUMPNUM%d %s\n", specnum, trignum-1, dumpnum, footer_buf);
 	  fclose(ofile);
 	  
 	  dumpnum++;
@@ -539,7 +539,7 @@ int main (int argc, char *argv[]) {
 
 	// if trigger arrived too late
 	if (specnum < current_specnum-specs_per_block && dumping==0 && dump_pending==1) {
-	  syslog(LOG_INFO, "trigger arrived too late: specnum %llu, current_specnum %llu",specnum,current_specnum);
+	  syslog(LOG_INFO, "trigger arrived too late: specnum %lu, current_specnum %lu",specnum,current_specnum);
 
 	  bytes_copied=0;
 	  dump_pending=0;
@@ -550,7 +550,7 @@ int main (int argc, char *argv[]) {
       }
 
       // update current spec
-      syslog(LOG_INFO,"current_specnum %llu",current_specnum);
+      syslog(LOG_INFO,"current_specnum %lu",current_specnum);
       if (block_count < skips) {
 	block_count++;
       }
@@ -561,7 +561,7 @@ int main (int argc, char *argv[]) {
       // for exiting
       if (bytes_read < block_size) {
 	observation_complete = 1;
-	syslog(LOG_INFO, "main: finished, with bytes_read %llu < expected %llu\n", bytes_read, block_size);
+	syslog(LOG_INFO, "main: finished, with bytes_read %lu < expected %lu\n", bytes_read, block_size);
       }
 
       // close block for reading

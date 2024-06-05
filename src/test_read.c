@@ -204,7 +204,7 @@ int main (int argc, char *argv[]) {
   
   syslog (LOG_INFO, "creating in and out hdus");
   
-  hdu_in  = dada_hdu_create ();
+  hdu_in  = dada_hdu_create (0);
   dada_hdu_set_key (hdu_in, in_key);
   if (dada_hdu_connect (hdu_in) < 0) {
     syslog (LOG_ERR,"could not connect to dada buffer in");

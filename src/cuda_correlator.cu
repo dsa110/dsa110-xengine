@@ -36,7 +36,7 @@ using std::endl;
 #include "dada_affinity.h"
 #include "ascii_header.h"
 #include "dsaX_def.h"
-#include "cube/cube.h"
+//#include "cube/cube.h"
 #include "xgpu.h"
  
 

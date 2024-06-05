@@ -94,7 +94,9 @@ void get_string(FILE *inputfile, int *nbytes, char string[])
 }
 */
 
-/*int read_header(FILE *inputfile)
+int read_header(FILE *inputfile);
+/*
+int read_header(FILE *inputfile)
 {
   size_t nRead;
   char string[80], message[80];
@@ -353,7 +355,7 @@ int main (int argc, char *argv[]) {
   
   syslog (LOG_INFO, "creating in and out hdus");
   
-  hdu_in  = dada_hdu_create ();
+  hdu_in  = dada_hdu_create (0);
   dada_hdu_set_key (hdu_in, in_key);
   if (dada_hdu_connect (hdu_in) < 0) {
     syslog (LOG_ERR,"could not connect to dada buffer in");
@@ -364,7 +366,7 @@ int main (int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  hdu_out  = dada_hdu_create ();
+  hdu_out  = dada_hdu_create (0);
   dada_hdu_set_key (hdu_out, out_key);
   if (dada_hdu_connect (hdu_out) < 0) {
     syslog (LOG_ERR,"could not connect to output  buffer");
@@ -413,7 +415,7 @@ int main (int argc, char *argv[]) {
   // get block sizes and allocate memory
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
   uint64_t block_out = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
-  syslog(LOG_INFO, "main: have input and output block sizes %llu %llu\n",block_size,block_out);
+  syslog(LOG_INFO, "main: have input and output block sizes %lu %lu\n",block_size,block_out);
   uint64_t  bytes_read = 0;
   uint64_t npackets = 1;
   char * block, * output_buffer;
@@ -431,17 +433,19 @@ int main (int argc, char *argv[]) {
       syslog(LOG_ERR, "cannot open file - will write zeros");
     }
     else {
-		
-      if (rhead) read_header(fin);
-//		fread(packet,block_out,1,fin);
-//		fclose(fin);
 
-//		syslog(LOG_INFO,"Read packet, npackets %llu",npackets);
+      // DMH: FIXME
+      //if (rhead) read_header(fin);
       
-//      for (int i=0;i<npackets;i++)
-//		memcpy(output_buffer,packet,block_out);
-
-//		syslog(LOG_INFO, "Using input packet");
+      //		fread(packet,block_out,1,fin);
+      //		fclose(fin);
+      
+      //		syslog(LOG_INFO,"Read packet, npackets %llu",npackets);
+      
+      //      for (int i=0;i<npackets;i++)
+      //		memcpy(output_buffer,packet,block_out);
+      
+      //		syslog(LOG_INFO, "Using input packet");
       
     }
 
@@ -470,7 +474,8 @@ int main (int argc, char *argv[]) {
     else{
       fclose(fin);
       fin=fopen(fnam,"rb");
-      if (rhead) read_header(fin);
+      // DMH: FIXME
+      //if (rhead) read_header(fin);
       fread(packet,block_out,1,fin);
     }
 

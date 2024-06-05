@@ -63,7 +63,6 @@ dsaX_reorder.o: dsaX_reorder.c $(CDEPS1)
 dsaX_reorder: dsaX_reorder.o
 	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
 
-
 dsaX_dbnic.o: dsaX_dbnic.c $(CDEPS1)
 	$(CC) -c -o $@ $< $(CFLAGS1)
 

@@ -30,6 +30,8 @@ Second kernel will simply add times and adjacent channels and pick leading 8 bit
 Then copy back to specific locations in host to form final [beam, time, frequency] array, to be sent to corner turn.
 
  */
+#define THRUST_IGNORE_CUB_VERSION_CHECK
+
 #include <iostream>
 #include <algorithm>
 using std::cout;
@@ -721,7 +723,7 @@ int main (int argc, char *argv[]) {
   
   syslog (LOG_INFO, "creating in and out hdus");
   
-  hdu_in  = dada_hdu_create ();
+  hdu_in  = dada_hdu_create (0);
   dada_hdu_set_key (hdu_in, in_key);
   if (dada_hdu_connect (hdu_in) < 0) {
     syslog (LOG_ERR,"could not connect to dada buffer in");
@@ -732,7 +734,7 @@ int main (int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  hdu_out  = dada_hdu_create ();
+  hdu_out  = dada_hdu_create (0);
   dada_hdu_set_key (hdu_out, out_key);
   if (dada_hdu_connect (hdu_out) < 0) {
     syslog (LOG_ERR,"could not connect to output  buffer");
@@ -743,7 +745,7 @@ int main (int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  hdu_out2  = dada_hdu_create ();
+  hdu_out2  = dada_hdu_create (0);
   dada_hdu_set_key (hdu_out2, out_key2);
   if (dada_hdu_connect (hdu_out2) < 0) {
     syslog (LOG_ERR,"could not connect to output  buffer");
@@ -809,7 +811,7 @@ int main (int argc, char *argv[]) {
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
   uint64_t block_out = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
   uint64_t block_out2 = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out2->data_block);
-  syslog(LOG_INFO, "main: have input and output block sizes %llu %llu\n",block_size,block_out);
+  syslog(LOG_INFO, "main: have input and output block sizes %lu %lu\n",block_size,block_out);
   uint64_t  bytes_read = 0;
   int nints = NPACKETS / 16;
   uint64_t nbytes_per_int = block_size / nints;

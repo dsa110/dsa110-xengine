@@ -30,6 +30,8 @@ Second kernel will simply add times and adjacent channels and pick leading 8 bit
 Then copy back to specific locations in host to form final [beam, time, frequency] array, to be sent to corner turn.
 
  */
+#define THRUST_IGNORE_CUB_VERSION_CHECK
+
 #include <iostream>
 #include <algorithm>
 using std::cout;
@@ -723,7 +725,7 @@ int main (int argc, char *argv[]) {
   uint64_t block_out = 15*48*512*256;
   char * block;
   block = (char *)malloc(sizeof(char)*block_size);
-  syslog(LOG_INFO, "main: have input and output block sizes %llu %llu\n",block_size,block_out);
+  syslog(LOG_INFO, "main: have input and output block sizes %lu %lu\n",block_size,block_out);
   int nints = NPACKETS / 16;
   uint64_t nbytes_per_int = block_size / nints;
   uint64_t nbytes_per_out = block_out / nints;  

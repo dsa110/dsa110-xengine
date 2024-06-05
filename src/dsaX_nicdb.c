@@ -369,7 +369,7 @@ int main(int argc, char ** argv)
 
   // DADA stuff
 
-  hdu_out  = dada_hdu_create ();
+  hdu_out  = dada_hdu_create (0);
   dada_hdu_set_key (hdu_out, out_key);
   if (dada_hdu_connect (hdu_out) < 0) {
     syslog (LOG_ERR,"could not connect to output  buffer");
@@ -408,7 +408,7 @@ int main(int argc, char ** argv)
   
   // get block sizes and allocate memory
   uint64_t block_out = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
-  syslog(LOG_INFO, "main: have output block sizes %llu\n",block_out);
+  syslog(LOG_INFO, "main: have output block sizes %lu\n",block_out);
   uint64_t  bytes_read = 0;
   char *output1, *output2;
   output1 = (char *)malloc(sizeof(char)*block_out*bdepth);

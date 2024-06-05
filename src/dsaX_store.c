@@ -112,7 +112,7 @@ int main (int argc, char *argv[]) {
 
   // open connection to the in/read DB
   
-  hdu_in  = dada_hdu_create ();
+  hdu_in  = dada_hdu_create (0);
   dada_hdu_set_key (hdu_in, in_key);
   if (dada_hdu_connect (hdu_in) < 0) {
     syslog (LOG_ERR,"could not connect to input buffer");
@@ -167,7 +167,7 @@ int main (int argc, char *argv[]) {
   char fnam[100];
   
 
-  syslog(LOG_INFO, "have ngulps %d, blocksize %llu, bout %llu",ngulps,blocksize,bout);
+  syslog(LOG_INFO, "have ngulps %d, blocksize %lu, bout %lu",ngulps,blocksize,bout);
 
   
   // main reading loop
@@ -202,7 +202,7 @@ int main (int argc, char *argv[]) {
     // for exiting
     if (bytes_read < blocksize) {
       observation_complete = 1;
-      syslog(LOG_INFO, "main: finished, with bytes_read %llu < expected %llu", bytes_read, blocksize);
+      syslog(LOG_INFO, "main: finished, with bytes_read %lu < expected %lu", bytes_read, blocksize);
     }
 
     // close block for reading
