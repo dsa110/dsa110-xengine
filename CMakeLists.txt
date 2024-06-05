@@ -55,8 +55,8 @@ set(DSA_XENGINE_GPU_ARCH_SUFFIX
   CACHE STRING "set the GPU architecture suffix (virtual, real). Leave empty for no suffix.")
 set_property(CACHE DSA_XENGINE_GPU_ARCH_SUFFIX PROPERTY STRINGS "real" "virtual" " ")
 #set(CMAKE_CUDA_ARCHITECTURES ${DSA_XENGINE_GPU_ARCH})
-mark_as_advanced(DSA_XENGINE_GPU_ARCH_SUFFIX)
-mark_as_advanced(CMAKE_CUDA_ARCHITECTURES)
+#mark_as_advanced(DSA_XENGINE_GPU_ARCH_SUFFIX)
+#mark_as_advanced(CMAKE_CUDA_ARCHITECTURES)
 
 string(TOUPPER ${DSA_XENGINE_TARGET_TYPE} CHECK_TARGET_TYPE)
 list(FIND VALID_TARGET_TYPES ${CHECK_TARGET_TYPE} TARGET_TYPE_VALID)
@@ -103,7 +103,7 @@ if(DSA_XENGINE_DOWNLOAD_PSRDADA)
   FetchContent_Declare(
     PSRDada
     GIT_REPOSITORY git://git.code.sf.net/p/psrdada/code
-    GIT_TAG        008afa70393ae2df11efba0cc8d0b95cda599c02
+    #GIT_TAG        008afa70393ae2df11efba0cc8d0b95cda599c02
     )
   FetchContent_MakeAvailable(PSRDada)
 endif()
@@ -114,10 +114,38 @@ if(DSA_XENGINE_DOWNLOAD_XGPU)
   FetchContent_Declare(
     xGPU
     GIT_REPOSITORY https://github.com/cpviolator/xGPU.git
-    GIT_TAG        13b7fff1eac497236eb9c38e179aed3b532a88f2
+    #GIT_TAG        13b7fff1eac497236eb9c38e179aed3b532a88f2
     )
   FetchContent_MakeAvailable(XGPU)
 endif()
 
+# Get TCC dependency
+option(DSA_XENGINE_DOWNLOAD_TCC "Download and build TCC" ON)
+if(DSA_XENGINE_DOWNLOAD_TCC) 
+  FetchContent_Declare(
+    TCC
+    GIT_REPOSITORY https://git.astron.nl/RD/tensor-core-correlator
+    #GIT_TAG        11d8a4a504d7073a2a33b81e1e387b12e58a420c
+    )
+  FetchContent_MakeAvailable(TCC)
+endif()
+add_custom_command(
+  OUTPUT "file.txt"
+  WORKING_DIRECTORY ${TCC_SOURCE_DIR}
+  COMMAND "sed -i 's/libtcc\///g' libtcc/*.h libtcc/*.cc"
+  )  
+
+
 # Add src
 add_subdirectory(src)
+
+# Install project cmake targets
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+  ${PROJECT_NAME}-config-version.cmake
+  VERSION ${DSA_XENGINE_VERSION}
+  COMPATIBILITY AnyNewerVersion
+  )
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config-version.cmake
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
+  )

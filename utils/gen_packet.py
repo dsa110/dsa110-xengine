@@ -214,15 +214,3 @@ newFile.close()
 
     
 #plot_spectrum(out_str,pol=1,ant=1)
-
-
-    
-
-
-
-    
-        
-    
-    
-        
-    

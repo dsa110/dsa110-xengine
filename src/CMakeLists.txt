@@ -4,7 +4,7 @@ include_directories(${PSRDada_SOURCE_DIR}/src)
 include_directories(${xGPU_SOURCE_DIR}/src)
 
 set(PSRDada_LIB ${PSRDada_BINARY_DIR}/src/libpsrdada.so)
-set(XGPU_LIB ${xGPU_BINARY_DIR}/src/libxgpu.a)
+set(XGPU_LIB ${xGPU_BINARY_DIR}/src/libxgpu.so)
 
 
 add_executable(test_write test_write.c)
@@ -50,6 +50,9 @@ target_link_libraries(dsaX_fluff ${PSRDada_LIB})
 add_executable(dsaX_nicdb dsaX_nicdb.c)
 target_link_libraries(dsaX_nicdb ${PSRDada_LIB})
 
+add_executable(dsaX_dbnic dsaX_dbnic.c)
+target_link_libraries(dsaX_dbnic ${PSRDada_LIB})
+
 add_executable(dsaX_capture dsaX_capture.c)
 target_link_libraries(dsaX_capture ${PSRDada_LIB})
 
@@ -85,7 +88,7 @@ endif()
 
 # DMH: XGPU dependencies
 add_executable(dsaX_wrangle dsaX_wrangle.c)
-target_link_libraries(dsaX_wrangle ${PSRDada_LIB} ${XGPU_LIB})
+target_link_libraries(dsaX_wrangle ${XGPU_LIB} ${PSRDada_LIB} )
 
 add_executable(dsaX_testdada dsaX_testdada.c)
 target_link_libraries(dsaX_testdada ${PSRDada_LIB})
@@ -118,3 +121,51 @@ target_link_libraries(dsaX_beamformer_passon ${PSRDada_LIB})
 add_executable(dsaX_beamformer_offline dsaX_beamformer_offline.cu)
 target_link_libraries(dsaX_beamformer_offline ${PSRDada_LIB})
 
+# install step for header files
+set(DSA_XENGINE_HEADERS
+  # cmake-format: sortable
+  dsaX_capture.h
+  dsaX_capture_manythread.h
+  dsaX_capture_pcap.h
+  dsaX_def.h
+  )
+install(FILES ${DSA_XENGINE_HEADERS} DESTINATION include)
+
+# install step for executables
+install(TARGETS
+  # cmake-format: sortable
+  dsaX_beamformer
+  dsaX_beamformer_passon
+  dsaX_xgpu
+  dsaX_reorder_raw
+  dsaX_fake
+  dsaX_capture
+  dsaX_capture_thread
+  dsaX_capture_manythread
+  dsaX_dbnic
+  dsaX_nicdb
+  dsaX_split
+  dsaX_wrangle
+  fil2dada
+  dumpfil
+  dsaX_simplesplit
+  dsaX_store
+  dsaX_trigger
+  dsaX_filTrigger
+  dsaX_beamformer_offline
+  dsaX_splitup
+  cuda_correlator
+  dsaX_copydb
+  dsaX_bfCorr
+  dsaX_merge
+  
+  #fitsio dep
+  # dsaX_writevis
+  
+  #sigproc dep 
+  # dsaX_writeFil
+  # dsaX_splice
+  # gpu_flagger
+  RUNTIME DESTINATION
+  bin
+  )

@@ -45,7 +45,7 @@ using std::endl;
 #define sep 1.0 // arcmin
 
 /* global variables */
-int DEBUG = 0;
+int DEBUG = 1;
 
 // define structure that carries around device memory
 typedef struct dmem {
@@ -264,8 +264,34 @@ __global__ void transpose_matrix_float(half * idata, half * odata) {
 
 }
 
+// arbitrary transpose kernel
+// assume breakdown into tiles of 32x32, and run with 32x8 threads per block
+// launch with dim3 dimBlock(32, 8) and dim3 dimGrid(Width/32, Height/32)
+// here, width is the dimension of the fastest index
+template <typename in_prec, typename out_prec> __global__ void transpose_matrix_template(in_prec * idata, out_prec * odata) {
 
-// function to copy amd reorder d_input to d_r and d_i
+  __shared__ in_prec tile[32][33];
+  
+  int x = blockIdx.x * 32 + threadIdx.x;
+  int y = blockIdx.y * 32 + threadIdx.y;
+  int width = gridDim.x * 32;
+
+  for (int j = 0; j < 32; j += 8)
+     tile[threadIdx.y+j][threadIdx.x] = idata[(y+j)*width + x];
+
+  __syncthreads();
+
+  x = blockIdx.y * 32 + threadIdx.x;  // transpose block offset
+  y = blockIdx.x * 32 + threadIdx.y;
+  width = gridDim.y * 32;
+
+  for (int j = 0; j < 32; j += 8)
+     odata[(y+j)*width + x] = tile[threadIdx.x][threadIdx.y + j];
+
+}
+
+
+// function to copy and reorder d_input to d_r and d_i
 // input is [NPACKETS_PER_BLOCK, NANTS, NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex]
 // output is [NCHAN_PER_PACKET, 2times, 2pol, NPACKETS_PER_BLOCK, NANTS]
 // starts by running transpose on [NPACKETS_PER_BLOCK * NANTS, NCHAN_PER_PACKET * 2 * 2] matrix in doubleComplex form.
@@ -1181,7 +1207,7 @@ int main (int argc, char *argv[]) {
   // get block sizes and allocate memory
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
   uint64_t block_out = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
-  syslog(LOG_INFO, "main: have input and output block sizes %d %d\n",block_size,block_out);
+  syslog(LOG_INFO, "main: have input and output block sizes %lu %lu\n",block_size,block_out);
   if (bf==0) 
     syslog(LOG_INFO, "main: EXPECT input and output block sizes %d %d\n",NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2,NBASE*NCHAN_PER_PACKET*2*2*4);
   else
@@ -1209,6 +1235,7 @@ int main (int argc, char *argv[]) {
 
     // do stuff
     //begin = clock();
+    // loop
     if (bf==0) {
       if (DEBUG) syslog(LOG_INFO,"run correlator");
       dcorrelator(&d);
@@ -1226,7 +1253,8 @@ int main (int argc, char *argv[]) {
     cout << "spent time " << d.cp << " " << d.prep << " " << d.cubl << " " << d.outp << " s" << endl;
     
     // write to output
-    
+
+    // write to host
     written = ipcio_write (hdu_out->data_block, (char *)(output_buffer), block_out);
     if (written < block_out)
       {
@@ -1237,13 +1265,13 @@ int main (int argc, char *argv[]) {
     
     if (DEBUG) syslog(LOG_INFO, "written block %d",blocks);	    
     blocks++;
-
+    // loop end
     
       
     // finish up
     if (bytes_read < block_size)
       observation_complete = 1;
-
+    
     ipcio_close_block_read (hdu_in->data_block, bytes_read);
     
   }
