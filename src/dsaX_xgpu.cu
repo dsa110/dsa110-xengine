@@ -1,6 +1,8 @@
 // -*- c++ -*-
 /* will run xgpu */
 /* assumes input block size is appropriate */
+#define THRUST_IGNORE_CUB_VERSION_CHECK
+
 #include <iostream>
 #include <algorithm>
 using std::cout;
@@ -177,7 +179,7 @@ int main (int argc, char *argv[]) {
   
   syslog (LOG_INFO, "creating in and out hdus");
   
-  hdu_in  = dada_hdu_create ();
+  hdu_in  = dada_hdu_create (0);
   dada_hdu_set_key (hdu_in, in_key);
   if (dada_hdu_connect (hdu_in) < 0) {
     syslog (LOG_ERR,"could not connect to dada buffer in");
@@ -188,7 +190,7 @@ int main (int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
   
-  hdu_out  = dada_hdu_create ();
+  hdu_out  = dada_hdu_create (0);
   dada_hdu_set_key (hdu_out, out_key);
   if (dada_hdu_connect (hdu_out) < 0) {
     syslog (LOG_ERR,"could not connect to output  buffer");
@@ -283,7 +285,8 @@ int main (int argc, char *argv[]) {
 
     cudaMemcpy(d_din, tmp_data, context.array_len*sizeof(char),cudaMemcpyHostToDevice);
     promoter<<<6291456,32>>>(d_din,d_dout);
-    xgpu_error = xgpuCudaXengine(&context, (ComplexInput *)d_dout, syncOp);
+    //xgpu_error = xgpuCudaXengine(&context, (ComplexInput *)d_dout, syncOp);
+    xgpu_error = xgpuCudaXengine(&context, syncOp);
     xgpuClearDeviceIntegrationBuffer(&context);
 
   }
@@ -315,7 +318,8 @@ int main (int argc, char *argv[]) {
       cudaDeviceSynchronize();
     
       // run xgpu
-      xgpu_error = xgpuCudaXengine(&context, (ComplexInput *)d_dout, syncOp);
+      //xgpu_error = xgpuCudaXengine(&context, (ComplexInput *)d_dout, syncOp);
+      xgpu_error = xgpuCudaXengine(&context, syncOp);
       if(xgpu_error) {
 	syslog(LOG_ERR, "xGPU error %d\n", xgpu_error);
 	return EXIT_FAILURE;

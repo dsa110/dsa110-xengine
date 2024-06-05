@@ -1,7 +1,11 @@
 #enable_language(CUDA)
 
-set(PSRDada_LIB ${PSRDada_BINARY_DIR}/src/libpsrdada.so)
 include_directories(${PSRDada_SOURCE_DIR}/src)
+include_directories(${xGPU_SOURCE_DIR}/src)
+
+set(PSRDada_LIB ${PSRDada_BINARY_DIR}/src/libpsrdada.so)
+set(XGPU_LIB ${xGPU_BINARY_DIR}/src/libxgpu.a)
+
 
 add_executable(test_write test_write.c)
 target_link_libraries(test_write ${PSRDada_LIB})
@@ -80,24 +84,21 @@ if(0)
 endif()
 
 # DMH: XGPU dependencies
-if(0)
-  add_executable(dsaX_wrangle dsaX_wrangle.c)
-  target_link_libraries(dsaX_wrangle ${PSRDada_LIB})
-  
-  add_executable(dsaX_testdada dsaX_testdada.c)
-  target_link_libraries(dsaX_testdada ${PSRDada_LIB})
-  
-  add_executable(dsaX_bfCorr dsaX_bfCorr.cu)
-  target_link_libraries(dsaX_bfCorr ${CUDA_cublas_LIBRARY} ${PSRDada_LIB})
+add_executable(dsaX_wrangle dsaX_wrangle.c)
+target_link_libraries(dsaX_wrangle ${PSRDada_LIB} ${XGPU_LIB})
 
-  # DMH: Fix CUBE error
-  add_executable(dsaX_xgpu dsaX_xgpu.cu)
-  target_link_libraries(dsaX_xgpu ${PSRDada_LIB})
+add_executable(dsaX_testdada dsaX_testdada.c)
+target_link_libraries(dsaX_testdada ${PSRDada_LIB})
 
-  add_executable(cuda_correlator cuda_correlator.cu)
-  target_link_libraries(cuda_correlator ${CUDA_cublas_LIBRARY} ${PSRDada_LIB})
+add_executable(dsaX_bfCorr dsaX_bfCorr.cu)
+target_link_libraries(dsaX_bfCorr ${CUDA_cublas_LIBRARY} ${PSRDada_LIB})
 
-endif()
+# DMH: Fix CUBE error
+add_executable(dsaX_xgpu dsaX_xgpu.cu)
+target_link_libraries(dsaX_xgpu ${PSRDada_LIB} ${XGPU_LIB} ${CUDA_nvml_LIBRARY})
+
+add_executable(dsaX_cuda_correlator dsaX_cuda_correlator.cu)
+target_link_libraries(dsaX_cuda_correlator ${XGPU_LIB} ${CUDA_nvml_LIBRARY} ${CUDA_cublas_LIBRARY} ${PSRDada_LIB})
 
 add_executable(dsaX_reorder_raw dsaX_reorder_raw.c)
 target_link_libraries(dsaX_reorder_raw ${PSRDada_LIB})

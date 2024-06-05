@@ -114,7 +114,7 @@ int main (int argc, char *argv[]) {
     }
   
   // DADA stuff  
-  hdu_in  = dada_hdu_create ();
+  hdu_in  = dada_hdu_create (0);
   dada_hdu_set_key (hdu_in, in_key);
   dada_hdu_connect (hdu_in);
 

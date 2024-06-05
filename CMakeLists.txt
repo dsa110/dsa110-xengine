@@ -108,18 +108,16 @@ if(DSA_XENGINE_DOWNLOAD_PSRDADA)
   FetchContent_MakeAvailable(PSRDada)
 endif()
 
+# Get XGPU dependency
 option(DSA_XENGINE_DOWNLOAD_XGPU "Download and build XGPU" ON)
 if(DSA_XENGINE_DOWNLOAD_XGPU) 
   FetchContent_Declare(
-    XGPU
-    GIT_REPOSITORY https://github.com/GPU-correlators/xGPU.git
-    GIT_TAG        7e85bd5da619c026e1bfbb64325ed122323b8854
+    xGPU
+    GIT_REPOSITORY https://github.com/cpviolator/xGPU.git
+    GIT_TAG        13b7fff1eac497236eb9c38e179aed3b532a88f2
     )
   FetchContent_MakeAvailable(XGPU)
 endif()
 
-
 # Add src
 add_subdirectory(src)
-
-

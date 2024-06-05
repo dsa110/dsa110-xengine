@@ -1,6 +1,8 @@
 // -*- c++ -*-
 /* will run xgpu */
 /* assumes input block size is appropriate */
+#define THRUST_IGNORE_CUB_VERSION_CHECK
+
 #include <iostream>
 #include <algorithm>
 using std::cout;
@@ -222,7 +224,8 @@ int main(int argc, char** argv) {
 #ifdef RUNTIME_STATS
       clock_gettime(CLOCK_MONOTONIC, &tic);
 #endif
-      xgpu_error = xgpuCudaXengine(&context, array_hd, i==count-1 ? finalSyncOp : syncOp);
+      //xgpu_error = xgpuCudaXengine(&context, array_hd, i==count-1 ? finalSyncOp : syncOp);
+      xgpu_error = xgpuCudaXengine(&context, i==count-1 ? finalSyncOp : syncOp);
 #ifdef RUNTIME_STATS
       clock_gettime(CLOCK_MONOTONIC, &toc);
 #endif
