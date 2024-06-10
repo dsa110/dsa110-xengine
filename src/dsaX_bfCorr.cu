@@ -929,7 +929,7 @@ void calc_weights(dmem * d) {
 
 // MAIN
 
-int main (int argc, char *argv[]) {
+int main (int argc, char *argv[]) {  
 
   cudaSetDevice(1);
   
@@ -1083,6 +1083,7 @@ int main (int argc, char *argv[]) {
 	  break;
 	case 'b':
 	  bf=1;
+	  cudaSetDevice(0);
 	  syslog (LOG_NOTICE, "Running beamformer, NOT correlator");
 	  break;
 	case 'h':
