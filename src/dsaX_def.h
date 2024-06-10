@@ -56,7 +56,7 @@
 #define NSNAPS 32
 
 /* expect consecutive channel groups */
-#define CHOFF 1024 // offset in channels of first group
+#define CHOFF 0 // offset in channels of first group
 
 // default control ports
 #define CAPTURE_CONTROL_PORT 11223
@@ -87,7 +87,7 @@
 #define FIL_PORT0 6625 // port for first chan group
 #define NCLIENTS 16 // number of client dbnic processes to expect
 #define NSAMPS_PER_BLOCK 16384 // number of samples per block
-#define NCHAN_FIL 1024 // final number of filterband chans
+#define NCHAN_FIL 768 // final number of filterbank chans
 #define NBEAMS_PER_BLOCK 128 // number of beams to expect
 #define NSAMPS_PER_TRANSMIT 512 // number of samples transmitted at one time
 #define NBMS 512
