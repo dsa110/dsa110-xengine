@@ -108,11 +108,20 @@ void * transmit(void *args) {
     char * op = (char *)malloc(sizeof(char)*(NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW));
     //iop[0] = chgroup;
     //iop[1] = tseq;
+    /*
     for (int i=0;i<NSAMPS_PER_TRANSMIT;i++) {
       for (int j=0;j<NBEAMS_PER_BLOCK;j++) {
 	for (int k=0;k<NW;k++) 
 	  // op[8+i*NBEAMS_PER_BLOCK*NW+j*NW+k] = output[i*NBMS*NW + thread_id*NBEAMS_PER_BLOCK*NW + j*NW+k]; // no transpose
 	  op[j*NSAMPS_PER_TRANSMIT*NW+i*NW+k] = output[i*NBMS*NW + thread_id*NBEAMS_PER_BLOCK*NW + j*NW+k]; // yes transpose
+      }
+    }
+    */
+    // for dsa96
+    for (int i=0;i<NBEAMS_PER_BLOCK;i++) {
+      for (int j=0;j<NSAMPS_PER_TRANSMIT;j++) {
+	for (int k=0;k<NW;k++)
+	  op[i*NSAMPS_PER_TRANSMIT*NW+j*NW+k] = output[thread_id*NBEAMS_PER_BLOCK*NSAMPS_PER_TRANSMIT*NW + i*NSAMPS_PER_TRANSMIT*NW+j*NW+k];
       }
     }
 
@@ -130,7 +139,7 @@ void * transmit(void *args) {
       sendto(sockfd,packet,P_SIZE,0,(struct sockaddr *)&si_other,sizeof(si_other));
 
       //for (int ti=0;ti<NWAIT;ti++) val = ti*ti;
-      usleep(180);
+      usleep(100);
       
     }
     

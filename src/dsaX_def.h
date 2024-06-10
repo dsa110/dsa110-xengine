@@ -88,9 +88,9 @@
 #define NCLIENTS 16 // number of client dbnic processes to expect
 #define NSAMPS_PER_BLOCK 16384 // number of samples per block
 #define NCHAN_FIL 1024 // final number of filterband chans
-#define NBEAMS_PER_BLOCK 64 // number of beams to expect
+#define NBEAMS_PER_BLOCK 128 // number of beams to expect
 #define NSAMPS_PER_TRANSMIT 512 // number of samples transmitted at one time
-#define NBMS 256
+#define NBMS 512
 #define P_SIZE 4108
 #define NWAIT 100000
 
