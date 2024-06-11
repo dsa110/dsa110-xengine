@@ -220,7 +220,7 @@ int main (int argc, char *argv[]) {
   // command line
   int arg = 0;
   int core = -1;
-  float fch1 = 1530.0;
+  float fch1 = 1498.75;
   char fnam[300], foutnam[400];
   sprintf(fnam,"/home/dsa/alltest");
 
@@ -354,7 +354,7 @@ int main (int argc, char *argv[]) {
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
   uint64_t bytes_read = 0, block_id;
   char *block;
-  float *hoblock = (float *)malloc(sizeof(float)*64*1024*16384/sumi);  
+  float *hoblock = (float *)malloc(sizeof(float)*128*768*16384/sumi);  
   
   // start things
 
@@ -367,7 +367,7 @@ int main (int argc, char *argv[]) {
     block = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
     if (DEBUG) for (int i=0;i<48;i++) syslog(LOG_INFO,"%hu",((unsigned char *)(block))[i]);
 
-    for (int i=0;i<64*1024*16384/sumi;i++) hoblock[i] = 0.;
+    for (int i=0;i<128*768*16384/sumi;i++) hoblock[i] = 0.;
     
     // for writing sum
     /*    for (int i=0;i<256*48;i++) oblock[i] = 0.;
@@ -411,9 +411,9 @@ int main (int argc, char *argv[]) {
 	send_int("machine_id",1);
 	send_int("telescope_id",82);
 	send_int("data_type",1); // filterbank data
-	send_double("fch1",1530.0); // THIS IS CHANNEL 0 :)
+	send_double("fch1",1498.75); // THIS IS CHANNEL 0 :)
 	send_double("foff",-0.244140625);
-	send_int("nchans",1024);
+	send_int("nchans",768);
 	if (sumi==1) send_int("nbits",8);
 	else send_int("nbits",32);	
 	send_double("tstart",mjd);
@@ -432,11 +432,11 @@ int main (int argc, char *argv[]) {
       syslog(LOG_INFO,"writing");
 
       
-      for (int i=0;i<64;i++) {
+      for (int i=0;i<128;i++) {
 	for (int j=0;j<16384/sumi;j++) {
 	  for (int k=0;k<sumi;k++) {
-	    for (int l=0;l<1024;l++) {
-	      hoblock[i*16384*1024/sumi + j*1024 + l] += 1.*((unsigned char *)(block))[i*16384*1024 + (j*sumi+k)*1024 + l];
+	    for (int l=0;l<768;l++) {
+	      hoblock[i*16384*768/sumi + j*768 + l] += 1.*((unsigned char *)(block))[i*16384*768 + (j*sumi+k)*768 + l];
 	    }
 	  }
 	}
@@ -445,7 +445,7 @@ int main (int argc, char *argv[]) {
       
       if (sumi==1) fwrite((unsigned char *)(block),sizeof(unsigned char),block_size,output);
       else {
-	if (onebeam==1) fwrite(hoblock + block_size/sumi/2,sizeof(float),block_size/sumi/64,output);
+	if (onebeam==1) fwrite(hoblock + block_size/sumi/2,sizeof(float),block_size/sumi/128,output);
 	else fwrite(hoblock,sizeof(float),block_size/sumi,output);
       }
       //fwrite(oblock,sizeof(float),256*48,output);
