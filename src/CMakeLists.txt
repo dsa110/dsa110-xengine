@@ -88,7 +88,7 @@ endif()
 
 # DMH: XGPU dependencies
 add_executable(dsaX_wrangle dsaX_wrangle.c)
-target_link_libraries(dsaX_wrangle ${XGPU_LIB} ${PSRDada_LIB} )
+target_link_libraries(dsaX_wrangle ${XGPU_LIB} ${PSRDada_LIB} ${CUDA_nvml_LIBRARY})
 
 add_executable(dsaX_testdada dsaX_testdada.c)
 target_link_libraries(dsaX_testdada ${PSRDada_LIB})

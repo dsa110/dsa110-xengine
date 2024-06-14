@@ -17,6 +17,8 @@ set(CMAKE_CXX_EXTENSIONS ON)
 
 # Define the project
 project("DSA_XENGINE" VERSION 1.0.0 LANGUAGES CXX CUDA C)
+set(CMAKE_C_FLAGS "-pthread")
+set(CMAKE_CXX_FLAGS "-pthread")
 
 # DSA_XENGINE may be built to run using CUDA. Future version may be
 # written for HIP or SYCL, which we call the
