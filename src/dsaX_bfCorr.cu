@@ -32,6 +32,7 @@ using std::endl;
 #include "dada_affinity.h"
 #include "ascii_header.h"
 #include "dsaX_def.h"
+#include "dsaX.h"
 
 #include <cuda.h>
 #include "cuda_fp16.h"
@@ -46,39 +47,6 @@ using std::endl;
 
 /* global variables */
 int DEBUG = 1;
-
-// define structure that carries around device memory
-typedef struct dmem {
-
-  // initial data and streams
-  char * h_input; // host input pointer
-  char * d_input, * d_tx; // [NPACKETS_PER_BLOCK, NANTS, NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex]
-  
-  // correlator pointers
-  // giant array for r and i: [NCHAN_PER_PACKET, 2 pol, NANTS_PROCESS, NPACKETS_PER_BLOCK * 2 times]
-  half * d_r, * d_i;
-  // arrays for matrix multiply output: input [NANTS_PROCESS, NANTS_PROCESS]
-  half * d_outr, *d_outi, *d_tx_outr, *d_tx_outi;
-  // giant output array: [NBASE, NCHAN_PER_PACKET, 2 pol, 2 complex]
-  float * d_output;
-  
-  // beamformer pointers
-  char * d_big_input;
-  half * d_br, * d_bi;
-  half * weights_r, * weights_i; //weights: [arm, tactp, b]
-  half * d_bigbeam_r, * d_bigbeam_i; //output: [tc, b]
-  unsigned char * d_bigpower; //output: [b, tc]
-  float * d_scf; // scale factor per beam
-  float * d_chscf;
-  float * h_winp;
-  int * flagants, nflags;
-  float * h_freqs, * d_freqs;
-
-  // timing
-  float cp, prep, cubl, outp;
-  
-} dmem;
-
 
 // allocate device memory
 void initialize(dmem * d, int bf) {
@@ -161,9 +129,6 @@ void deallocate(dmem * d, int bf) {
   
 }
 
-void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out);
-int dada_bind_thread_to_core (int core);
-
 void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out)
 {
 
@@ -180,7 +145,6 @@ void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out)
   dada_hdu_destroy (out);
 
 } 
-
 
 void usage()
 {
@@ -211,64 +175,11 @@ __global__ void corr_input_copy(char *input, half *inr, half *ini) {
 
 }
 
-
-// arbitrary transpose kernel
+// transpose kernel
 // assume breakdown into tiles of 32x32, and run with 32x8 threads per block
 // launch with dim3 dimBlock(32, 8) and dim3 dimGrid(Width/32, Height/32)
 // here, width is the dimension of the fastest index
-__global__ void transpose_matrix_char(char * idata, char * odata) {
-
-  __shared__ char tile[32][33];
-  
-  int x = blockIdx.x * 32 + threadIdx.x;
-  int y = blockIdx.y * 32 + threadIdx.y;
-  int width = gridDim.x * 32;
-
-  for (int j = 0; j < 32; j += 8)
-     tile[threadIdx.y+j][threadIdx.x] = idata[(y+j)*width + x];
-
-  __syncthreads();
-
-  x = blockIdx.y * 32 + threadIdx.x;  // transpose block offset
-  y = blockIdx.x * 32 + threadIdx.y;
-  width = gridDim.y * 32;
-
-  for (int j = 0; j < 32; j += 8)
-     odata[(y+j)*width + x] = tile[threadIdx.x][threadIdx.y + j];
-
-}
-
-// arbitrary transpose kernel
-// assume breakdown into tiles of 32x32, and run with 32x8 threads per block
-// launch with dim3 dimBlock(32, 8) and dim3 dimGrid(Width/32, Height/32)
-// here, width is the dimension of the fastest index
-__global__ void transpose_matrix_float(half * idata, half * odata) {
-
-  __shared__ half tile[32][33];
-  
-  int x = blockIdx.x * 32 + threadIdx.x;
-  int y = blockIdx.y * 32 + threadIdx.y;
-  int width = gridDim.x * 32;
-
-  for (int j = 0; j < 32; j += 8)
-     tile[threadIdx.y+j][threadIdx.x] = idata[(y+j)*width + x];
-
-  __syncthreads();
-
-  x = blockIdx.y * 32 + threadIdx.x;  // transpose block offset
-  y = blockIdx.x * 32 + threadIdx.y;
-  width = gridDim.y * 32;
-
-  for (int j = 0; j < 32; j += 8)
-     odata[(y+j)*width + x] = tile[threadIdx.x][threadIdx.y + j];
-
-}
-
-// arbitrary transpose kernel
-// assume breakdown into tiles of 32x32, and run with 32x8 threads per block
-// launch with dim3 dimBlock(32, 8) and dim3 dimGrid(Width/32, Height/32)
-// here, width is the dimension of the fastest index
-template <typename in_prec, typename out_prec> __global__ void transpose_matrix_template(in_prec * idata, out_prec * odata) {
+template <typename in_prec, typename out_prec> __global__ void transpose_matrix(in_prec * idata, out_prec * odata) {
 
   __shared__ in_prec tile[32][33];
   
@@ -300,43 +211,8 @@ void reorder_input(char *input, char * tx, half *inr, half *ini) {
 
   // transpose input data
   dim3 dimBlock(32, 8), dimGrid((NCHAN_PER_PACKET*2*2)/32, ((NPACKETS_PER_BLOCK)*NANTS)/32);
-  transpose_matrix_char<<<dimGrid,dimBlock>>>(input,tx);
-  /*
-  // set up for geam
-  cublasHandle_t cublasH = NULL;
-  cudaStream_t stream = NULL;
-  cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
-  cublasSetStream(cublasH, stream);
-
-  // transpose input matrix into tx
-  cublasOperation_t transa = CUBLAS_OP_T;
-  cublasOperation_t transb = CUBLAS_OP_N;
-  const int m = NPACKETS_PER_BLOCK * NANTS;
-  const int n = NCHAN_PER_PACKET*2*2/8; // columns in output
-  const double alpha = 1.0;
-  const double beta = 0.0;
-  const int lda = n;
-  const int ldb = m;
-  const int ldc = ldb;
-  cublasDgeam(cublasH,transa,transb,m,n,
-	      &alpha,(double *)(input),
-	      lda,&beta,(double *)(tx),
-	      ldb,(double *)(tx),ldc);
-  */
-  // now we just need to fluff to half-precision
+  transpose_matrix<<<dimGrid,dimBlock>>>(input,tx);
   corr_input_copy<<<NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4/128,128>>>(tx,inr,ini);
-
-  // look at output
-  /*char * odata = (char *)malloc(sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4*2);
-  cudaMemcpy(odata,inr,NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4*2,cudaMemcpyDeviceToHost);
-  FILE *fout;
-  fout=fopen("test.test","wb");
-  fwrite(odata,1,NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4*2,fout);
-  fclose(fout);*/
-  
-  // destroy stream
-  //cudaStreamDestroy(stream);
-  
 }
 
 // kernel to help with reordering output
@@ -377,8 +253,8 @@ void reorder_output(dmem * d) {
 
   // transpose input data
   dim3 dimBlock(32, 8), dimGrid((NANTS*NANTS)/32,(NCHAN_PER_PACKET*2*2*halfFac)/32);
-  transpose_matrix_float<<<dimGrid,dimBlock>>>(d->d_outr,d->d_tx_outr);
-  transpose_matrix_float<<<dimGrid,dimBlock>>>(d->d_outi,d->d_tx_outi);
+  transpose_matrix<<<dimGrid,dimBlock>>>(d->d_outr,d->d_tx_outr);
+  transpose_matrix<<<dimGrid,dimBlock>>>(d->d_outi,d->d_tx_outi);
 
   // look at output
   /*char * odata = (char *)malloc(sizeof(char)*384*4*NANTS*NANTS*2*halfFac);
@@ -617,7 +493,7 @@ __global__ void sum_beam(unsigned char * input, float * output) {
   __shared__ float summ[512];
   int bidx = blockIdx.x;
   int tidx = threadIdx.x;
-  int idx = bidx*256+tidx;
+  //int idx = bidx*256+tidx;
   int bm = (int)(bidx/48);
   int ch = (int)(bidx % 48);
 
@@ -675,7 +551,7 @@ void dbeamformer(dmem * d) {
   const long long int strideB = (NBEAMS/2)*4*(NANTS/2)*8*2*2;
   const long long int strideC = (NPACKETS_PER_BLOCK/4)*NBEAMS/2;
   const int batchCount = NCHAN_PER_PACKET/8;
-  long long int i1, i2, o1;
+  long long int i1, i2;//, o1;
   
   // create streams
   cudaStream_t stream;
@@ -790,13 +666,13 @@ __global__ void populate_weights_matrix(float * antpos_e, float * antpos_n, floa
   int idx = (int)(iidx % (128*(NANTS/2)*(NBEAMS/2)));
   int bm = (int)(idx / (128*(NANTS/2)));
   int tactp = (int)(idx % (128*(NANTS/2)));
-  int t = (int)(tactp / (32*(NANTS/2)));
+  //int t = (int)(tactp / (32*(NANTS/2)));
   int actp = (int)(tactp % (32*(NANTS/2)));
   int a = (int)(actp / 32);
   int ctp = (int)(actp % 32);
-  int c = (int)(ctp / 4);
+  //int c = (int)(ctp / 4);
   int tp = (int)(ctp % 4);
-  int t2 = (int)(tp / 2);
+  //int t2 = (int)(tp / 2);
   int pol = (int)(tp % 2);
   int widx = (a+48*iArm)*(NCHAN_PER_PACKET/8)*2*2 + fq*2*2 + pol*2;
   
@@ -843,18 +719,19 @@ void calc_weights(dmem * d) {
   cudaMalloc((void **)(&d_calibs), sizeof(float)*NANTS*(NCHAN_PER_PACKET/8)*2*2);
 
   // deal with antpos and calibs
-  int iant, found;
+  //int iant;
+  //int found;
   for (int i=0;i<NANTS;i++) {
     antpos_e[i] = d->h_winp[2*i];
     antpos_n[i] = d->h_winp[2*i+1];
   }
   for (int i=0;i<NANTS*(NCHAN_PER_PACKET/8)*2;i++) {
 
-    iant = (int)(i/((NCHAN_PER_PACKET/8)*2));
-
-    found = 0;
-    for (int j=0;j<d->nflags;j++)
-      if (d->flagants[j]==iant) found = 1;
+    // DEBUG CODE?
+    //iant = (int)(i/((NCHAN_PER_PACKET/8)*2));
+    //found = 0;
+    //for (int j=0;j<d->nflags;j++)
+    //if (d->flagants[j]==iant) found = 1;
 
     calibs[2*i] = d->h_winp[2*NANTS+2*i];
     calibs[2*i+1] = d->h_winp[2*NANTS+2*i+1];
@@ -1087,7 +964,7 @@ int main (int argc, char *argv[]) {
   // test mode
   FILE *fin, *fout;
   uint64_t output_size;
-  char * output_data, * o1;
+  char * output_data;//, * o1;
   if (test) {
 
     // read one block of input data    
@@ -1135,7 +1012,7 @@ int main (int argc, char *argv[]) {
     // free
     free(d.h_input);
     free(output_data);
-    free(o1);
+    //free(o1);
     deallocate(&d,bf);
 
     exit(1);
@@ -1213,18 +1090,18 @@ int main (int argc, char *argv[]) {
   else
     syslog(LOG_INFO, "main: EXPECT input and output block sizes %d %d\n",NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2,(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*NBEAMS);
   uint64_t  bytes_read = 0;
-  char * block;
+  //char * block;
   char * output_buffer;
   output_buffer = (char *)malloc(block_out);
   uint64_t written, block_id;
   
   // get things started
   bool observation_complete=0;
-  bool started = 0;
+  //bool started = 0;
   syslog(LOG_INFO, "starting observation");
   int blocks = 0;
-  clock_t begin, end;
-  double time_spent;
+  //clock_t begin, end;
+  //double time_spent;
   
   while (!observation_complete) {
 

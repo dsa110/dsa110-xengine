@@ -168,8 +168,9 @@ else()
   find_package(xGPU REQUIRED)
 endif()
 
-# Add src, legacy
+# Add src, utils, legacy
 add_subdirectory(src)
+add_subdirectory(utils)
 option(DSA_XENGINE_BUILD_LEGACY "Build legacy code (will not install if built)" OFF)
 if(DSA_XENGINE_BUILD_LEGACY)
   add_subdirectory(legacy)
