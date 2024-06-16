@@ -24,7 +24,6 @@ set(CMAKE_CXX_FLAGS "-pthread")
 
 # add a directory for cmake modules                                                                                                                                                                                
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
-include(cmake/CPM.cmake)
 
 # DSA_XENGINE may be built to run using CUDA. Future version may be
 # written for HIP or SYCL, which we call the
