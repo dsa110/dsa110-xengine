@@ -17,8 +17,14 @@ set(CMAKE_CXX_EXTENSIONS ON)
 
 # Define the project
 project("DSA_XENGINE" VERSION 1.0.0 LANGUAGES CXX CUDA C)
+
+# For GCC 8 and lower, set -pthread flag manually
 set(CMAKE_C_FLAGS "-pthread")
 set(CMAKE_CXX_FLAGS "-pthread")
+
+# add a directory for cmake modules                                                                                                                                                                                
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+include(cmake/CPM.cmake)
 
 # DSA_XENGINE may be built to run using CUDA. Future version may be
 # written for HIP or SYCL, which we call the
@@ -97,8 +103,46 @@ if(GIT_FOUND)
   endif()
 endif(GIT_FOUND)
 
-# EXTERNALS
+# Use ExternalProject_Add for libtcc (borks with FetchContent)
+# Use ExternalProject_Add for CUTLASS (long build time, version 2.11.0 for sm_8x arch)
+include(ExternalProject)
+
+# Get TCC dependency
+option(DSA_XENGINE_USE_TCC "Use TensorCoreCorrelators for correlatorss" ON)
+if(DSA_XENGINE_USE_TCC)
+  option(DSA_XENGINE_DOWNLOAD_TCC "Download, build, link (and install) TCC" OFF)
+  if(DSA_XENGINE_DOWNLOAD_TCC)
+    ExternalProject_Add(TCC
+      GIT_REPOSITORY https://git.astron.nl/RD/tensor-core-correlator
+      #GIT_TAG        11d8a4a504d7073a2a33b81e1e387b12e58a420c
+      )
+  else()
+    find_package(libtcc REQUIRED)
+  endif()
+endif()
+  
+# Get CUTLASS dependency
+option(DSA_XENGINE_USE_CUTLASS "Use CUTLASS for GEMMs" ON)
+if(DSA_XENGINE_USE_CUTLASS)
+  option(DSA_XENGINE_DOWNLOAD_CUTLASS "Download, build (only the required kernels) link (and install) CUTLASS" OFF)
+  if(DSA_XENGINE_DOWNLOAD_CUTLASS)
+    # Custom CUTLASS build
+    ExternalProject_Add(NvidiaCutlass
+      GIT_REPOSITORY https://github.com/NVIDIA/cutlass.git
+      GIT_TAG 7d49e6c7e2f8896c47f586706e67e1fb215529dc
+      CMAKE_ARGS
+      "-DCUTLASS_NVCC_ARCHS_ENABLED=89"
+      "-DCUTLASS_LIBRARY_KERNELS=cutlass_tensorop_*gemm_planar_complex"
+      "-DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}"
+      )
+  else()
+    find_package(NvidiaCutlass REQUIRED)
+  endif()
+endif()
+
+# Use FetchContent for lightweight dependencies
 include(FetchContent)
+
 # Get psrdada dependency
 option(DSA_XENGINE_DOWNLOAD_PSRDADA "Download and build PSRDada" ON)
 if(DSA_XENGINE_DOWNLOAD_PSRDADA) 
@@ -108,6 +152,8 @@ if(DSA_XENGINE_DOWNLOAD_PSRDADA)
     #GIT_TAG        008afa70393ae2df11efba0cc8d0b95cda599c02
     )
   FetchContent_MakeAvailable(PSRDada)
+else()
+  find_package(psrdada REQUIRED)
 endif()
 
 # Get XGPU dependency
@@ -119,27 +165,16 @@ if(DSA_XENGINE_DOWNLOAD_XGPU)
     #GIT_TAG        13b7fff1eac497236eb9c38e179aed3b532a88f2
     )
   FetchContent_MakeAvailable(XGPU)
+else()
+  find_package(xGPU REQUIRED)
 endif()
 
-# Get TCC dependency
-option(DSA_XENGINE_DOWNLOAD_TCC "Download and build TCC" ON)
-if(DSA_XENGINE_DOWNLOAD_TCC) 
-  FetchContent_Declare(
-    TCC
-    GIT_REPOSITORY https://git.astron.nl/RD/tensor-core-correlator
-    #GIT_TAG        11d8a4a504d7073a2a33b81e1e387b12e58a420c
-    )
-  FetchContent_MakeAvailable(TCC)
-endif()
-add_custom_command(
-  OUTPUT "file.txt"
-  WORKING_DIRECTORY ${TCC_SOURCE_DIR}
-  COMMAND "sed -i 's/libtcc\///g' libtcc/*.h libtcc/*.cc"
-  )  
-
-
-# Add src
+# Add src, legacy
 add_subdirectory(src)
+option(DSA_XENGINE_BUILD_LEGACY "Build legacy code (will not install if built)" OFF)
+if(DSA_XENGINE_BUILD_LEGACY)
+  add_subdirectory(legacy)
+endif()
 
 # Install project cmake targets
 include(CMakePackageConfigHelpers)
