@@ -1,5 +1,9 @@
 # dsa110-xengine
 
+<p align="center">
+    <a href="https://github.com/dsa110/dsa110-xengine/commits/master"><img src="https://img.shields.io/github/last-commit/dsa110/dsa110-xengine" alt="GitHub last commit"></a>
+    <a href="https://github.com/dsa110/dsa110-xengine/commits/master"><img src="https://img.shields.io/github/commit-activity/y/dsa110/dsa110-xengine" alt="GitHub commit activity the past week"></a>
+</p>
 
 This repo contains code used for the DSA X-engine. The requirements are to:
  - capture SNAP F-engine packets on an ethernet interface, and place them in a psrdada buffer

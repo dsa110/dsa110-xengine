@@ -1,15 +1,10 @@
-// -*- c++ -*-
-/* assumes input and output block size is appropriate - will seg fault otherwise*/
-/*
-Workflow is similar for BF and corr applications
- - copy data to GPU, convert to half-precision and calibrate while reordering
- - do matrix operations to populate large output vector
- */
 #include <iostream>
 #include <algorithm>
+#include <complex>
 using std::cout;
 using std::cerr;
 using std::endl;
+#include <vector>
 #include <stdio.h>
 #include <stdlib.h>
 #include <cmath>
@@ -32,6 +27,7 @@ using std::endl;
 #include "dada_affinity.h"
 #include "ascii_header.h"
 #include "dsaX_def.h"
+#include "dsaX_enums.h"
 
 #include <cuda.h>
 #include "cuda_fp16.h"
@@ -70,8 +66,40 @@ typedef struct dmem {
   
 } dmem;
 
+// Structure that carries BLAS parameters
+typedef struct dsaBLASParam_s {  
+  size_t struct_size; /**< Size of this struct in bytes.  Used to ensure that the host application and DSA see the same struct*/
+  
+  dsaBLASType blas_type;    /**< Type of BLAS computation to perfrom */
+  
+  // GEMM params
+  dsaBLASOperation trans_a; /**< operation op(A) that is non- or (conj.) transpose. */
+  dsaBLASOperation trans_b; /**< operation op(B) that is non- or (conj.) transpose. */
+  int m;                     /**< number of rows of matrix op(A) and C. */
+  int n;                     /**< number of columns of matrix op(B) and C. */
+  int k;                     /**< number of columns of op(A) and rows of op(B). */
+  int lda;                   /**< leading dimension of two-dimensional array used to store the matrix A. */
+  int ldb;                   /**< leading dimension of two-dimensional array used to store matrix B. */
+  int ldc;                   /**< leading dimension of two-dimensional array used to store matrix C. */
+  int a_offset;              /**< position of the A array from which begin read/write. */
+  int b_offset;              /**< position of the B array from which begin read/write. */
+  int c_offset;              /**< position of the C array from which begin read/write. */
+  int a_stride;              /**< stride of the A array in strided(batched) mode */
+  int b_stride;              /**< stride of the B array in strided(batched) mode */
+  int c_stride;              /**< stride of the C array in strided(batched) mode */
+  std::complex<double> alpha;             /**< scalar used for multiplication. */
+  std::complex<double>  beta;             /**< scalar used for multiplication. If beta==0, C does not have to be a valid input. */
+  
+  // Common params
+  int batch_count;             /**< number of pointers contained in arrayA, arrayB and arrayC. */
+  dsaBLASDataType data_type;   /**< Specifies if using S(C) or D(Z) BLAS type */
+  dsaBLASDataOrder data_order; /**< Specifies if using Row or Column major */
+  
+} dsaBLASParam;
+  
+
 // Initialise device memory
-void initialize(dmem * d, int bf);
+void initialize_device_memeory(dmem * d, int bf);
 
 // Deallocate device memory
 void deallocate(dmem * d, int bf);

@@ -25,45 +25,21 @@ set(CMAKE_CXX_FLAGS "-pthread")
 # add a directory for cmake modules                                                                                                                                                                                
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-# DSA_XENGINE may be built to run using CUDA. Future version may be
+# DSA_XENGINE may be built to run using CUDA or CPU. Future version may be
 # written for HIP or SYCL, which we call the
 # Target type. By default, the target is CUDA.
+#---------------------------------------------
+
+# Set by environment variable if visible
 if(DEFINED ENV{DSA_XENGINE_TARGET})
   set(DEFTARGET $ENV{DSA_XENGINE_TARGET})
 else()
   set(DEFTARGET "CUDA")
 endif()
 
-set(VALID_TARGET_TYPES CUDA) #HIP SYCL
-set(DSA_XENGINE_TARGET_TYPE
-  "${DEFTARGET}"
-  CACHE STRING "Choose the type of target, options are: ${VALID_TARGET_TYPES}")
-set_property(CACHE DSA_XENGINE_TARGET_TYPE PROPERTY STRINGS CUDA)
-
-# CUDA specific part of CMakeLists
-#set(CMAKE_CUDA_EXTENSIONS OFF)
-find_package(CUDAToolkit REQUIRED)
-
-if(DEFINED ENV{DSA_XENGINE_GPU_ARCH})
-  set(DSA_XENGINE_DEFAULT_GPU_ARCH $ENV{DSA_XENGINE_GPU_ARCH})
-else()
-  set(DSA_XENGINE_DEFAULT_GPU_ARCH sm_70)
-endif()
-if(NOT DSA_XENGINE_GPU_ARCH)
-  message(STATUS "Building DSA_XENGINE for GPU ARCH " "${DSA_XENGINE_DEFAULT_GPU_ARCH}")
-endif()
-
-set(DSA_XENGINE_GPU_ARCH
-  ${DSA_XENGINE_DEFAULT_GPU_ARCH}
-  CACHE STRING "set the GPU architecture (sm_60, sm_70, sm_80 sm_90)")
-set_property(CACHE DSA_XENGINE_GPU_ARCH PROPERTY STRINGS sm_60 sm_70 sm_80 sm_90)
-set(DSA_XENGINE_GPU_ARCH_SUFFIX
-  ""
-  CACHE STRING "set the GPU architecture suffix (virtual, real). Leave empty for no suffix.")
-set_property(CACHE DSA_XENGINE_GPU_ARCH_SUFFIX PROPERTY STRINGS "real" "virtual" " ")
-#set(CMAKE_CUDA_ARCHITECTURES ${DSA_XENGINE_GPU_ARCH})
-#mark_as_advanced(DSA_XENGINE_GPU_ARCH_SUFFIX)
-#mark_as_advanced(CMAKE_CUDA_ARCHITECTURES)
+set(VALID_TARGET_TYPES CUDA CPU) #HIP SYCL
+set(DSA_XENGINE_TARGET_TYPE "${DEFTARGET}" CACHE STRING "Choose the type of target, options are: ${VALID_TARGET_TYPES}")
+set_property(CACHE DSA_XENGINE_TARGET_TYPE PROPERTY STRINGS "CUDA" "CPU") # HIP SYCL
 
 string(TOUPPER ${DSA_XENGINE_TARGET_TYPE} CHECK_TARGET_TYPE)
 list(FIND VALID_TARGET_TYPES ${CHECK_TARGET_TYPE} TARGET_TYPE_VALID)
@@ -72,7 +48,8 @@ if(TARGET_TYPE_VALID LESS 0)
   message(SEND_ERROR "Please specify a valid DSA_XENGINE_TARGET_TYPE type! Valid target types are:" "${VALID_TARGET_TYPES}")
 endif()
 
-# Git
+# Git helpers
+#------------
 find_package(Git)
 if(GIT_FOUND)
   execute_process(
@@ -106,66 +83,173 @@ endif(GIT_FOUND)
 # Use ExternalProject_Add for CUTLASS (long build time, version 2.11.0 for sm_8x arch)
 include(ExternalProject)
 
-# Get TCC dependency
-option(DSA_XENGINE_USE_TCC "Use TensorCoreCorrelators for correlatorss" ON)
-if(DSA_XENGINE_USE_TCC)
-  option(DSA_XENGINE_DOWNLOAD_TCC "Download, build, link (and install) TCC" OFF)
-  if(DSA_XENGINE_DOWNLOAD_TCC)
-    ExternalProject_Add(TCC
-      GIT_REPOSITORY https://git.astron.nl/RD/tensor-core-correlator
-      #GIT_TAG        11d8a4a504d7073a2a33b81e1e387b12e58a420c
-      )
-  else()
-    find_package(libtcc REQUIRED)
-  endif()
-endif()
-  
-# Get CUTLASS dependency
-option(DSA_XENGINE_USE_CUTLASS "Use CUTLASS for GEMMs" ON)
-if(DSA_XENGINE_USE_CUTLASS)
-  option(DSA_XENGINE_DOWNLOAD_CUTLASS "Download, build (only the required kernels) link (and install) CUTLASS" OFF)
-  if(DSA_XENGINE_DOWNLOAD_CUTLASS)
-    # Custom CUTLASS build
-    ExternalProject_Add(NvidiaCutlass
-      GIT_REPOSITORY https://github.com/NVIDIA/cutlass.git
-      GIT_TAG 7d49e6c7e2f8896c47f586706e67e1fb215529dc
-      CMAKE_ARGS
-      "-DCUTLASS_NVCC_ARCHS_ENABLED=89"
-      "-DCUTLASS_LIBRARY_KERNELS=cutlass_tensorop_*gemm_planar_complex"
-      "-DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}"
-      )
-  else()
-    find_package(NvidiaCutlass REQUIRED)
-  endif()
-endif()
-
 # Use FetchContent for lightweight dependencies
 include(FetchContent)
 
+# CUDA based dependencies and options
+#------------------------------------
+if(DSA_XENGINE_TARGET_TYPE STREQUAL CUDA)
+
+  # CUDA specific part of CMakeLists
+  #set(CMAKE_CUDA_EXTENSIONS OFF)
+  find_package(CUDAToolkit REQUIRED)
+
+  # Get GPU architecture from environmen, or set default (sm_80)
+  if(DEFINED ENV{DSA_XENGINE_GPU_ARCH})
+    set(DSA_XENGINE_DEFAULT_GPU_ARCH $ENV{DSA_XENGINE_GPU_ARCH})
+  else()
+    set(DSA_XENGINE_DEFAULT_GPU_ARCH sm_80)
+  endif()
+  
+  if(NOT DSA_XENGINE_GPU_ARCH)
+    message(STATUS "Building DSA_XENGINE for GPU ARCH " "${DSA_XENGINE_DEFAULT_GPU_ARCH}")
+  endif()
+  
+  set(DSA_XENGINE_GPU_ARCH
+    ${DSA_XENGINE_DEFAULT_GPU_ARCH}
+    CACHE STRING "set the GPU architecture (sm_60, sm_70, sm_80 sm_90)")
+  set_property(CACHE DSA_XENGINE_GPU_ARCH PROPERTY STRINGS sm_60 sm_70 sm_80 sm_90)
+  set(DSA_XENGINE_GPU_ARCH_SUFFIX
+    ""
+    CACHE STRING "set the GPU architecture suffix (virtual, real). Leave empty for no suffix.")
+  set_property(CACHE DSA_XENGINE_GPU_ARCH_SUFFIX PROPERTY STRINGS "real" "virtual" " ")
+  #set(CMAKE_CUDA_ARCHITECTURES ${DSA_XENGINE_GPU_ARCH})
+  #mark_as_advanced(DSA_XENGINE_GPU_ARCH_SUFFIX)
+  #mark_as_advanced(CMAKE_CUDA_ARCHITECTURES)
+  
+  # Set CUDA based methods and dependencies
+  #----------------------------------------
+  
+  # This is the default GPU method
+  option(DSA_XENGINE_ENABLE_CUBLAS "Use cuBLAS for correlatorss" ON)
+
+  # All other GPU methods can be enabled at compile time and
+  # toggled for use at run time, if enabled.
+  
+  # Get TCC dependency
+  option(DSA_XENGINE_ENABLE_TCC "Use TensorCoreCorrelators for correlatorss" OFF)
+  if(DSA_XENGINE_ENABLE_TCC)
+    option(DSA_XENGINE_DOWNLOAD_TCC "Download, build, link (and install) TCC" OFF)
+    if(DSA_XENGINE_DOWNLOAD_TCC)
+      ExternalProject_Add(TCC
+	GIT_REPOSITORY https://git.astron.nl/RD/tensor-core-correlator
+	#GIT_TAG        11d8a4a504d7073a2a33b81e1e387b12e58a420c
+	CMAKE_ARGS "-DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}"
+	)
+    else()
+      find_package(libtcc REQUIRED)
+    endif()
+  endif()
+  
+  # Get CUTLASS dependency
+  option(DSA_XENGINE_ENABLE_CUTLASS "Use CUTLASS for GEMMs" OFF)
+  if(DSA_XENGINE_ENABLE_CUTLASS)
+    option(DSA_XENGINE_DOWNLOAD_CUTLASS "Download, build (only the required kernels) link (and install) CUTLASS" OFF)
+    if(DSA_XENGINE_DOWNLOAD_CUTLASS)
+      # Custom CUTLASS build
+      ExternalProject_Add(NvidiaCutlass
+	GIT_REPOSITORY https://github.com/NVIDIA/cutlass.git
+	GIT_TAG 7d49e6c7e2f8896c47f586706e67e1fb215529dc
+	CMAKE_ARGS
+	"-DCUTLASS_NVCC_ARCHS_ENABLED=89"
+	"-DCUTLASS_LIBRARY_KERNELS=cutlass_tensorop_*gemm_planar_complex"
+	"-DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}"
+	)
+    else()
+      find_package(NvidiaCutlass REQUIRED)
+    endif()
+  endif()
+  
+  # Get MAGMA dependency
+  option(DSA_XENGINE_ENABLE_MAGMA "Use MAGMA for GEMMs" OFF)
+  if(DSA_XENGINE_ENABLE_MAGMA)
+    option(DSA_XENGINE_DOWNLOAD_MAGMA "Download, build (only the required kernels) link (and install) MAGMA" OFF)
+    if(DSA_XENGINE_DOWNLOAD_MAGMA)
+      # Custom MAGMA build
+      ExternalProject_Add(Magma
+	URL https://icl.utk.edu/projectsfiles/magma/downloads/magma-2.8.0.tar.gz
+	CMAKE_ARGS
+	"-DMAGMA_ENABLE_CUDA=ON"
+	"-DGPU_TARGET=sm_80"
+	"-DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}"
+	)
+    else()
+      find_package(Magma REQUIRED)
+    endif()
+  endif()
+  
+  # Get XGPU dependency (fix install)
+  option(DSA_XENGINE_ENABLE_XGPU "Use xGPU for correlatorss" OFF)
+  if(DSA_XENGINE_ENABLE_XGPU)
+    option(DSA_XENGINE_DOWNLOAD_XGPU "Download and build xGPU" OFF)
+    if(DSA_XENGINE_DOWNLOAD_XGPU)
+      # Download, build and install
+      FetchContent_Declare(    
+	xGPU
+	GIT_REPOSITORY https://github.com/cpviolator/xGPU.git
+	#GIT_TAG        13b7fff1eac497236eb9c38e179aed3b532a88f2
+	)
+      FetchContent_MakeAvailable(XGPU)
+    else()
+      # Find and link to local install
+      find_package(xGPU REQUIRED)
+    endif()
+  endif()
+
+endif() # CUDA functionality
+
+# Get CPU based dependencies
+# Get OPENBLAS dependency
+option(DSA_XENGINE_ENABLE_OPENBLAS "Use OPENBLAS for GEMMs" OFF)
+if(DSA_XENGINE_ENABLE_OPENBLAS)
+  option(DSA_XENGINE_DOWNLOAD_OPENBLAS "Download, build, link, and install OPENBLAS" OFF)
+  if(DSA_XENGINE_DOWNLOAD_OPENBLAS)
+    # Custom OPENBLAS build
+    ExternalProject_Add(Openblas
+      GIT_REPOSITORY https://github.com/OpenMathLib/OpenBLAS.git
+      GIT_TAG ce3f668
+      CMAKE_ARGS
+      #"-DOPENBLAS_ENABLE_CUDA=ON"
+      #"-DGPU_TARGET=sm_80"
+      "-DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}"
+      )
+  else()
+    find_package(Openblas REQUIRED)
+  endif()
+endif()
+
 # Get psrdada dependency
+option(DSA_XENGINE_ENABLE_PSRDADA "Use PSRDada for correlatorss" ON)
 option(DSA_XENGINE_DOWNLOAD_PSRDADA "Download and build PSRDada" ON)
-if(DSA_XENGINE_DOWNLOAD_PSRDADA) 
+if(DSA_XENGINE_DOWNLOAD_PSRDADA)
+  # Download, build and install
   FetchContent_Declare(
     PSRDada
     GIT_REPOSITORY git://git.code.sf.net/p/psrdada/code
-    #GIT_TAG        008afa70393ae2df11efba0cc8d0b95cda599c02
     )
   FetchContent_MakeAvailable(PSRDada)
 else()
+  # Find and link to local install
   find_package(psrdada REQUIRED)
 endif()
 
-# Get XGPU dependency
-option(DSA_XENGINE_DOWNLOAD_XGPU "Download and build XGPU" ON)
-if(DSA_XENGINE_DOWNLOAD_XGPU) 
+# Get command line util
+
+# Get cli11 dependency
+# FIX ME: het static .hpp version and ship with package
+option(DSA_XENGINE_ENABLE_CLI11 "Enable CLI11 (required)" ON)
+option(DSA_XENGINE_DOWNLOAD_CLI11 "Download and build Cli11" ON)
+if(DSA_XENGINE_DOWNLOAD_CLI11)
+  # Download, build and install
   FetchContent_Declare(
-    xGPU
-    GIT_REPOSITORY https://github.com/cpviolator/xGPU.git
-    #GIT_TAG        13b7fff1eac497236eb9c38e179aed3b532a88f2
+    CLI11
+    GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
+    GIT_TAG main
     )
-  FetchContent_MakeAvailable(XGPU)
+  FetchContent_MakeAvailable(CLI11)
 else()
-  find_package(xGPU REQUIRED)
+  # Find and link to local install
+  find_package(CLI11 REQUIRED)
 endif()
 
 # Add src, utils, legacy

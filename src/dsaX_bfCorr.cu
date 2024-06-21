@@ -49,7 +49,7 @@ using std::endl;
 int DEBUG = 1;
 
 // allocate device memory
-void initialize(dmem * d, int bf) {
+void initialize_device_memory(dmem * d, int bf) {
   
   // for correlator
   if (bf==0) {
@@ -337,7 +337,7 @@ void dcorrelator(dmem * d) {
   cudaMemcpy(d->d_input,d->h_input,NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2,cudaMemcpyHostToDevice);
 
   // reorder input
-  reorder_input(d->d_input,d->d_tx,d->d_r,d->d_i);
+  reorder_input(d->d_input, d->d_tx, d->d_r, d->d_i);
 
   // not sure if essential
   cudaDeviceSynchronize();
@@ -771,7 +771,7 @@ void calc_weights(dmem * d) {
 
 int main (int argc, char *argv[]) {
 
-  cudaSetDevice(1);
+  cudaSetDevice(0);
   
   // startup syslog message
   // using LOG_LOCAL0
@@ -793,7 +793,6 @@ int main (int argc, char *argv[]) {
   int test = 0;
   char ftest[200], fflagants[200], fcalib[200];
   float sfreq = 1498.75;
-
   
   while ((arg=getopt(argc,argv,"c:i:o:t:f:a:s:bdh")) != -1)
     {
@@ -927,7 +926,7 @@ int main (int argc, char *argv[]) {
 
   // allocate device memory
   dmem d;
-  initialize(&d,bf);
+  initialize_device_memory(&d,bf);
 
   // set up for beamformer
   FILE *ff;
