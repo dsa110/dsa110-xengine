@@ -38,28 +38,28 @@ endif()
 
 # DSA Fast Time Domain
 #---------------------
-add_executable(dsaX_bfCorr dsaX_bfCorr.cu)
-target_link_libraries(dsaX_bfCorr ${CUDA_cublas_LIBRARY} ${PSRDada_LIB})
+add_library(dsa OBJECT dsaX_beamformer_correlator.cu)
+
+add_executable(dsaX_beamformer_correlator dsaX_beamformer_correlator.cu)
+target_link_libraries(dsaX_beamformer_correlator ${CUDA_cublas_LIBRARY} ${PSRDada_LIB})
 #---------------------
 
-# install step for header files
-#------------------------------
-set(DSA_XENGINE_HEADERS
+# install step for libraray
+#-----------------------------
+install(TARGETS
   # cmake-format: sortable
-  dsaX_capture.h
-  dsaX_capture_manythread.h
-  dsaX_capture_pcap.h
-  dsaX_def.h
-  dsaX_cutlass_interface.h
+  dsa
+  LIBRARY DESTINATION
+  lib
   )
-install(FILES ${DSA_XENGINE_HEADERS} DESTINATION include)
-#------------------------------
+#-----------------------------
+
 
 # install step for executables
 #-----------------------------
 install(TARGETS
   # cmake-format: sortable
-  dsaX_bfCorr
+  dsaX_beamformer_correlator
   RUNTIME DESTINATION
   bin
   )

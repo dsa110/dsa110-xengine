@@ -233,12 +233,10 @@ else()
   find_package(psrdada REQUIRED)
 endif()
 
-# Get command line util
-
-# Get cli11 dependency
-# FIX ME: het static .hpp version and ship with package
+# Get CLI11 dependency
+# FIX ME: get static .hpp version and ship with package
 option(DSA_XENGINE_ENABLE_CLI11 "Enable CLI11 (required)" ON)
-option(DSA_XENGINE_DOWNLOAD_CLI11 "Download and build Cli11" ON)
+option(DSA_XENGINE_DOWNLOAD_CLI11 "Download and build CLI11" ON)
 if(DSA_XENGINE_DOWNLOAD_CLI11)
   # Download, build and install
   FetchContent_Declare(
@@ -252,9 +250,29 @@ else()
   find_package(CLI11 REQUIRED)
 endif()
 
-# Add src, utils, legacy
+# Get CLI11 dependency
+# FIX ME: get static .hpp version and ship with package
+option(DSA_XENGINE_ENABLE_GOOGLETEST "Enable GOOGLETEST (required)" ON)
+option(DSA_XENGINE_DOWNLOAD_GOOGLETEST "Download and build GOOGLETEST" ON)
+if(DSA_XENGINE_DOWNLOAD_GOOGLETEST)
+  # Download, build and install
+  FetchContent_Declare(
+    GOOGLETEST
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG main
+    )
+  FetchContent_MakeAvailable(GOOGLETEST)
+else()
+  # Find and link to local install
+  find_package(GOOGLETEST REQUIRED)
+endif()
+
+
+# Add src, utils, include, tests, and legacy
 add_subdirectory(src)
 add_subdirectory(utils)
+add_subdirectory(include)
+add_subdirectory(tests)
 option(DSA_XENGINE_BUILD_LEGACY "Build legacy code (will not install if built)" OFF)
 if(DSA_XENGINE_BUILD_LEGACY)
   add_subdirectory(legacy)
