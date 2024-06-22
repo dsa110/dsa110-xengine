@@ -2,21 +2,32 @@ enable_language(CUDA)
 
 include_directories(../include)
 
+# DSA Fast Time Domain library
+#-----------------------------
+add_library(dsa SHARED dsaX_cuda_interface.cu dsaX_blas_interface.cu dsaX_beamformer_correlator.cu)
+
+if(CUDAToolkit_FOUND)
+  target_link_libraries(dsa CUDA::cudart)
+endif()
+
 if(DSA_XENGINE_ENABLE_PSRDADA)
   include_directories(${PSRDada_SOURCE_DIR}/src)
   set(PSRDada_LIB ${PSRDada_BINARY_DIR}/src/libpsrdada.so)
+  target_link_libraries(dsa ${PSRDada_LIB})
 endif()
 
 if(DSA_XENGINE_ENABLE_XGPU) 
   include_directories(${xGPU_SOURCE_DIR}/src)
   set(XGPU_LIB ${xGPU_BINARY_DIR}/src/libxgpu.a)
+  target_link_libraries(dsa PUBLIC ${XGPU_LIB})
 endif()
 
 if(DSA_XENGINE_ENABLE_CUTLASS) 
   include_directories(${NvidiaCutlass_DIR}/../../../include)
   include_directories(${NvidiaCutlass_DIR}/../../../include/cutlass/util)
   set(NvidiaCutlass_LIB ${NvidiaCutlass_DIR}/../../../lib64/libcutlass.so)
-
+  target_link_libraries(dsa PUBLIC ${NvidiaCutlass_LIB})
+  
   # Some simple CUTLASS examples to test linking/benching
   #------------------------------------------------------
   add_executable(planar_complex planar_complex.cu)
@@ -36,12 +47,10 @@ if(DSA_XENGINE_ENABLE_CUTLASS)
   #---------------------------------------  
 endif()
 
-# DSA Fast Time Domain
-#---------------------
-add_library(dsa OBJECT dsaX_beamformer_correlator.cu)
-
-add_executable(dsaX_beamformer_correlator dsaX_beamformer_correlator.cu)
-target_link_libraries(dsaX_beamformer_correlator ${CUDA_cublas_LIBRARY} ${PSRDada_LIB})
+if(CUDAToolkit_FOUND)
+  #add_executable(dsaX_beamformer_correlator dsaX_beamformer_correlator.cu)
+  #target_link_libraries(dsaX_beamformer_correlator ${dsa} ${CUDA_cublas_LIBRARY} ${PSRDada_LIB})
+endif()
 #---------------------
 
 # install step for libraray
@@ -59,7 +68,7 @@ install(TARGETS
 #-----------------------------
 install(TARGETS
   # cmake-format: sortable
-  dsaX_beamformer_correlator
+  #dsaX_beamformer_correlator
   RUNTIME DESTINATION
   bin
   )

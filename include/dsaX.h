@@ -1,9 +1,8 @@
+#pragma once 
+
 #include <iostream>
 #include <algorithm>
 #include <complex>
-using std::cout;
-using std::cerr;
-using std::endl;
 #include <vector>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,21 +17,17 @@ using std::endl;
 #include <syslog.h>
 #include <pthread.h>
 
-#include "dada_client.h"
-#include "dada_def.h"
-#include "dada_hdu.h"
-#include "multilog.h"
-#include "ipcio.h"
-#include "ipcbuf.h"
-#include "dada_affinity.h"
-#include "ascii_header.h"
-#include "dsaX_def.h"
-#include "dsaX_enums.h"
+#include "dsaX_cuda_headers.h"
+#include "dsaX_psrdada_headers.h"
 
-#include <cuda.h>
-#include "cuda_fp16.h"
-#include <cublas_v2.h>
-#include <cuda_runtime.h>
+// required to prevent overflow in corr matrix multiply
+#define halfFac 4
+
+// beam sep
+#define sep 1.0 // arcmin
+
+/* global variables */
+//#define DEBUG;
 
 // define structure that carries around device memory
 typedef struct dmem {

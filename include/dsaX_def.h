@@ -1,5 +1,4 @@
-#ifndef __DSAX_DEF_H
-#define __DSAX_DEF_H
+#pragma once
 
 #include "dada_def.h"
 
@@ -93,6 +92,3 @@
 #define NBMS 256
 #define P_SIZE 4108
 #define NWAIT 100000
-
-#endif 
-
