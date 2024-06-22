@@ -1,0 +1,22 @@
+# install step for utils
+#------------------------------
+set(DSA_XENGINE_UTILS
+  # cmake-format: sortable
+/home/dmhowart/DSA110/dsa110-xengine/src/dsaX_bfCorr.cu  dsaX_capture.h
+  dsaX_capture_manythread.h
+  dsaX_capture_pcap.h
+  dsaX_def.h
+  dsaX_cutlass_interface.h
+  )
+install(FILES ${DSA_XENGINE_HEADERS} DESTINATION include)
+#------------------------------
+
+# install step for executables
+#-----------------------------
+install(TARGETS
+  # cmake-format: sortable
+  dsaX_bfCorr
+  RUNTIME DESTINATION
+  bin
+  )
+#-----------------------------

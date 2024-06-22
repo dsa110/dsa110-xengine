@@ -62,10 +62,10 @@ typedef struct dmem {
 } dmem;
 
 // Structure that carries BLAS parameters
-typedef struct dsaBLASParam_s {  
+typedef struct dsaXBLASParam_s {  
   size_t struct_size; /**< Size of this struct in bytes.  Used to ensure that the host application and DSA see the same struct*/
   
-  dsaBLASType blas_type;    /**< Type of BLAS computation to perfrom */
+  dsaXBLASType blas_type;    /**< Type of BLAS computation to perfrom */
   
   // GEMM params
   dsaBLASOperation trans_a; /**< operation op(A) that is non- or (conj.) transpose. */
@@ -87,10 +87,10 @@ typedef struct dsaBLASParam_s {
   
   // Common params
   int batch_count;             /**< number of pointers contained in arrayA, arrayB and arrayC. */
-  dsaBLASDataType data_type;   /**< Specifies if using S(C) or D(Z) BLAS type */
-  dsaBLASDataOrder data_order; /**< Specifies if using Row or Column major */
+  dsaXBLASDataType data_type;   /**< Specifies if using S(C) or D(Z) BLAS type */
+  dsaXBLASDataOrder data_order; /**< Specifies if using Row or Column major */
   
-} dsaBLASParam;
+} dsaXBLASParam;
   
 
 // Initialise device memory

@@ -22,7 +22,7 @@ project("DSA_XENGINE" VERSION 1.0.0 LANGUAGES CXX CUDA C)
 set(CMAKE_C_FLAGS "-pthread")
 set(CMAKE_CXX_FLAGS "-pthread")
 
-# add a directory for cmake modules                                                                                                                                                                                
+# add a directory for cmake modules
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 # DSA_XENGINE may be built to run using CUDA or CPU. Future version may be
@@ -47,6 +47,7 @@ list(FIND VALID_TARGET_TYPES ${CHECK_TARGET_TYPE} TARGET_TYPE_VALID)
 if(TARGET_TYPE_VALID LESS 0)
   message(SEND_ERROR "Please specify a valid DSA_XENGINE_TARGET_TYPE type! Valid target types are:" "${VALID_TARGET_TYPES}")
 endif()
+
 
 # Git helpers
 #------------
@@ -268,9 +269,8 @@ else()
 endif()
 
 
-# Add src, utils, include, tests, and legacy
+# Add src, include, tests, and legacy
 add_subdirectory(src)
-add_subdirectory(utils)
 add_subdirectory(include)
 add_subdirectory(tests)
 option(DSA_XENGINE_BUILD_LEGACY "Build legacy code (will not install if built)" OFF)

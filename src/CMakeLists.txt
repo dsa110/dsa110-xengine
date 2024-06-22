@@ -4,7 +4,19 @@ include_directories(../include)
 
 # DSA Fast Time Domain library
 #-----------------------------
-add_library(dsa SHARED dsaX_cuda_interface.cu dsaX_blas_interface.cu dsaX_beamformer_correlator.cu)
+add_library(dsa SHARED
+  dsaX_cuda_interface.cu
+  dsaX_blas_interface.cu
+  dsaX_beamformer_correlator.cu
+  dsaX_utils.cpp
+  )
+
+if(DSA_XENGINE_TARGET_TYPE STREQUAL CUDA)
+  add_compile_definitions(DSA_XENGINE_TARGET_CUDA)
+endif()
+if(DSA_XENGINE_TARGET_TYPE STREQUAL CPU)
+  add_compile_definitions(DSA_XENGINE_TARGET_CPU)
+endif()
 
 if(CUDAToolkit_FOUND)
   target_link_libraries(dsa CUDA::cudart)
