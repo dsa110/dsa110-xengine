@@ -1,33 +1,15 @@
 #pragma once 
 
-#include <iostream>
-#include <algorithm>
 #include <complex>
-#include <vector>
-#include <stdio.h>
-#include <stdlib.h>
-#include <cmath>
-#include <string.h>
-#include <unistd.h>
-#include <netdb.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <netinet/in.h>
-#include <time.h>
-#include <syslog.h>
-#include <pthread.h>
 
+#include "dsaX_enums.h"
 #include "dsaX_cuda_headers.h"
-#include "dsaX_psrdada_headers.h"
 
 // required to prevent overflow in corr matrix multiply
 #define halfFac 4
 
 // beam sep
 #define sep 1.0 // arcmin
-
-/* global variables */
-//#define DEBUG;
 
 // define structure that carries around device memory
 typedef struct dmem {
@@ -91,15 +73,3 @@ typedef struct dsaXBLASParam_s {
   dsaXBLASDataOrder data_order; /**< Specifies if using Row or Column major */
   
 } dsaXBLASParam;
-  
-
-// Initialise device memory
-void initialize_device_memeory(dmem * d, int bf);
-
-// Deallocate device memory
-void deallocate(dmem * d, int bf);
-
-void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out);
-
-// ?
-int dada_bind_thread_to_core(int core);

@@ -2,4 +2,4 @@
 #include "dsaX.h"
 #include "dsaX_cuda_headers.h"
 
-void dsaXHgemmStridedBatchedCuda(void *real_in, void *imag_in, void *real_out, void *imag_out, dsaXBLASParam param);
+void dsaXHgemmStridedBatchedCuda(half *real_in, half *imag_in, half *real_out, half *imag_out, dsaXBLASParam param);

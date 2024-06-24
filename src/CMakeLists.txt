@@ -6,9 +6,12 @@ include_directories(../include)
 #-----------------------------
 add_library(dsa SHARED
   dsaX_cuda_interface.cu
+  dsaX_cublas_interface.cu
   dsaX_blas_interface.cu
-  dsaX_beamformer_correlator.cu
+  dsaX_beamformer.cu
+  dsaX_correlator.cpp
   dsaX_utils.cpp
+  dsaX_psrdada_utils.cpp
   )
 
 if(DSA_XENGINE_TARGET_TYPE STREQUAL CUDA)
@@ -19,13 +22,13 @@ if(DSA_XENGINE_TARGET_TYPE STREQUAL CPU)
 endif()
 
 if(CUDAToolkit_FOUND)
-  target_link_libraries(dsa CUDA::cudart)
+  target_link_libraries(dsa PUBLIC CUDA::cudart)
 endif()
 
 if(DSA_XENGINE_ENABLE_PSRDADA)
   include_directories(${PSRDada_SOURCE_DIR}/src)
   set(PSRDada_LIB ${PSRDada_BINARY_DIR}/src/libpsrdada.so)
-  target_link_libraries(dsa ${PSRDada_LIB})
+  target_link_libraries(dsa PUBLIC ${PSRDada_LIB})
 endif()
 
 if(DSA_XENGINE_ENABLE_XGPU) 
@@ -58,11 +61,6 @@ if(DSA_XENGINE_ENABLE_CUTLASS)
   target_link_libraries(dsaX_cutlass_interface ${NvidiaCutlass_LIB})
   #---------------------------------------  
 endif()
-
-if(CUDAToolkit_FOUND)
-  #add_executable(dsaX_beamformer_correlator dsaX_beamformer_correlator.cu)
-  #target_link_libraries(dsaX_beamformer_correlator ${dsa} ${CUDA_cublas_LIBRARY} ${PSRDada_LIB})
-endif()
 #---------------------
 
 # install step for libraray
@@ -75,7 +73,6 @@ install(TARGETS
   )
 #-----------------------------
 
-
 # install step for executables
 #-----------------------------
 install(TARGETS
@@ -85,3 +82,8 @@ install(TARGETS
   bin
   )
 #-----------------------------
+
+if(CUDAToolkit_FOUND)
+  add_executable(dsaX_beamformer_correlator_exe dsaX_beamformer_correlator_exe.cu)
+  target_link_libraries(dsaX_beamformer_correlator_exe PUBLIC dsa ${CUDA_cublas_LIBRARY} ${PSRDada_LIB})
+endif()

@@ -1,7 +1,7 @@
 #include "dsaX_cuda_interface.h"
 
 // allocate device memory
-void initialize_device_memory(dmem * d, int bf) {
+void initialize_device_memory(dmem *d, int bf) {
   
   // for correlator
   if (bf==0) {
@@ -45,9 +45,8 @@ void initialize_device_memory(dmem * d, int bf) {
     
   }  
 }
-
 // deallocate device memory
-void deallocate_device_memory(dmem * d, int bf) {
+void deallocate_device_memory(dmem *d, int bf) {
   
   cudaFree(d->d_input);
 
@@ -149,25 +148,49 @@ void reorder_output_device(dmem * d) {
   fout=fopen("test3.test","wb");
   fwrite(odata,sizeof(char),384*4*NBASE*4,fout);
   fclose(fout);*/
-
   
   cudaFree(d_idxs);
   free(h_idxs);
   //cudaStreamDestroy(stream);  
-
 }
 
 // kernel to fluff input
 // run with 128 threads and NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4/128 blocks
 __global__ void corr_input_copy(char *input, half *inr, half *ini) {
 
-  int bidx = blockIdx.x; // assume NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4/128
-  int tidx = threadIdx.x; // assume 128
+  int bidx = blockIdx.x;  // assume NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4/128
+  int tidx = threadIdx.x; // assume 128 threads per block
   int iidx = bidx*128+tidx;
-  
-  inr[iidx] = __float2half((float)((char)(((unsigned char)(input[iidx]) & (unsigned char)(15)) << 4) >> 4));
-  ini[iidx] = __float2half((float)((char)(((unsigned char)(input[iidx]) & (unsigned char)(240))) >> 4));
 
+  // 15 in unsigned char binary is 00001111. Perform bitwise & on 15 and input char data iiiirrrr
+  // to get real part 4 bit data.
+  // 0000rrrr
+  // Bit shift this result by 4 to the left.
+  // rrrr0000
+  // Cast to signed char.
+  // +-rrr0000
+  // Bitshift mantisa only to the right by 4 bits
+  // +-0000rrr
+  // Cast to float and use CUDA intrinsic to cast to signed half
+  inr[iidx] = __float2half((float)((char)((   (unsigned char)(input[iidx]) & (unsigned char)(15)  ) << 4) >> 4));
+
+  // 240 in unsigned char binary is 11110000. Perform bitwise & on 240 and input char data iiiirrrr
+  // to get imag part 4 bit data
+  // iiii0000.
+  // Cast to signed char
+  // +-iii0000
+  // Bitshift mantisa only to the right by 4 bits
+  // +-0000iii
+  // Cast to float and use CUDA intrinsic to cast to signed half
+  ini[iidx] = __float2half((float)((char)((   (unsigned char)(input[iidx]) & (unsigned char)(240)  )) >> 4));
+
+  // Both results should be half (FP16) integers between -8 and 7.
+  half re = inr[iidx];
+  half im = ini[iidx];
+  half lim = 2.;
+  if( (re > lim || re < -lim) || (im > lim || im < -lim)) {
+    //printf("re = %f, im = %f\n", __half2float(re), __half2float(im));
+  }
 }
 
 // transpose kernel
@@ -206,8 +229,8 @@ void reorder_input_device(char *input, char * tx, half *inr, half *ini) {
 
   // transpose input data
   dim3 dimBlock(32, 8), dimGrid((NCHAN_PER_PACKET*2*2)/32, ((NPACKETS_PER_BLOCK)*NANTS)/32);
-  transpose_matrix<<<dimGrid,dimBlock>>>(input,tx);
-  corr_input_copy<<<NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4/128,128>>>(tx,inr,ini);
+  transpose_matrix<<<dimGrid,dimBlock>>>(input, tx);
+  corr_input_copy<<<NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4/128, 128>>>(tx, inr, ini);
 }
 
 // kernel to help with reordering output
@@ -227,7 +250,8 @@ __global__ void corr_output_copy(half *outr, half *outi, float *output, int *ind
   int pol = (int)(chpol % 2);
 
   float v1=0., v2=0.;
-  
+
+  // Use CUDA casting intrinsic __half2float
   for (int i=0;i<halfFac;i++) {
     v1 += __half2float(outr[(4*iidx+pol)*halfFac+i])+__half2float(outr[(4*iidx+2+pol)*halfFac+i]);
     v2 += __half2float(outi[(4*iidx+pol)*halfFac+i])+__half2float(outi[(4*iidx+2+pol)*halfFac+i]);
@@ -240,11 +264,12 @@ __global__ void corr_output_copy(half *outr, half *outi, float *output, int *ind
 
 // kernels to reorder and fluff input data for beamformer
 // initial data is [NPACKETS_PER_BLOCK, (NANTS/2), NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex]            
-// want [NCHAN_PER_PACKET/8, NPACKETS_PER_BLOCK/4, 4tim, (NANTS/2), 8chan, 2 times, 2 pol, 4-bit complex]      // run as 16x16 tiled transpose with 32-byte words 
+// want [NCHAN_PER_PACKET/8, NPACKETS_PER_BLOCK/4, 4tim, (NANTS/2), 8chan, 2 times, 2 pol, 4-bit complex]
+// run as 16x16 tiled transpose with 32-byte words 
 // launch with dim3 dimBlock(16, 8) and dim3 dimGrid(Width/16, Height/16)
 // here, width=NCHAN_PER_PACKET/8 is the dimension of the fastest input index
 // dim3 dimBlock1(16, 8), dimGrid1(NCHAN_PER_PACKET/8/16, (NPACKETS_PER_BLOCK)*(NANTS/2)/16);
-__global__ void transpose_input_bf(double * idata, double * odata) {
+__global__ void transpose_input_bf(double *idata, double *odata) {
 
   __shared__ double tile[16][17][4];
   
@@ -331,7 +356,7 @@ __global__ void populate_weights_matrix(float * antpos_e, float * antpos_n, floa
 // sequential pairs of eastings and northings
 // then [NANTS, 48, R/I] calibs
 
-void calc_weights(dmem * d) {
+void calc_weights(dmem *d) {
 
   // allocate
   float *antpos_e = (float *)malloc(sizeof(float)*NANTS);
@@ -402,6 +427,15 @@ __global__ void fluff_input_bf(char * input, half * dr, half * di) {
 
   dr[idx] = __float2half(0.015625*((float)((char)(((unsigned char)(input[idx]) & (unsigned char)(15)) << 4) >> 4)));
   di[idx] = __float2half(0.015625*((float)((char)(((unsigned char)(input[idx]) & (unsigned char)(240))) >> 4)));
+
+  // Both results should be half (FP16) integers between -8 and 7.
+  //half re = dr[idx];
+  //half im = di[idx];
+  //half lim = 0;
+  //if( (re > lim || re < -lim) || (im > lim || im < -lim)) {
+  //printf("re = %f, im = %f\n", __half2float(re), __half2float(im));
+  //}
+
   
 }
 

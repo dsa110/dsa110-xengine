@@ -71,11 +71,4 @@ Finally, `dsaX_dbnic` and `dsaX_nicdb` implement the corner turn to feed `mbheim
 
 ### scripts and utils
 
-The "scripts" dir contains some useful scripts to test various aspects of the system (corr, bf, cornerturn). The "utils" dir includes functionality to generate fake data and beamforming weights. 
-
-
-
- 
- 
- 
-
+The "scripts" dir contains some useful scripts to test various aspects of the system (corr, bf, cornerturn). The "utils" dir includes functionality to generate fake data and beamforming weights.

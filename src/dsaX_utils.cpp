@@ -28,3 +28,12 @@ void dsaXmemcpyDeviceToHost(void *array_host, void *array_device, size_t n){
   memcpy(array_host, array_device, n);
 #endif
 }
+
+void dsaXmemcpyDeviceToDevice(void *array_copy_to, void *array_copy_from, size_t n){
+#ifdef DSA_XENGINE_TARGET_CUDA
+  // Perform device to device memcopy on data
+  cudaMemcpy(array_copy_to, array_copy_from, n, cudaMemcpyDeviceToDevice);
+#else
+  memcpy(array_copy_to, array_copy_from, n);
+#endif
+}

@@ -1,6 +1,9 @@
+#include <iostream>
 #include "dsaX_cublas_interface.h"
 
-void dsaXHgemmStridedBatchedCuda(void *real_in, void *imag_in, void *real_out, void *imag_out, dsaXBLASParam param) {
+using namespace std;
+
+void dsaXHgemmStridedBatchedCuda(half *real_in, half *imag_in, half *real_out, half *imag_out, dsaXBLASParam blas_param) {
 #ifdef DSA_XENGINE_TARGET_CUDA
   
   // not sure if essential
@@ -24,7 +27,7 @@ void dsaXHgemmStridedBatchedCuda(void *real_in, void *imag_in, void *real_out, v
   case DSA_BLAS_OP_C:
     transa = CUBLAS_OP_C; break;
   default:
-    std::cout << "Unknown cublas transpose" << std::end;
+    std::cout << "Unknown cublas transpose" << std::endl;
   }
 
   switch (blas_param.trans_b) {
@@ -35,14 +38,14 @@ void dsaXHgemmStridedBatchedCuda(void *real_in, void *imag_in, void *real_out, v
   case DSA_BLAS_OP_C:
     transb = CUBLAS_OP_C; break;
   default:
-    std::cout << "Unknown cublas transpose" << std::end;
+    std::cout << "Unknown cublas transpose" << std::endl;
   }
   
   const int m = blas_param.m;
   const int n = blas_param.n;
   const int k = blas_param.k;
   const half alpha = blas_param.alpha.real();
-  const half malpha = -1.0 * alpha;
+  const half malpha = -1.0 * blas_param.alpha.real();
   const int lda = blas_param.lda;
   const int ldb = blas_param.ldb;
   const half beta0 = blas_param.beta.real();
@@ -56,27 +59,27 @@ void dsaXHgemmStridedBatchedCuda(void *real_in, void *imag_in, void *real_out, v
   // run strided batched gemm for datatype (a + ib)(c + id)
   // ac
   cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			    &alpha,d->d_r,lda,strideA,
-			    d->d_r,ldb,strideB,&beta0,
-			    d->d_outr,ldc,strideC,
+			    &alpha,real_in,lda,strideA,
+			    real_in,ldb,strideB,&beta0,
+			    real_out,ldc,strideC,
 			    batchCount);
   // bd
   cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			    &alpha,d->d_i,lda,strideA,
-			    d->d_i,ldb,strideB,&beta1,
-			    d->d_outr,ldc,strideC,
+			    &alpha,imag_in,lda,strideA,
+			    imag_in,ldb,strideB,&beta1,
+			    real_out,ldc,strideC,
 			    batchCount);
   // -bc
   cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			    &malpha,d->d_i,lda,strideA,
-			    d->d_r,ldb,strideB,&beta0,
-			    d->d_outi,ldc,strideC,
+			    &malpha,imag_in,lda,strideA,
+			    real_in,ldb,strideB,&beta0,
+			    imag_out,ldc,strideC,
 			    batchCount);
   // ad
   cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			    &alpha,d->d_r,lda,strideA,
-			    d->d_i,ldb,strideB,&beta1,
-			    d->d_outi,ldc,strideC,
+			    &alpha,real_in,lda,strideA,
+			    imag_in,ldb,strideB,&beta1,
+			    imag_out,ldc,strideC,
 			    batchCount);
 
   // shown to be essential

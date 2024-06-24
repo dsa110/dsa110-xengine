@@ -10,3 +10,7 @@
 #include "ascii_header.h"
 #include "dsaX_def.h"
 #include "dsaX_enums.h"
+
+void dsaX_dbgpu_cleanup (dada_hdu_t * in, dada_hdu_t * out);
+
+int dada_bind_thread_to_core(int core);

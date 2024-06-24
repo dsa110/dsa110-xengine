@@ -4,6 +4,7 @@ enable_language(CUDA)
 #------------------------------
 set(DSA_XENGINE_HEADERS
   # cmake-format: sortable
+  dsaX_cuda_interface.h
   dsaX_cuda_headers.h
   dsaX_capture.h
   dsaX_capture_manythread.h

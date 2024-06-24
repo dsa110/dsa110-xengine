@@ -1,7 +1,5 @@
 #pragma once
 
-#include "dada_def.h"
-
 // default dada block keys
 #define TEST_BLOCK_KEY 0x0000aada // for capture program.
 // 128*3*384*32*2=9437184 for 1 CHANG 1 SNAP 1 REORDER
@@ -38,6 +36,7 @@
 #define XGPU_IN_INC 1 // size of input increment
 #define NBASE 4656 // nant*(nant+1)/2
 #define NPOL 2
+#define NCOMPLEX 2 // two reals per complex
 #define NCHAN 1536 // regardless of NCHANG
 
 // default port for packet capture
