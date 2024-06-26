@@ -26,6 +26,13 @@ void usage() {
 	   " -s start frequency (assumes -0.244140625MHz BW)\n");
 }
 
+void inspectPackedData(char input) {
+  
+  std::cout << "vals = (" << (float)((char)((   (unsigned char)(input) & (unsigned char)(15)  ) << 4) >> 4) << ",";
+  
+  std::cout << (float)((char)((   (unsigned char)(input) & (unsigned char)(240)  )) >> 4) << ")" << std::endl;
+}
+
 int main(int argc, char **argv) {
 
   // data block HDU keys
@@ -168,14 +175,14 @@ int main(int argc, char **argv) {
   }
 
   // Peek at input data (delete after development is complete)
-  for (int i=0; i<10; i++) if(input_data[i] != 0) std::cout << "input[" << i <<"] = " << (float)input_data[i] << std::endl; 
+  //for (int i=0; i<input_size; i++) inspectPackedData(input_data[i]);
   
   // run correlator and record output data
   syslog(LOG_INFO,"run correlator");
   dsaXCorrelator((void*)output_data, (void*)input_data);
 
   // Peek at output data (delete after development is complete)
-  //for (int i=0; i<NBASE*NCHAN_PER_PACKET*2*2; i++) if(output_data[i] != 0) std::cout << "output " << i << " = " << output_data[i] << std::endl; 
+  //for (int i=0; i<NBASE*NCHAN_PER_PACKET*2*2; i++) std::cout << "output " << i << " = " << output_data[i] << std::endl; 
   
   fout = fopen("output.dat","wb");
   fwrite((float *)output_data, sizeof(float), NBASE*NCHAN_PER_PACKET*2*2, fout);
@@ -188,4 +195,3 @@ int main(int argc, char **argv) {
   
   return 0;
 }
-

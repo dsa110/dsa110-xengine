@@ -105,7 +105,7 @@ void dbeamformer(dmem *d) {
     // Reuse dimBlock
     //DMH: Abstract kernel launch parameters
     dimGrid[0] = (NBEAMS/2)*(NPACKETS_PER_BLOCK/4)/16;
-    dimGrid[0] = (NCHAN_PER_PACKET/8)/16;
+    dimGrid[1] = (NCHAN_PER_PACKET/8)/16;
     begin = clock();
     transposeScaleBeamformer(d->d_bigbeam_r, d->d_bigbeam_i, d->d_bigpower + iArm*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2), dimBlock, dimGrid);
     end = clock();
