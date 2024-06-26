@@ -16,7 +16,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_EXTENSIONS ON)
 
 # Define the project
-project("DSA_XENGINE" VERSION 1.0.0 LANGUAGES CXX CUDA C)
+project("DSA_XENGINE" VERSION 1.0.0 LANGUAGES C CXX)
 
 # For GCC 8 and lower, set -pthread flag manually
 set(CMAKE_C_FLAGS "-pthread")
@@ -80,6 +80,12 @@ if(GIT_FOUND)
   endif()
 endif(GIT_FOUND)
 
+
+option(DSA_XENGINE_BUILD_ALL_TESTS "build tests by default" ON)
+option(DSA_XENGINE_INSTALL_ALL_TESTS "install tests by default" ON)
+option(DSA_XENGINE_BUILD_SHAREDLIB "build dsaXengine as a shared lib" ON)
+
+
 # Use ExternalProject_Add for libtcc (borks with FetchContent)
 # Use ExternalProject_Add for CUTLASS (long build time, version 2.11.0 for sm_8x arch)
 include(ExternalProject)
@@ -92,7 +98,7 @@ include(FetchContent)
 if(DSA_XENGINE_TARGET_TYPE STREQUAL CUDA)
 
   # CUDA specific part of CMakeLists
-  #set(CMAKE_CUDA_EXTENSIONS OFF)
+  enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)
 
   # Get GPU architecture from environmen, or set default (sm_80)
@@ -130,6 +136,7 @@ if(DSA_XENGINE_TARGET_TYPE STREQUAL CUDA)
   # Get TCC dependency
   option(DSA_XENGINE_ENABLE_TCC "Use TensorCoreCorrelators for correlatorss" OFF)
   if(DSA_XENGINE_ENABLE_TCC)
+    add_compile_definitions(DSA_XENGINE_ENABLE_TCC)
     option(DSA_XENGINE_DOWNLOAD_TCC "Download, build, link (and install) TCC" OFF)
     if(DSA_XENGINE_DOWNLOAD_TCC)
       ExternalProject_Add(TCC
@@ -145,6 +152,7 @@ if(DSA_XENGINE_TARGET_TYPE STREQUAL CUDA)
   # Get CUTLASS dependency
   option(DSA_XENGINE_ENABLE_CUTLASS "Use CUTLASS for GEMMs" OFF)
   if(DSA_XENGINE_ENABLE_CUTLASS)
+    add_compile_definitions(DSA_XENGINE_ENABLE_CUTLASS)
     option(DSA_XENGINE_DOWNLOAD_CUTLASS "Download, build (only the required kernels) link (and install) CUTLASS" OFF)
     if(DSA_XENGINE_DOWNLOAD_CUTLASS)
       # Custom CUTLASS build
@@ -164,6 +172,7 @@ if(DSA_XENGINE_TARGET_TYPE STREQUAL CUDA)
   # Get MAGMA dependency
   option(DSA_XENGINE_ENABLE_MAGMA "Use MAGMA for GEMMs" OFF)
   if(DSA_XENGINE_ENABLE_MAGMA)
+    add_compile_definitions(DSA_XENGINE_ENABLE_MAGMA)
     option(DSA_XENGINE_DOWNLOAD_MAGMA "Download, build (only the required kernels) link (and install) MAGMA" OFF)
     if(DSA_XENGINE_DOWNLOAD_MAGMA)
       # Custom MAGMA build
@@ -182,6 +191,7 @@ if(DSA_XENGINE_TARGET_TYPE STREQUAL CUDA)
   # Get XGPU dependency (fix install)
   option(DSA_XENGINE_ENABLE_XGPU "Use xGPU for correlatorss" OFF)
   if(DSA_XENGINE_ENABLE_XGPU)
+    add_compile_definitions(DSA_XENGINE_ENABLE_XGPU)
     option(DSA_XENGINE_DOWNLOAD_XGPU "Download and build xGPU" OFF)
     if(DSA_XENGINE_DOWNLOAD_XGPU)
       # Download, build and install
@@ -203,6 +213,7 @@ endif() # CUDA functionality
 # Get OPENBLAS dependency
 option(DSA_XENGINE_ENABLE_OPENBLAS "Use OPENBLAS for GEMMs" OFF)
 if(DSA_XENGINE_ENABLE_OPENBLAS)
+  add_compile_definitions(DSA_XENGINE_ENABLE_OPENBLAS)
   option(DSA_XENGINE_DOWNLOAD_OPENBLAS "Download, build, link, and install OPENBLAS" OFF)
   if(DSA_XENGINE_DOWNLOAD_OPENBLAS)
     # Custom OPENBLAS build

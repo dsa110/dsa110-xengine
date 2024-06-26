@@ -7,8 +7,8 @@
 #include <string.h>
 #include <syslog.h>
 
-// Include the dsaX_interface.h header in your application
-#include <dsaX_interface.h>
+// Include the dsaX.h header in your application
+#include <dsaX.h>
 
 using namespace std;
 
@@ -110,12 +110,11 @@ int main(int argc, char **argv) {
 	  return EXIT_FAILURE;
 	}
 	break;
-      } else
-	{
-	  syslog(LOG_ERR,"-f flag requires argument");
-	  usage();
-	  return EXIT_FAILURE;
-	}
+      } else {
+	syslog(LOG_ERR,"-f flag requires argument");
+	usage();
+	return EXIT_FAILURE;
+      }
     case 's':
       if (optarg) {
 	sfreq = atof(optarg);
@@ -151,45 +150,42 @@ int main(int argc, char **argv) {
   std::cout << "Expected size of data array = " << (unsigned long long)(sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*NPOL*NCOMPLEX) << std::endl;
   std::cout << "Expected size of input array = " << (unsigned long long)(sizeof(char)*4*NANTS*NCHAN_PER_PACKET*NPOL*NCOMPLEX) << std::endl;
   
-#if 0
-  dsaX_init();
-  
-  // allocate device memory
-  dmem d;
-  initialize_device_memory(&d, bf);
-
+  //dsaX_init();  
   FILE *fin, *fout;
-  uint64_t output_size;
-  char * output_data;
+  std::cout << "Creating float output_array of size " << sizeof(float)*NBASE*NCHAN_PER_PACKET*2*2*4 << std::endl;
+  uint64_t output_size = sizeof(float)*NBASE*NCHAN_PER_PACKET*2*2*4;
+  std::cout << "Creating char input_array of size " << sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2 << std::endl;
+  uint64_t input_size = sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2;
 
+  float *output_data = (float *)malloc(output_size);
+  char *input_data = (char *)malloc(input_size);
+  
   // read one block of input data    
-  d.h_input = (char *)malloc(sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
   for (int i=0;i<512;i++) {
     fin = fopen(ftest,"rb");
-    fread(d.h_input+i*4*NANTS*NCHAN_PER_PACKET*2*2,4*NANTS*NCHAN_PER_PACKET*2*2,1,fin);
+    fread(input_data + i*4*NANTS*NCHAN_PER_PACKET*2*2, 4*NANTS*NCHAN_PER_PACKET*2*2, 1, fin);
     fclose(fin);
   }
+
+  // Peek at input data (delete after development is complete)
+  for (int i=0; i<10; i++) if(input_data[i] != 0) std::cout << "input[" << i <<"] = " << (float)input_data[i] << std::endl; 
   
-  // run correlator or beamformer, and output data
+  // run correlator and record output data
   syslog(LOG_INFO,"run correlator");
-  dcorrelator(&d);
-  syslog(LOG_INFO,"copy to host");
-  output_size = NBASE*NCHAN_PER_PACKET*2*2*4;
-  output_data = (char *)malloc(output_size);
-  cudaMemcpy(output_data,d.d_output,output_size,cudaMemcpyDeviceToHost);
+  dsaXCorrelator((void*)output_data, (void*)input_data);
+
+  // Peek at output data (delete after development is complete)
+  //for (int i=0; i<NBASE*NCHAN_PER_PACKET*2*2; i++) if(output_data[i] != 0) std::cout << "output " << i << " = " << output_data[i] << std::endl; 
   
   fout = fopen("output.dat","wb");
-  fwrite((float *)output_data,sizeof(float),NBASE*NCHAN_PER_PACKET*2*2,fout);
+  fwrite((float *)output_data, sizeof(float), NBASE*NCHAN_PER_PACKET*2*2, fout);
   fclose(fout);
   
   // free
-  free(d.h_input);
+  free(input_data);
   free(output_data);
-  //free(o1);
-  deallocate_device_memory(&d,bf);
-  dsaX_end();
+  //dsaX_end();
   
   return 0;
-#endif
 }
 

@@ -1,5 +1,5 @@
 #pragma once
 
-#include "dsaX.h"
+#include "dsaX_interface.h"
 
-void dsaXHgemmStridedBatched(void *real_in, void *imag_in, void *real_out, void *imag_out, dsaXBLASParam param);
+void dsaXHgemmStridedBatched(void *real_a, void *imag_a, void *real_b, void *imag_b, void *real_c, void *imag_c, dsaXBLASParam param);

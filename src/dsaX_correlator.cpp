@@ -13,23 +13,22 @@ Workflow is similar for BF and corr applications
 #include "dsaX_blas_interface.h"
 #include "dsaX_utils.h"
 #include "dsaX_psrdada_utils.h"
-#include "dsaX_cuda_interface.h"
 
 // correlator function
 // workflow: copy to device, reorder, stridedBatchedGemm, reorder
-// DMH CUDA references excised
+// DMH CUDA references excised.
 void dcorrelator(dmem *d) {
 
   // copy to device
-  dsaXmemcpyHostToDevice(d->d_input, d->h_input, NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
+  dsaXmemcpy(d->d_input, d->h_input, NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2, dsaXMemcpyHostToDevice);
   
   // zero out output arrays
-  dsaXmemset(d->d_outr, 0, NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*sizeof(half));
-  dsaXmemset(d->d_outi, 0, NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*sizeof(half));
+  dsaXmemset(d->d_outr, 0, NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*sizeof(short)); //half -> short
+  dsaXmemset(d->d_outi, 0, NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*sizeof(short)); //half -> short
   dsaXmemset(d->d_output, 0, NCHAN_PER_PACKET*2*NANTS*NANTS*sizeof(float));
   
-  // reorder input
-  reorder_input_device(d->d_input, d->d_tx, d->d_r, d->d_i);
+  // reorder input into real and imaginary arrays of 2 byte data
+  reorderInput(d);
 
   dsaXBLASParam blas_param;
   // gemm settings
@@ -51,9 +50,8 @@ void dcorrelator(dmem *d) {
   blas_param.batch_count = NCHAN_PER_PACKET*2*2*halfFac;
 
   // Perform GEMM accoring to back end configuration
-  dsaXHgemmStridedBatched(d->d_r, d->d_i, d->d_outr, d->d_outi, blas_param);
+  dsaXHgemmStridedBatched(d->d_r, d->d_i, d->d_r, d->d_i, d->d_outr, d->d_outi, blas_param);
   
   // reorder output data
-  reorder_output_device(d);
-
+  reorderOutput(d);
 }

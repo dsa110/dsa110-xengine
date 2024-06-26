@@ -302,7 +302,6 @@ public:
     typename LayoutC::Stride::Index ldc = LayoutC::packed({problem_size.m(), problem_size.n()}).stride(0);
     typename LayoutC::Stride::Index ldd = LayoutC::packed({problem_size.m(), problem_size.n()}).stride(0);
 
-
     int64_t imag_stride_A = int64_t(problem_size.m()) * problem_size.k();
     int64_t imag_stride_B = int64_t(problem_size.k()) * problem_size.n();
     int64_t imag_stride_C = int64_t(problem_size.m()) * problem_size.n();

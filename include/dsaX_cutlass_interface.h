@@ -48,11 +48,11 @@ struct Options {
   Options():
     help(false),
     problem_size({1024, 1024, 1024}),
-    batch_count(1),
+    batch_count(256),
     reference_check(false),
-    iterations(20),
+    iterations(2),
     alpha(1),
-    beta() { }
+    beta(0) { }
 
   // Parses the command line
   void parse(int argc, char const **args) {

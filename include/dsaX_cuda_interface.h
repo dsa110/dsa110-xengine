@@ -1,32 +1,35 @@
 #pragma once
 
+#include <vector>
+
 #include "dsaX_def.h"
+#include "dsaX_enums.h"
 #include "dsaX.h"
 
-#ifdef DSA_XENGINE_TARGET_CUDA
-void initialize_device_memory(dmem *d, int bf);
 
-void deallocate_device_memory(dmem *d, int bf);
 
-void reorder_output_device(dmem *d);
+void initializeCudaMemory(dmem *d, int bf);
 
-__global__ void corr_input_copy(char *input, half *inr, half *ini);
+void deallocateCudaMemory(dmem *d, int bf);
 
-template <typename in_prec, typename out_prec> __global__ void transpose_matrix(in_prec *idata, out_prec *odata);
+void dsaXmemsetCuda(void *array, int ch, size_t n);
 
-void reorder_input_device(char *input, char *tx, half *inr, half *ini);
+void dsaXmemcpyCuda(void *array_device, void *array_host, size_t n, dsaXMemcpyKind kind);
 
-__global__ void corr_output_copy(half *outr, half *outi, float *output, int *indices_lookup);
+void dsaXDeviceSynchronizeCuda();
 
-__global__ void transpose_input_bf(double *idata, double *odata);
+void reorderOutputCuda(dmem *d);
 
-__global__ void populate_weights_matrix(float *antpos_e, float *antpos_n, float *calibs, half *wr, half *wi, float *fqs);
+void calcWeightsCuda(dmem *d);
 
-void calc_weights(dmem *d);
+void reorderInputCuda(dmem *d);
 
-__global__ void fluff_input_bf(char *input, half *dr, half *di);
+template <typename in_prec, typename out_prec> void transposeMatrixCuda(in_prec *idata, out_prec *odata);
 
-__global__ void transpose_scale_bf(half *ir, half *ii, unsigned char *odata);
+void transposeInputBeamformerCuda(double *idata, double *odata, std::vector<int> &dim_block_in, std::vector<int> &dim_grid_in);
 
-__global__ void sum_beam(unsigned char *input, float *output);
-#endif
+void transposeScaleBeamformerCuda(void *real, void *imag, unsigned char *output, std::vector<int> &dim_block_in, std::vector<int> &dim_grid_in);
+
+void fluffInputBeamformerCuda(char *input, void *b_real, void *b_imag, int blocks, int tpb);
+
+void sumBeamCuda(unsigned char *input, float *output, int blocks, int tpb);

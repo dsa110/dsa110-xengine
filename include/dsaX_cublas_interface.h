@@ -1,5 +1,4 @@
 #pragma once
 #include "dsaX.h"
-#include "dsaX_cuda_headers.h"
 
-void dsaXHgemmStridedBatchedCuda(half *real_in, half *imag_in, half *real_out, half *imag_out, dsaXBLASParam param);
+void dsaXHgemmStridedBatchedCuda(void *real_a, void *imag_a, void *real_b, void *imag_b, void *real_c, void *imag_c, dsaXBLASParam param);

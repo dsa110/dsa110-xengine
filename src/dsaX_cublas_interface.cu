@@ -1,9 +1,10 @@
 #include <iostream>
-#include "dsaX_cublas_interface.h"
+#include "dsaX.h"
+#include "dsaX_cuda_headers.h"
 
 using namespace std;
 
-void dsaXHgemmStridedBatchedCuda(half *real_in, half *imag_in, half *real_out, half *imag_out, dsaXBLASParam blas_param) {
+void dsaXHgemmStridedBatchedCuda(void *real_a, void *imag_a, void *real_b, void *imag_b, void *real_c, void *imag_c, dsaXBLASParam blas_param) {
 #ifdef DSA_XENGINE_TARGET_CUDA
   
   // not sure if essential
@@ -45,51 +46,60 @@ void dsaXHgemmStridedBatchedCuda(half *real_in, half *imag_in, half *real_out, h
   const int n = blas_param.n;
   const int k = blas_param.k;
   const half alpha = blas_param.alpha.real();
-  const half malpha = -1.0 * blas_param.alpha.real();
+  const half malpha = (-1.0 * blas_param.alpha.real());
   const int lda = blas_param.lda;
   const int ldb = blas_param.ldb;
   const half beta0 = blas_param.beta.real();
   const half beta1 = 1.0;
   const int ldc = blas_param.ldc;
+  const long long int a_offset = blas_param.a_offset;
+  const long long int b_offset = blas_param.b_offset;
+  const long long int c_offset = blas_param.c_offset;
   const long long int strideA = blas_param.a_stride;
   const long long int strideB = blas_param.b_stride;
   const long long int strideC = blas_param.c_stride;
   const int batchCount = blas_param.batch_count;
   
-  // run strided batched gemm for datatype (a + ib)(c + id)
+  // Run strided batched gemm for datatype 
+  // (a + ib)(c + id) = (ac - bd) + i(bc + ad)
+  // on matrices alpha * op(A) * op(B) + beta * C
+  // where op(M) is defined by the transposition variable
+  // cublasOperation_t transM
+  
+  // Accumulate results into C matrix
   // ac
-  cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			    &alpha,real_in,lda,strideA,
-			    real_in,ldb,strideB,&beta0,
-			    real_out,ldc,strideC,
+  cublasHgemmStridedBatched(cublasH, transa, transb, m,n,k, &alpha,
+			    (half *)real_a + a_offset, lda, strideA,
+			    (half *)real_b + b_offset, ldb, strideB, &beta0,
+			    (half *)real_c + c_offset, ldc, strideC,
 			    batchCount);
-  // bd
-  cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			    &alpha,imag_in,lda,strideA,
-			    imag_in,ldb,strideB,&beta1,
-			    real_out,ldc,strideC,
+  // -bd
+  cublasHgemmStridedBatched(cublasH, transa, transb, m,n,k, &malpha,
+			    (half*)imag_a + a_offset, lda, strideA,
+			    (half*)imag_b + b_offset, ldb, strideB, &beta1,
+			    (half*)real_c + c_offset, ldc, strideC,
 			    batchCount);
-  // -bc
-  cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			    &malpha,imag_in,lda,strideA,
-			    real_in,ldb,strideB,&beta0,
-			    imag_out,ldc,strideC,
+  // bc
+  cublasHgemmStridedBatched(cublasH, transa, transb, m,n,k, &alpha,
+			    (half*)imag_a + a_offset, lda, strideA,
+			    (half*)real_b + b_offset, ldb, strideB, &beta0,
+			    (half*)imag_c + c_offset, ldc, strideC,
 			    batchCount);
   // ad
-  cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			    &alpha,real_in,lda,strideA,
-			    imag_in,ldb,strideB,&beta1,
-			    imag_out,ldc,strideC,
+  cublasHgemmStridedBatched(cublasH, transa, transb, m,n,k, &alpha,
+			    (half*)real_a + a_offset, lda, strideA,
+			    (half*)imag_b + b_offset, ldb, strideB, &beta1,
+			    (half*)imag_c + c_offset, ldc, strideC,
 			    batchCount);
-
+  
   // shown to be essential
   cudaDeviceSynchronize();
-
+  
   // destroy stream
   cudaStreamDestroy(stream);
   cublasDestroy(cublasH);  
 #else
-  std::cout "Not implemented" << std::endl;
+  std::cout "dsaX not built with CUDA target." << std::endl;
   exit(0);
 #endif
 }
