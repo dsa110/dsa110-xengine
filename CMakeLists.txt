@@ -242,7 +242,7 @@ if(DSA_XENGINE_DOWNLOAD_PSRDADA)
   FetchContent_MakeAvailable(PSRDada)
 else()
   # Find and link to local install
-  find_package(psrdada REQUIRED)
+  find_package(PSRDada REQUIRED)
 endif()
 
 # Get CLI11 dependency

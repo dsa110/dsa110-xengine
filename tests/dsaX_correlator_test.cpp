@@ -168,7 +168,7 @@ int main(int argc, char **argv) {
   }
 
   // Peek at input data (delete after development is complete)
-  for (int i=0; i<10; i++) if(input_data[i] != 0) std::cout << "input[" << i <<"] = " << (float)input_data[i] << std::endl; 
+  //for (int i=0; i<10; i++) if(input_data[i] != 0) std::cout << "input[" << i <<"] = " << (float)input_data[i] << std::endl; 
   
   // run correlator and record output data
   syslog(LOG_INFO,"run correlator");
