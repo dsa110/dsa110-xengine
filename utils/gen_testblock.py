@@ -2,7 +2,6 @@ import numpy as np, struct
 import matplotlib.pyplot as plt
 import os
 
-
 ''' The aim here is to make data blocks to test the bfCorr code. 
 
 Structure of a packet is 3 ant, 384 chan, 2 time, 2 pol, r/i
@@ -10,8 +9,10 @@ Structure of a packet is 3 ant, 384 chan, 2 time, 2 pol, r/i
 
 Structure of a block is [2048 packets, 32 channel groups, ...]
 
+
 We want the real and imagniary parts to be random integers over 
 the range of [-8, 7]
+=======
 '''
 
 # defaults

@@ -51,7 +51,7 @@ int DEBUG = 1;
 typedef struct dmem {
 
   // initial data and streams
-  char * h_input; // host input pointer
+  char * h_input, * h_pinned_input; // host input pointer
   char * d_input, * d_tx; // [NPACKETS_PER_BLOCK, NANTS, NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex]
   
   // correlator pointers
@@ -76,8 +76,42 @@ typedef struct dmem {
 
   // timing
   float cp, prep, cubl, outp;
+
+  // obs dec
+  float obsdec;
   
 } dmem;
+
+/*! register the data_block in the hdu via cudaHostRegister */
+int dada_cuda_dbregister (dada_hdu_t * hdu)
+{
+  ipcbuf_t * db = (ipcbuf_t *) hdu->data_block;
+
+  // ensure that the data blocks are SHM locked
+  if (ipcbuf_lock (db) < 0)
+  {
+    syslog(LOG_ERR,"dada_dbregister: ipcbuf_lock failed");
+    return -1;
+  }
+
+  size_t bufsz = db->sync->bufsz;
+  unsigned int flags = 0;
+  cudaError_t rval;
+
+  // lock each data block buffer as cuda memory
+  uint64_t ibuf;
+  for (ibuf = 0; ibuf < db->sync->nbufs; ibuf++)
+  {
+    rval = cudaHostRegister ((void *) db->buffer[ibuf], bufsz, flags);
+    if (rval != cudaSuccess)
+    {
+      syslog(LOG_ERR,"dada_dbregister:  cudaHostRegister failed");
+      return -1;
+    }
+  }
+  
+  return 0;
+}
 
 
 // allocate device memory
@@ -85,6 +119,7 @@ void initialize(dmem * d, int bf) {
   
   // for correlator
   if (bf==0) {
+    cudaMallocHost((void**)&d->h_pinned_input, sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
     cudaMalloc((void **)(&d->d_input), sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
     cudaMalloc((void **)(&d->d_r), sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2);
     cudaMalloc((void **)(&d->d_i), sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2);
@@ -94,6 +129,14 @@ void initialize(dmem * d, int bf) {
     cudaMalloc((void **)(&d->d_outi), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
     cudaMalloc((void **)(&d->d_tx_outr), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
     cudaMalloc((void **)(&d->d_tx_outi), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
+
+    // timers
+    d->cp = 0.;
+    d->prep = 0.;
+    d->outp = 0.;
+    d->cubl = 0.;
+
+    
   }
 
   // for beamformer
@@ -141,6 +184,7 @@ void deallocate(dmem * d, int bf) {
     cudaFree(d->d_outi);
     cudaFree(d->d_tx_outr);
     cudaFree(d->d_tx_outi);
+    cudaFreeHost(d->h_pinned_input);
   }
   if (bf==1) {
     cudaFree(d->d_tx);
@@ -195,7 +239,8 @@ fprintf (stdout,
 	 " -t binary file for test mode\n"
 	 " -f flagants file\n"
 	 " -a calib file\n"
-	 " -s start frequency (assumes -0.244140625MHz BW)\n");
+	 " -s start frequency (assumes -0.244140625MHz BW)\n"
+	 " -g observing DEC in degrees (default 71.66)\n");
 }
 
 // kernel to fluff input
@@ -452,21 +497,34 @@ void reorder_output(dmem * d) {
 // workflow: copy to device, reorder, stridedBatchedGemm, reorder
 void dcorrelator(dmem * d) {
 
+  // timing
+  // copy, prepare, cublas, output
+  clock_t begin, end;
+
   // zero out output arrays
   cudaMemset(d->d_outr,0,NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*sizeof(half));
   cudaMemset(d->d_outi,0,NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*sizeof(half));
   cudaMemset(d->d_output,0,NCHAN_PER_PACKET*2*NANTS*NANTS*sizeof(float));
   
-  // copy to device
+  // copy to device  
+  //memcpy(d->h_pinned_input,d->h_input,NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
+  begin = clock();
   cudaMemcpy(d->d_input,d->h_input,NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2,cudaMemcpyHostToDevice);
-
+  end = clock();
+  d->cp += (float)(end - begin) / CLOCKS_PER_SEC;
+  
   // reorder input
+  begin = clock();
   reorder_input(d->d_input,d->d_tx,d->d_r,d->d_i);
-
+  
   // not sure if essential
   cudaDeviceSynchronize();
+  end = clock();
+  d->prep += (float)(end - begin) / CLOCKS_PER_SEC;
   
   // set up for gemm
+
+  begin = clock();
   cublasHandle_t cublasH = NULL;
   cudaStream_t stream = NULL;
   cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
@@ -521,13 +579,18 @@ void dcorrelator(dmem * d) {
 
   // shown to be essential
   cudaDeviceSynchronize();
+  end = clock();
+  d->cubl += (float)(end - begin) / CLOCKS_PER_SEC;
 
   // destroy stream
   cudaStreamDestroy(stream);
   cublasDestroy(cublasH);
   
   // reorder output data
+  begin = clock();
   reorder_output(d);
+  end = clock();
+  d->outp += (float)(end - begin) / CLOCKS_PER_SEC;
   
 }
 
@@ -575,8 +638,8 @@ __global__ void fluff_input_bf(char * input, half * dr, half * di) {
   int tidx = threadIdx.x; // assume 128
   int idx = bidx*128+tidx;
 
-  dr[idx] = __float2half(0.015625*((float)((char)(((unsigned char)(input[idx]) & (unsigned char)(15)) << 4) >> 4)));
-  di[idx] = __float2half(0.015625*((float)((char)(((unsigned char)(input[idx]) & (unsigned char)(240))) >> 4)));
+  dr[idx] = __float2half(0.035*((float)((char)(((unsigned char)(input[idx]) & (unsigned char)(15)) << 4) >> 4)));
+  di[idx] = __float2half(0.035*((float)((char)(((unsigned char)(input[idx]) & (unsigned char)(240))) >> 4)));
   
 }
 
@@ -606,7 +669,7 @@ __global__ void transpose_scale_bf(half * ir, half * ii, unsigned char * odata) 
   width = gridDim.y * 16;
 
   for (int j = 0; j < 16; j += 8)
-    odata[(y+j)*width + x] = (unsigned char)(tile[threadIdx.x][threadIdx.y + j]/128.);
+    odata[(y+j)*width + x] = (unsigned char)(tile[threadIdx.x][threadIdx.y + j]);
 
 }
 
@@ -775,7 +838,7 @@ void dbeamformer(dmem * d) {
 
 // kernel to populate an instance of weights matrix [2, (NCHAN_PER_PACKET/8), NBEAMS/2, 4times*(NANTS/2)*8chan*2tim*2pol]
 // run with 2*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*128*(NANTS/2)/128 blocks of 128 threads
-__global__ void populate_weights_matrix(float * antpos_e, float * antpos_n, float * calibs, half * wr, half * wi, float * fqs) {
+__global__ void populate_weights_matrix(float * antpos_e, float * antpos_n, float * calibs, half * wr, half * wi, float * fqs, float dec) {
 
   int bidx = blockIdx.x;
   int tidx = threadIdx.x;
@@ -813,7 +876,7 @@ __global__ void populate_weights_matrix(float * antpos_e, float * antpos_n, floa
     //wi[inidx] = __float2half(calibs[widx+1]);
   }
   if (iArm==1) {
-    theta = sep*(127.-bm*1.)*PI/10800.; // radians
+    theta = sep*(127.-bm*1.)*PI/10800.-(PI/180.)*dec; // radians
     afac = -2.*PI*fqs[fq]*theta/CVAC; // factor for rotate
     twr = cos(afac*antpos_n[a+48*iArm]);
     twi = sin(afac*antpos_n[a+48*iArm]);
@@ -845,8 +908,8 @@ void calc_weights(dmem * d) {
   // deal with antpos and calibs
   int iant, found;
   for (int i=0;i<NANTS;i++) {
-    antpos_e[i] = d->h_winp[2*i];
-    antpos_n[i] = d->h_winp[2*i+1];
+    antpos_e[i] = d->h_winp[i];
+    antpos_n[i] = d->h_winp[i+NANTS];
   }
   for (int i=0;i<NANTS*(NCHAN_PER_PACKET/8)*2;i++) {
 
@@ -865,10 +928,10 @@ void calc_weights(dmem * d) {
       calibs[2*i+1] /= wnorm;
     }
 
-    //if (found==1) {
-    //calibs[2*i] = 0.;
-    //calibs[2*i+1] = 0.;
-    //}
+    if (found==1) {
+      calibs[2*i] = 0.;
+      calibs[2*i+1] = 0.;
+    }
   }
 
   //for (int i=0;i<NANTS*(NCHAN_PER_PACKET/8)*2;i++) printf("%f %f\n",calibs[2*i],calibs[2*i+1]);
@@ -878,7 +941,7 @@ void calc_weights(dmem * d) {
   cudaMemcpy(d_calibs,calibs,NANTS*(NCHAN_PER_PACKET/8)*2*2*sizeof(float),cudaMemcpyHostToDevice);
 
   // run kernel to populate weights matrix
-  populate_weights_matrix<<<2*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*128*(NANTS/2)/128,128>>>(d_antpos_e,d_antpos_n,d_calibs,d->weights_r,d->weights_i,d->d_freqs);  
+  populate_weights_matrix<<<2*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*128*(NANTS/2)/128,128>>>(d_antpos_e,d_antpos_n,d_calibs,d->weights_r,d->weights_i,d->d_freqs,37.23-(d->obsdec));  
   
   // free stuff
   cudaFree(d_antpos_e);
@@ -892,7 +955,7 @@ void calc_weights(dmem * d) {
 
 // MAIN
 
-int main (int argc, char *argv[]) {
+int main (int argc, char *argv[]) {  
 
   cudaSetDevice(1);
   
@@ -914,11 +977,12 @@ int main (int argc, char *argv[]) {
   int arg = 0;
   int bf = 0;
   int test = 0;
+  float mydec = 71.66;
   char ftest[200], fflagants[200], fcalib[200];
   float sfreq = 1498.75;
 
   
-  while ((arg=getopt(argc,argv,"c:i:o:t:f:a:s:bdh")) != -1)
+  while ((arg=getopt(argc,argv,"c:i:o:t:f:a:s:g:bdh")) != -1)
     {
       switch (arg)
 	{
@@ -1026,12 +1090,26 @@ int main (int argc, char *argv[]) {
 	      usage();
 	      return EXIT_FAILURE;
 	    }
+	case 'g':
+	  if (optarg)
+            {
+	      mydec = atof(optarg);
+	      syslog(LOG_INFO, "obs dec %g",mydec);
+ 	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-g flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
 	case 'd':
 	  DEBUG=1;
 	  syslog (LOG_DEBUG, "Will excrete all debug messages");
 	  break;
 	case 'b':
 	  bf=1;
+	  cudaSetDevice(0);
 	  syslog (LOG_NOTICE, "Running beamformer, NOT correlator");
 	  break;
 	case 'h':
@@ -1080,55 +1158,76 @@ int main (int argc, char *argv[]) {
     cudaMemcpy(d.d_freqs,d.h_freqs,sizeof(float)*(NCHAN_PER_PACKET/8),cudaMemcpyHostToDevice);
 
     // calculate weights
+    d.obsdec = mydec;
     calc_weights(&d);
     
   }
 
   // test mode
   FILE *fin, *fout;
-  uint64_t output_size;
+  uint64_t sz, output_size, in_block_size, rd_size;
+  in_block_size = NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2;
   char * output_data, * o1;
+  int nreps = 1, nchunks = 1;
   if (test) {
 
-    // read one block of input data    
-    d.h_input = (char *)malloc(sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
-    for (int i=0;i<512;i++) {
-      fin = fopen(ftest,"rb");
-      fread(d.h_input+i*4*NANTS*NCHAN_PER_PACKET*2*2,4*NANTS*NCHAN_PER_PACKET*2*2,1,fin);
-      fclose(fin);
-    }
+    // read one block of input data
 
-    // run correlator or beamformer, and output data
-    if (bf==0) {
-      if (DEBUG) syslog(LOG_INFO,"run correlator");
-      dcorrelator(&d);
-      if (DEBUG) syslog(LOG_INFO,"copy to host");
-      output_size = NBASE*NCHAN_PER_PACKET*2*2*4;
-      output_data = (char *)malloc(output_size);
-      cudaMemcpy(output_data,d.d_output,output_size,cudaMemcpyDeviceToHost);
+    // get size of file
+    fin=fopen(ftest,"rb");
+    fseek(fin,0L,SEEK_END);
+    sz = ftell(fin);
+    rewind(fin);
 
-      fout = fopen("output.dat","wb");
-      fwrite((float *)output_data,sizeof(float),NBASE*NCHAN_PER_PACKET*2*2,fout);
-      fclose(fout);
+    // figure out how many reps and chunks to read with
+    if (sz>in_block_size) {
+      nreps = (int)(sz/in_block_size);
+      rd_size = in_block_size;
     }
     else {
-      if (DEBUG) syslog(LOG_INFO,"run beamformer");
-      dbeamformer(&d);
-      if (DEBUG) syslog(LOG_INFO,"copy to host");
-      output_size = (NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*NBEAMS;
-      output_data = (char *)malloc(output_size);
-      cudaMemcpy(output_data,d.d_bigpower,output_size,cudaMemcpyDeviceToHost);
+      nchunks = (int)(in_block_size/sz);
+      rd_size =	sz;
+    }
 
-      /*output_size = 2*2*4*(NANTS/2)*8*2*2*(NBEAMS/2)*(NCHAN_PER_PACKET/8);
-      o1 = (char *)malloc(output_size);
-      cudaMemcpy(o1,d.weights_r,output_size,cudaMemcpyDeviceToHost);*/
-	
-      
+    // allocate input
+    d.h_input = (char *)malloc(sizeof(char)*in_block_size);
 
-      fout = fopen("output.dat","wb");
-      fwrite((unsigned char *)output_data,sizeof(unsigned char),output_size,fout);
-      //fwrite(o1,1,output_size,fout);
-      fclose(fout);
+    // loop over reps and chunks
+    for (int reps=0; reps<nreps; reps++) {
+
+      for (int chunks=0;chunks<nchunks;chunks++) {
+
+	// read input file
+	if (chunks>0) rewind(fin);
+	fread(d.h_input+chunks*rd_size,rd_size,1,fin);
+
+	// run correlator or beamformer, and output data
+	if (bf==0) {
+	  if (DEBUG) syslog(LOG_INFO,"run correlator");
+	  dcorrelator(&d);
+	  if (DEBUG) syslog(LOG_INFO,"copy to host");
+	  output_size = NBASE*NCHAN_PER_PACKET*2*2*4;
+	  output_data = (char *)malloc(output_size);
+	  cudaMemcpy(output_data,d.d_output,output_size,cudaMemcpyDeviceToHost);
+	  
+	  fout = fopen("output.dat","ab");
+	  fwrite((float *)output_data,sizeof(float),NBASE*NCHAN_PER_PACKET*2*2,fout);
+	  fclose(fout);
+	}
+	else {
+	  if (DEBUG) syslog(LOG_INFO,"run beamformer");
+	  dbeamformer(&d);
+	  if (DEBUG) syslog(LOG_INFO,"copy to host");
+	  output_size = (NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*NBEAMS;
+	  output_data = (char *)malloc(output_size);
+	  cudaMemcpy(output_data,d.d_bigpower,output_size,cudaMemcpyDeviceToHost);	
+
+	  fout = fopen("output.dat","ab");
+	  fwrite((unsigned char *)output_data,sizeof(unsigned char),output_size,fout);
+	  fclose(fout);
+	}
+
+      }
     }
 
 	
@@ -1137,7 +1236,7 @@ int main (int argc, char *argv[]) {
     free(output_data);
     free(o1);
     deallocate(&d,bf);
-
+    fclose(fin);
     exit(1);
   }
   
@@ -1203,6 +1302,9 @@ int main (int argc, char *argv[]) {
     }
 
   syslog(LOG_INFO,"dealt with dada stuff - now in LISTEN state");  
+
+  // register input with gpu
+  dada_cuda_dbregister(hdu_in);
   
   // get block sizes and allocate memory
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
@@ -1250,7 +1352,7 @@ int main (int argc, char *argv[]) {
     }
     //end = clock();
     //time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-    cout << "spent time " << d.cp << " " << d.prep << " " << d.cubl << " " << d.outp << " s" << endl;
+    //cout << "spent time " << d.cp << " " << d.prep << " " << d.cubl << " " << d.outp << " s" << endl;
     
     // write to output
 
