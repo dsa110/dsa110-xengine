@@ -191,8 +191,7 @@ int main(int argc, char **argv) {
   }
   
   // Peek at input data (delete after development is complete)
-  for (int i=0; i<8; i++) inspectPackedData(input_data[i], i);
-  
+  for (int i=0; i<8; i++) inspectPackedData(input_data[i], i);  
 
   // Peek at output data (delete after development is complete)
   for (int i=0; i<NBASE*NCHAN_PER_PACKET*2*2; i++) if(output_data[i] != 0) std::cout << "output " << i << " = " << output_data[i] << std::endl;

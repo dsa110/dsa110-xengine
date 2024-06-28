@@ -1195,7 +1195,6 @@ int main (int argc, char *argv[]) {
     d.h_input = (char *)malloc(sizeof(char)*in_block_size);
 
     std::cout << "Size of input = " << in_block_size << std::endl;
-    
     // loop over reps and chunks
     for (int reps=0; reps<nreps; reps++) {
 
