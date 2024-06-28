@@ -5,6 +5,8 @@
 #include "dsaX_def.h"
 #include "dsaX_enums.h"
 
+#define OLD_BLAS
+
 // Structure that carries BLAS parameters
 typedef struct dsaXBLASParam_s {  
   size_t struct_size; /**< Size of this struct in bytes.  Used to ensure that the host application and DSA see the same struct*/
@@ -37,6 +39,8 @@ typedef struct dsaXBLASParam_s {
   dsaXBLASDataOrder data_order; /**< Specifies if using Row or Column major */
   
 } dsaXBLASParam;
+
+void printDsaXBLASParam(const dsaXBLASParam param);
 
 // required to prevent overflow in corr matrix multiply
 #define halfFac 4
@@ -75,6 +79,10 @@ typedef struct dmem {
   float cp, prep, cubl, outp;
   
 } dmem;
+
+void dsaXInit(int device_ordinal = 0);
+
+void inspectPackedData(char input, int i, bool non_zero = false);
 
 void dsaXCorrelator(void *output_data, void *input_data);
 

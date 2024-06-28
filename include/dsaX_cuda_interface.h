@@ -6,7 +6,7 @@
 #include "dsaX_enums.h"
 #include "dsaX.h"
 
-
+void dsaXInitCuda(int dev);
 
 void initializeCudaMemory(dmem *d, int bf);
 

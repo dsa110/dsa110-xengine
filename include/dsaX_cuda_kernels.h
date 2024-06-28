@@ -2,6 +2,13 @@
 
 #include "dsaX_cuda_headers.h"
 
+__device__ void inspectPackedDataInKernel(char input, int i) {
+  float re = (float)((char)((   (unsigned char)(input) & (unsigned char)(15)  ) << 4) >> 4);
+  float im = (float)((char)((   (unsigned char)(input) & (unsigned char)(240))) >> 4);
+  
+  if(re != 0 || im != 0) printf("val[%d] = (%f,%f)\n", i, re, im);
+}
+
 // KERNELS
 // DMH: Abstract hardcoded launch parameters
 __global__ void transpose_input_beamformer(double *idata, double *odata) {
@@ -40,7 +47,7 @@ __global__ void corr_output_copy(half *outr, half *outi, float *output, int *ind
   
   int bidx = blockIdx.x; // assume NCHAN_PER_PACKET*2*NBASE/128
   int tidx = threadIdx.x; // assume 128
-  int idx = bidx*128+tidx;
+  int idx = blockDim.x * bidx + tidx;
   
   int baseline = (int)(idx / (NCHAN_PER_PACKET * 2));
   int chpol = (int)(idx % (NCHAN_PER_PACKET * 2));
@@ -74,9 +81,11 @@ template <typename in_prec, typename out_prec> __global__ void transpose_matrix(
   int y = blockIdx.y * 32 + threadIdx.y;
   int width = gridDim.x * 32;
 
-  for (int j = 0; j < 32; j += 8)
-     tile[threadIdx.y+j][threadIdx.x] = idata[(y+j)*width + x];
-
+  for (int j = 0; j < 32; j += 8) {
+    tile[threadIdx.y+j][threadIdx.x] = idata[(y+j)*width + x];
+    //inspectPackedDataInKernel(idata[(y+j)*width + x], (y+j)*width + x);
+  }
+  
   __syncthreads();
 
   x = blockIdx.y * 32 + threadIdx.x;  // transpose block offset
@@ -88,14 +97,43 @@ template <typename in_prec, typename out_prec> __global__ void transpose_matrix(
 
 }
 
+// transpose kernel
+// assume breakdown into tiles of 32x32, and run with 32x8 threads per block
+// launch with dim3 dimBlock(32, 8) and dim3 dimGrid(Width/32, Height/32)
+// here, width is the dimension of the fastest index
+__global__ void transpose_matrix_char(char * idata, char * odata) {
+  
+  __shared__ char tile[32][33];
+  
+  int x = blockIdx.x * 32 + threadIdx.x;
+  int y = blockIdx.y * 32 + threadIdx.y;
+  int width = gridDim.x * 32;
+
+  for (int j = 0; j < 32; j += 8) {
+    tile[threadIdx.y+j][threadIdx.x] = idata[(y+j)*width + x];
+    //inspectPackedDataInKernel(idata[(y+j)*width + x], (y+j)*width + x);
+  }
+  
+  __syncthreads();
+
+  x = blockIdx.y * 32 + threadIdx.x;  // transpose block offset
+  y = blockIdx.x * 32 + threadIdx.y;
+  width = gridDim.y * 32;
+
+  for (int j = 0; j < 32; j += 8) {
+     odata[(y+j)*width + x] = tile[threadIdx.x][threadIdx.y + j];
+  }
+}
+
+
 // kernel to fluff input
 // run with 128 threads and NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4/128 blocks
 __global__ void corr_input_copy(char *input, half *inr, half *ini) {
 
-  int bidx = blockIdx.x;  // assume NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4/128
-  int tidx = threadIdx.x; // assume 128 threads per block
-  int iidx = bidx*128+tidx;
-
+  int bidx = blockIdx.x;  
+  int tidx = threadIdx.x; 
+  int iidx = blockDim.x * bidx + tidx;
+  
   // 15 in unsigned char binary is 00001111. Perform bitwise & on 15 and input char data iiiirrrr
   // to get real part 4 bit data.
   // 0000rrrr
@@ -118,23 +156,18 @@ __global__ void corr_input_copy(char *input, half *inr, half *ini) {
   // Cast to float and use CUDA intrinsic to cast to signed half
   ini[iidx] = __float2half((float)((char)((   (unsigned char)(input[iidx]) & (unsigned char)(240)  )) >> 4));
 
-  // Both results should be half (FP16) integers between -8 and 7.
-  half re = inr[iidx];
-  half im = ini[iidx];
-  half lim = 2.;
-  if( (re > lim || re < -lim) || (im > lim || im < -lim)) {
-    //printf("re = %f, im = %f\n", __half2float(re), __half2float(im));
-  }
+  //if(__half2float(inr[iidx]) != 0 || __half2float(ini[iidx]) != 0) printf("corr_input_copy %i = (%f,%f)\n", iidx, __half2float(inr[iidx]), __half2float(ini[iidx]));
 }
 
 // kernel to populate an instance of weights matrix
 // [2, (NCHAN_PER_PACKET/8), NBEAMS/2, 4times*(NANTS/2)*8chan*2tim*2pol]
 // run with 2*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*128*(NANTS/2)/128 blocks of 128 threads
+// TUNABLE
 __global__ void populate_weights_matrix(float * antpos_e, float * antpos_n, float * calibs, half * wr, half * wi, float * fqs) {
   
   int bidx = blockIdx.x;
   int tidx = threadIdx.x;
-  int inidx = bidx*128+tidx;  
+  int inidx = 128 * bidx + tidx;  
   
   // 2*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*128*(NANTS/2)
   
@@ -183,10 +216,10 @@ __global__ void populate_weights_matrix(float * antpos_e, float * antpos_n, floa
 // run with NPACKETS_PER_BLOCK*(NANTS/2)*NCHAN_PER_PACKET*2*2/128 blocks of 128 threads
 __global__ void fluff_input_beamformer(char * input, half * dr, half * di) {
   
-  int bidx = blockIdx.x; // assume NPACKETS_PER_BLOCK*(NANTS/2)*NCHAN_PER_PACKET*2*2/128
-  int tidx = threadIdx.x; // assume 128
-  int idx = bidx*128+tidx;
-
+  int bidx = blockIdx.x; 
+  int tidx = threadIdx.x;
+  int idx = blockDim.x * bidx + tidx;
+  
   dr[idx] = __float2half(0.015625*((float)((char)(((unsigned char)(input[idx]) & (unsigned char)(15)) << 4) >> 4)));
   di[idx] = __float2half(0.015625*((float)((char)(((unsigned char)(input[idx]) & (unsigned char)(240))) >> 4)));
 

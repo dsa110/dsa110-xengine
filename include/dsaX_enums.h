@@ -12,7 +12,8 @@ typedef enum dsaXError_t {
 typedef enum dsaXBLASOperation_s {				 
   DSA_BLAS_OP_N = 0, // No transpose
   DSA_BLAS_OP_T = 1, // Transpose only
-  DSA_BLAS_OP_C = 2, // Conjugate transpose
+  DSA_BLAS_OP_A = 2, // Adjoint imaginary, no transpose
+  DSA_BLAS_OP_C = 3, // Conjugate transpose
   DSA_BLAS_OP_INVALID = DSA_INVALID_ENUM
 } dsaXBLASOperation;
 

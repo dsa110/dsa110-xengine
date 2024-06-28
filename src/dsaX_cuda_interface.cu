@@ -7,6 +7,10 @@
 
 using namespace std;
 
+void dsaXInitCuda(int dev){
+  cudaSetDevice(dev);
+}
+
 // allocate device memory
 void initializeCudaMemory(dmem *d, int bf) {
   
@@ -93,10 +97,11 @@ void deallocateCudaMemory(dmem *d, int bf) {
 void reorderOutputCuda(dmem * d) {
   
   // transpose input data
+#if defined (OLD_BLAS)
   dim3 dimBlock(32, 8), dimGrid((NANTS*NANTS)/32, (NCHAN_PER_PACKET*2*2*halfFac)/32);
   transpose_matrix<<<dimGrid, dimBlock>>>((half*)d->d_outr, (half*)d->d_tx_outr);
   transpose_matrix<<<dimGrid, dimBlock>>>((half*)d->d_outi, (half*)d->d_tx_outi);
-  
+#endif  
   // look at output
   /*char * odata = (char *)malloc(sizeof(char)*384*4*NANTS*NANTS*2*halfFac);
   cudaMemcpy(odata,d->d_tx_outr,384*4*NANTS*NANTS*2*halfFac,cudaMemcpyDeviceToHost);
@@ -144,10 +149,17 @@ void reorderOutputCuda(dmem * d) {
       ii++;
     }
   }
-  cudaMemcpy(d_idxs,h_idxs,sizeof(int)*NBASE,cudaMemcpyHostToDevice);
+  cudaMemcpy(d_idxs, h_idxs, sizeof(int)*NBASE,cudaMemcpyHostToDevice);
 
   // run kernel to finish things
-  corr_output_copy<<<NCHAN_PER_PACKET*2*NBASE/128,128>>>((half*)d->d_tx_outr, (half*)d->d_tx_outi, d->d_output, d_idxs);
+  // TUNABLE
+  int blockDim = 128;
+  int blocks = NCHAN_PER_PACKET*2*NBASE/blockDim;
+#if defined (OLD_BLAS)
+  corr_output_copy<<<blocks, blockDim>>>((half*)d->d_tx_outr, (half*)d->d_tx_outi, d->d_output, d_idxs);
+#else
+  corr_output_copy<<<blocks, blockDim>>>((half*)d->d_outr, (half*)d->d_outi, d->d_output, d_idxs);
+#endif
   
   /*char * odata = (char *)malloc(sizeof(char)*384*4*NBASE*4);
   cudaMemcpy(odata,d->d_output,384*4*NBASE*4,cudaMemcpyDeviceToHost);
@@ -172,9 +184,17 @@ void reorderOutputCuda(dmem * d) {
 void reorderInputCuda(dmem *d) {
   
   // transpose input data
+#if defined (OLD_BLAS)  
   dim3 dimBlock(32, 8), dimGrid((NCHAN_PER_PACKET*2*2)/32, ((NPACKETS_PER_BLOCK)*NANTS)/32);
-  transpose_matrix<<<dimGrid, dimBlock>>>(d->d_input, d->d_tx);
-  corr_input_copy<<<NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4/128, 128>>>(d->d_tx, (half*)d->d_r, (half*)d->d_i);
+
+  // TUNABLE
+  int blockDim = 128;
+  int blocks = NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4/blockDim;
+  transpose_matrix_char<<<dimGrid, dimBlock>>>(d->d_input, d->d_tx);
+  corr_input_copy<<<blocks, blockDim>>>(d->d_tx, (half*)d->d_r, (half*)d->d_i);
+#else
+  corr_input_copy<<<blocks, blockDim>>>(d->d_input, (half*)d->d_r, (half*)d->d_i);
+#endif
 }
 
 
