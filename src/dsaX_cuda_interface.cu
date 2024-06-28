@@ -12,89 +12,90 @@ void dsaXInitCuda(int dev){
 }
 
 // allocate device memory
-void initializeCudaMemory(dmem *d, int bf) {
+void initializeCorrCudaMemory(dmem_corr *d) {
   
   // for correlator
-  if (bf==0) {
-    cudaMalloc((void **)(&d->d_input), sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
-    cudaMalloc((void **)(&d->d_r), sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2);
-    cudaMalloc((void **)(&d->d_i), sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2);
-    cudaMalloc((void **)(&d->d_tx), sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
-    cudaMalloc((void **)(&d->d_output), sizeof(float)*NBASE*NCHAN_PER_PACKET*2*2);
-    cudaMalloc((void **)(&d->d_outr), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
-    cudaMalloc((void **)(&d->d_outi), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
-    cudaMalloc((void **)(&d->d_tx_outr), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
-    cudaMalloc((void **)(&d->d_tx_outi), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
-  }
-
-  // for beamformer
-  if (bf==1) {
-    cudaMalloc((void **)(&d->d_input), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS/2)*NCHAN_PER_PACKET*2*2);
-    cudaMalloc((void **)(&d->d_big_input), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS)*NCHAN_PER_PACKET*2*2);
-    cudaMalloc((void **)(&d->d_tx), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS/2)*NCHAN_PER_PACKET*2*2);
-    cudaMalloc((void **)(&d->d_br), sizeof(half)*NCHAN_PER_PACKET*2*(NANTS/2)*(NPACKETS_PER_BLOCK)*2);
-    cudaMalloc((void **)(&d->d_bi), sizeof(half)*NCHAN_PER_PACKET*2*(NANTS/2)*(NPACKETS_PER_BLOCK)*2);
-    cudaMalloc((void **)(&d->weights_r), sizeof(half)*2*4*(NANTS/2)*8*2*2*(NBEAMS/2)*(NCHAN_PER_PACKET/8));
-    cudaMalloc((void **)(&d->weights_i), sizeof(half)*2*4*(NANTS/2)*8*2*2*(NBEAMS/2)*(NCHAN_PER_PACKET/8));
-    cudaMalloc((void **)(&d->d_bigbeam_r), sizeof(half)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2));
-    cudaMalloc((void **)(&d->d_bigbeam_i), sizeof(half)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2));
-    cudaMalloc((void **)(&d->d_bigpower), sizeof(unsigned char)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS));
-    cudaMalloc((void **)(&d->d_scf), sizeof(float)*(NBEAMS/2)); // beam scale factor
-    cudaMalloc((void **)(&d->d_chscf), sizeof(float)*(NBEAMS/2)*(NCHAN_PER_PACKET/8)); // beam scale factor
-
-    // input weights: first is [NANTS, E/N], then [NANTS, 48, 2pol, R/I]
-    d->h_winp = (float *)malloc(sizeof(float)*(NANTS*2+NANTS*(NCHAN_PER_PACKET/8)*2*2));
-    d->flagants = (int *)malloc(sizeof(int)*NANTS);
-    d->h_freqs = (float *)malloc(sizeof(float)*(NCHAN_PER_PACKET/8));
-    cudaMalloc((void **)(&d->d_freqs), sizeof(float)*(NCHAN_PER_PACKET/8));
-
-    // timers
-    d->cp = 0.;
-    d->prep = 0.;
-    d->outp = 0.;
-    d->cubl = 0.;
-    
-  }  
+  cudaMalloc((void **)(&d->d_input), sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
+  cudaMalloc((void **)(&d->d_r), sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2);
+  cudaMalloc((void **)(&d->d_i), sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2);
+  cudaMalloc((void **)(&d->d_tx), sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
+  cudaMalloc((void **)(&d->d_output), sizeof(float)*NBASE*NCHAN_PER_PACKET*2*2);
+  cudaMalloc((void **)(&d->d_outr), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
+  cudaMalloc((void **)(&d->d_outi), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
+  cudaMalloc((void **)(&d->d_tx_outr), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
+  cudaMalloc((void **)(&d->d_tx_outi), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
 }
+
+void initializeBFCudaMemory(dmem_bf *d) {
+  
+  // for beamformer
+  cudaMalloc((void **)(&d->d_input), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS/2)*NCHAN_PER_PACKET*2*2);
+  cudaMalloc((void **)(&d->d_big_input), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS)*NCHAN_PER_PACKET*2*2);
+  cudaMalloc((void **)(&d->d_tx), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS/2)*NCHAN_PER_PACKET*2*2);
+  cudaMalloc((void **)(&d->d_br), sizeof(half)*NCHAN_PER_PACKET*2*(NANTS/2)*(NPACKETS_PER_BLOCK)*2);
+  cudaMalloc((void **)(&d->d_bi), sizeof(half)*NCHAN_PER_PACKET*2*(NANTS/2)*(NPACKETS_PER_BLOCK)*2);
+  cudaMalloc((void **)(&d->weights_r), sizeof(half)*2*4*(NANTS/2)*8*2*2*(NBEAMS/2)*(NCHAN_PER_PACKET/8));
+  cudaMalloc((void **)(&d->weights_i), sizeof(half)*2*4*(NANTS/2)*8*2*2*(NBEAMS/2)*(NCHAN_PER_PACKET/8));
+  cudaMalloc((void **)(&d->d_bigbeam_r), sizeof(half)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2));
+  cudaMalloc((void **)(&d->d_bigbeam_i), sizeof(half)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2));
+  cudaMalloc((void **)(&d->d_bigpower), sizeof(unsigned char)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS));
+  cudaMalloc((void **)(&d->d_scf), sizeof(float)*(NBEAMS/2)); // beam scale factor
+  cudaMalloc((void **)(&d->d_chscf), sizeof(float)*(NBEAMS/2)*(NCHAN_PER_PACKET/8)); // beam scale factor
+  
+  // input weights: first is [NANTS, E/N], then [NANTS, 48, 2pol, R/I]
+  d->h_winp = (float *)malloc(sizeof(float)*(NANTS*2+NANTS*(NCHAN_PER_PACKET/8)*2*2));
+  d->flagants = (int *)malloc(sizeof(int)*NANTS);
+  d->h_freqs = (float *)malloc(sizeof(float)*(NCHAN_PER_PACKET/8));
+  cudaMalloc((void **)(&d->d_freqs), sizeof(float)*(NCHAN_PER_PACKET/8));
+  
+  // timers
+  d->cp = 0.;
+  d->prep = 0.;
+  d->outp = 0.;
+  d->cubl = 0.;
+}
+
 // deallocate device memory
-void deallocateCudaMemory(dmem *d, int bf) {
+void deallocateCorrCudaMemory(dmem_corr *d) {
   
   cudaFree(d->d_input);
-
-  if (bf==0) {
-    cudaFree(d->d_r);
-    cudaFree(d->d_i);
-    cudaFree(d->d_tx);
-    cudaFree(d->d_output);
-    cudaFree(d->d_outr);
-    cudaFree(d->d_outi);
-    cudaFree(d->d_tx_outr);
-    cudaFree(d->d_tx_outi);
-  }
-  if (bf==1) {
-    cudaFree(d->d_tx);
-    cudaFree(d->d_br);
-    cudaFree(d->d_bi);
-    cudaFree(d->weights_r);
-    cudaFree(d->weights_i);
-    cudaFree(d->d_bigbeam_r);
-    cudaFree(d->d_bigbeam_i);
-    cudaFree(d->d_bigpower);
-    cudaFree(d->d_scf);
-    cudaFree(d->d_chscf);
-    free(d->h_winp);
-    free(d->flagants);
-    cudaFree(d->d_freqs);
-    free(d->h_freqs);
-  }  
+  cudaFree(d->d_r);
+  cudaFree(d->d_i);
+  cudaFree(d->d_tx);
+  cudaFree(d->d_output);
+  cudaFree(d->d_outr);
+  cudaFree(d->d_outi);
+  cudaFree(d->d_tx_outr);
+  cudaFree(d->d_tx_outi);
 }
+
+// deallocate device memory
+void deallocateBFCudaMemory(dmem_bf *d) {
+
+  cudaFree(d->d_input);
+  cudaFree(d->d_tx);
+  cudaFree(d->d_br);
+  cudaFree(d->d_bi);
+  cudaFree(d->weights_r);
+  cudaFree(d->weights_i);
+  cudaFree(d->d_bigbeam_r);
+  cudaFree(d->d_bigbeam_i);
+  cudaFree(d->d_bigpower);
+  cudaFree(d->d_scf);
+  cudaFree(d->d_chscf);
+  free(d->h_winp);
+  free(d->flagants);
+  cudaFree(d->d_freqs);
+  free(d->h_freqs);
+}  
+
 
 // function to copy d_outr and d_outi to d_output
 // inputs are [NCHAN_PER_PACKET, 2 time, 2 pol, NANTS, NANTS]
 // the corr matrices are column major order
 // output needs to be [NBASE, NCHAN_PER_PACKET, 2 pol, 2 complex]
 // start with transpose to get [NANTS*NANTS, NCHAN_PER_PACKET*2*2], then sum into output using kernel
-void reorderOutputCuda(dmem * d) {
+void reorderCorrOutputCuda(dmem_corr * d) {
   
   // transpose input data
 #if defined (OLD_BLAS)
@@ -181,19 +182,19 @@ void reorderOutputCuda(dmem * d) {
 // output is [NCHAN_PER_PACKET, 2times, 2pol, NPACKETS_PER_BLOCK, NANTS]
 // starts by running transpose on [NPACKETS_PER_BLOCK * NANTS, NCHAN_PER_PACKET * 2 * 2] matrix in doubleComplex form.
 // then fluffs using simple kernel
-void reorderInputCuda(dmem *d) {
+void reorderCorrInputCuda(dmem_corr *d) {
   
   // transpose input data
 #if defined (OLD_BLAS)  
-  dim3 dimBlock(32, 8), dimGrid((NCHAN_PER_PACKET*2*2)/32, ((NPACKETS_PER_BLOCK)*NANTS)/32);
+  dim3 dimBlock(32, 32), dimGrid((NCHAN_PER_PACKET*2*2)/32, ((NPACKETS_PER_BLOCK)*NANTS)/32);
 
   // TUNABLE
   int blockDim = 128;
   int blocks = NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4/blockDim;
   transpose_matrix_char<<<dimGrid, dimBlock>>>(d->d_input, d->d_tx);
-  corr_input_copy<<<blocks, blockDim>>>(d->d_tx, (half*)d->d_r, (half*)d->d_i);
+  promoteComplexCharToPlanarHalf<<<blocks, blockDim>>>(d->d_tx, (half*)d->d_r, (half*)d->d_i);
 #else
-  corr_input_copy<<<blocks, blockDim>>>(d->d_input, (half*)d->d_r, (half*)d->d_i);
+  promoteComplexCharToPlanarHalf<<<blocks, blockDim>>>(d->d_input, (half*)d->d_r, (half*)d->d_i);
 #endif
 }
 
@@ -222,7 +223,7 @@ void transposeInputBeamformerCuda(double *idata, double *odata, std::vector<int>
 // sequential pairs of eastings and northings
 // then [NANTS, 48, R/I] calibs
 
-void calcWeightsCuda(dmem *d) {
+void calcWeightsCuda(dmem_bf *d) {
 
   // allocate
   float *antpos_e = (float *)malloc(sizeof(float)*NANTS);

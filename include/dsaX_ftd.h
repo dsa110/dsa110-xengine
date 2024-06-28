@@ -2,4 +2,4 @@
 
 #include "dsaX.h"
 
-void dcorrelator(dmem *d);
+void dcorrelator(dmem_corr *d);

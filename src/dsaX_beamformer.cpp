@@ -29,7 +29,7 @@ Beamformer:
 
 */
 // beamformer function
-void dbeamformer(dmem *d) {
+void dbeamformer(dmem_bf *d) {
 
   dsaXBLASParam blas_param;
   blas_param.trans_a = DSA_BLAS_OP_T;

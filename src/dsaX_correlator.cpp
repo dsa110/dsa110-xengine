@@ -17,7 +17,7 @@ Workflow is similar for BF and corr applications
 // correlator function
 // workflow: copy to device, reorder, stridedBatchedGemm, reorder
 // DMH CUDA references excised.
-void dcorrelator(dmem *d) {
+void dcorrelator(dmem_corr *d) {
   
   // zero out output arrays
   dsaXmemset(d->d_outr, 0, NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*sizeof(short)); //half -> short
@@ -28,7 +28,7 @@ void dcorrelator(dmem *d) {
   dsaXmemcpy(d->d_input, d->h_input, NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2, dsaXMemcpyHostToDevice);
   
   // reorder input into real and imaginary arrays of 2 byte data
-  reorderInput(d);
+  reorderCorrInput(d);
   
   dsaXBLASParam blas_param;
   blas_param.struct_size = sizeof(blas_param);
@@ -105,5 +105,5 @@ void dcorrelator(dmem *d) {
   //for(int i=0; i<8; i++) inspectPackedData(d.h_input[i], i);
   
   // reorder output data
-  reorderOutput(d);
+  reorderCorrOutput(d);
 }

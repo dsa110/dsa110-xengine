@@ -8,9 +8,13 @@
 
 void dsaXInitCuda(int dev);
 
-void initializeCudaMemory(dmem *d, int bf);
+void initializeCorrCudaMemory(dmem_corr *d);
 
-void deallocateCudaMemory(dmem *d, int bf);
+void initializeBFCudaMemory(dmem_bf *d);
+
+void deallocateCorrCudaMemory(dmem_corr *d);
+
+void deallocateBFCudaMemory(dmem_bf *d);
 
 void dsaXmemsetCuda(void *array, int ch, size_t n);
 
@@ -18,11 +22,11 @@ void dsaXmemcpyCuda(void *array_device, void *array_host, size_t n, dsaXMemcpyKi
 
 void dsaXDeviceSynchronizeCuda();
 
-void reorderOutputCuda(dmem *d);
+void reorderCorrOutputCuda(dmem_corr *d);
 
-void calcWeightsCuda(dmem *d);
+void reorderCorrInputCuda(dmem_corr *d);
 
-void reorderInputCuda(dmem *d);
+void calcWeightsCuda(dmem_bf *d);
 
 template <typename in_prec, typename out_prec> void transposeMatrixCuda(in_prec *idata, out_prec *odata);
 

@@ -97,6 +97,7 @@ template <typename in_prec, typename out_prec> __global__ void transpose_matrix(
 
 }
 
+// DMH: TUNABLE
 // transpose kernel
 // assume breakdown into tiles of 32x32, and run with 32x8 threads per block
 // launch with dim3 dimBlock(32, 8) and dim3 dimGrid(Width/32, Height/32)
@@ -104,32 +105,40 @@ template <typename in_prec, typename out_prec> __global__ void transpose_matrix(
 __global__ void transpose_matrix_char(char * idata, char * odata) {
   
   __shared__ char tile[32][33];
+  //extern __shared__ char tile[];
   
-  int x = blockIdx.x * 32 + threadIdx.x;
-  int y = blockIdx.y * 32 + threadIdx.y;
-  int width = gridDim.x * 32;
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  int y = blockIdx.y * blockDim.x + threadIdx.y;
+  int width = gridDim.x * blockDim.x;
 
-  for (int j = 0; j < 32; j += 8) {
+  for (int j = 0; j < blockDim.x; j += blockDim.y) {
     tile[threadIdx.y+j][threadIdx.x] = idata[(y+j)*width + x];
+    //tile[(threadIdx.y+j)*blockDim.x + threadIdx.x] = idata[(y+j)*width + x];
     //inspectPackedDataInKernel(idata[(y+j)*width + x], (y+j)*width + x);
   }
   
   __syncthreads();
 
-  x = blockIdx.y * 32 + threadIdx.x;  // transpose block offset
-  y = blockIdx.x * 32 + threadIdx.y;
-  width = gridDim.y * 32;
+  x = blockIdx.y * blockDim.x + threadIdx.x;  // transpose block offset
+  y = blockIdx.x * blockDim.x + threadIdx.y;
+  width = gridDim.y * blockDim.x;
 
-  for (int j = 0; j < 32; j += 8) {
-     odata[(y+j)*width + x] = tile[threadIdx.x][threadIdx.y + j];
+  for (int j = 0; j < blockDim.x; j += blockDim.y) {
+    odata[(y+j)*width + x] = tile[threadIdx.x][threadIdx.y + j];
+    //odata[(y+j)*width + x] = tile[threadIdx.x + blockDim.x*(threadIdx.y + j)];
   }
 }
 
 
-// kernel to fluff input
-// run with 128 threads and NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4/128 blocks
-__global__ void corr_input_copy(char *input, half *inr, half *ini) {
-
+/**
+ * Promote complex char riri... data to planar half rr.. ii.. 
+ *
+ * @param[out] inr Half precision real array
+ * @param[out] ini Half precision imag array
+ * @param[in]  input Char precision complex array
+ */
+__global__ void promoteComplexCharToPlanarHalf(char *input, half *inr, half *ini) {
+  
   int bidx = blockIdx.x;  
   int tidx = threadIdx.x; 
   int iidx = blockDim.x * bidx + tidx;

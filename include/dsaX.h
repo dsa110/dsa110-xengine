@@ -40,6 +40,16 @@ typedef struct dsaXBLASParam_s {
   
 } dsaXBLASParam;
 
+// Structure that carries BLAS parameters
+typedef struct dsaXCorrParam_s {  
+  size_t struct_size;        /**< Size of this struct in bytes.  Used to ensure that the host application and DSA see the same struct*/
+  
+  dsaXBLASLib blas_lib;         /**< Which BLAS library to use for BLAS ops */
+  dsaXBLASDataType data_type;   /**< Specifies if using S(C) or D(Z) BLAS type */
+  dsaXBLASDataOrder data_order; /**< Specifies if using Row or Column major */
+  
+} dsaXCorrParam;
+
 void printDsaXBLASParam(const dsaXBLASParam param);
 
 // required to prevent overflow in corr matrix multiply
@@ -48,8 +58,32 @@ void printDsaXBLASParam(const dsaXBLASParam param);
 // beam sep
 #define sep 1.0 // arcmin
 
-// define structure that carries around device memory pointers
-typedef struct dmem {
+// Global timing and metrics structure for dsaX 
+typedef struct metrics_s {
+
+  // Mem copy times
+  double mem_copy_time_H2H;
+  double mem_copy_time_H2D;
+  double mem_copy_time_D2H;
+  double mem_copy_time_D2D;
+
+  // Mem copy size
+  double mem_copy_size_H2H;
+  double mem_copy_size_H2D;
+  double mem_copy_size_D2H;
+  double mem_copy_size_D2D;
+
+  // Compute
+  double compute_time;
+  double compute_flops;
+
+  // Initialisation
+  double initialisation_time;
+} metrics;
+  
+// define structure that carries around memory pointers
+// and timer for the correlator
+typedef struct dmem_corr_s {
   
   // initial data and streams
   char *h_input;        // host input pointer
@@ -63,7 +97,13 @@ typedef struct dmem {
   // giant output array: [NBASE, NCHAN_PER_PACKET, 2 pol, 2 complex]
   float *d_output;
   
+} dmem_corr;
+
+typedef struct dmem_bf_s {
+
   // beamformer pointers
+  char *h_input;        // host input pointer
+  char *d_input, *d_tx; // [NPACKETS_PER_BLOCK, NANTS, NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex]
   char *d_big_input;
   void *d_br, *d_bi; //half
   void *weights_r, *weights_i; //weights: [arm, tactp, b] //half
@@ -78,7 +118,9 @@ typedef struct dmem {
   // timing
   float cp, prep, cubl, outp;
   
-} dmem;
+} dmem_bf;
+
+
 
 void dsaXInit(int device_ordinal = 0);
 
@@ -86,5 +128,5 @@ void inspectPackedData(char input, int i, bool non_zero = false);
 
 void dsaXCorrelator(void *output_data, void *input_data);
 
-void reorderOutput(dmem *d);
-void reorderInput(dmem *d);
+void reorderCorrelatorOutput(dmem_corr *d);
+void reorderCorrelatorInput(dmem_corr *d);
