@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include "dsaX.h"
 
 // DMH: decorate these with Doxygen
 void dsaXCorrelator(void *input_data, void *output_data);

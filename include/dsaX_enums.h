@@ -27,17 +27,22 @@ typedef enum dsaXBLASLib_s {
   DSA_BLAS_LIB_MAGMA  = 1,
   DSA_BLAS_LIB_CUTLASS = 2,
   DSA_BLAS_LIB_TCC = 3, 
-  DSA_BLAS_LIB_OPENBLAS = 4, 
+  DSA_BLAS_LIB_OPENBLAS = 4,
+  DSA_BLAS_LIB_NATIVE = 5, 
   DSA_BLAS_LIB_INVALID = DSA_INVALID_ENUM  
 } dsaXBLASLib;
 
-typedef enum dsaXBLASDataLib_s {
+typedef enum dsaXBLASDataType_s {				
   DSA_BLAS_DATATYPE_H = 0, // Half
   DSA_BLAS_DATATYPE_S = 1, // Single
   DSA_BLAS_DATATYPE_D = 2, // Double
   DSA_BLAS_DATATYPE_HC = 3, // Complex(half)
   DSA_BLAS_DATATYPE_C = 4, // Complex(single)
   DSA_BLAS_DATATYPE_Z = 5, // Complex(double)
+  DSA_BLAS_DATATYPE_4b_REAL = 6, // 4b sized real
+  DSA_BLAS_DATATYPE_2b_REAL = 7, // 2b sized real
+  DSA_BLAS_DATATYPE_4b_COMPLEX = 8, // Char sized complex (4b,4b)
+  DSA_BLAS_DATATYPE_2b_COMPLEX = 9, // 4b sized (2b,2b)  
   DSA_BLAS_DATATYPE_INVALID = DSA_INVALID_ENUM
 } dsaXBLASDataType;
 

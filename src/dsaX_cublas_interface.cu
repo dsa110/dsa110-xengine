@@ -1,5 +1,7 @@
 #include <iostream>
+
 #include "dsaX.h"
+#include "dsaX_params.h"
 #include "dsaX_cuda_headers.h"
 
 using namespace std;

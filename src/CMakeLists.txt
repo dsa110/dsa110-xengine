@@ -19,6 +19,7 @@ set(DSAX_OBJS
   dsaX_correlator.cpp
   dsaX_interface.cpp
   dsaX_utils.cpp
+  dsaX_params.cpp
   dsaX_psrdada_utils.cpp
   )
 
@@ -47,41 +48,41 @@ if(GITVERSION)
 endif()
 mark_as_advanced(DSAX_GITDIR)
 
-# generate a cmake object library for all cpp files first                                                                                                                                                           
+# generate a cmake object library for all cpp files first
 add_library(dsax_cpp OBJECT ${DSAX_OBJS})
 
 if(DSA_XENGINE_BUILD_SHAREDLIB)
   set_target_properties(dsax_cpp PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
-  add_library(dsax SHARED)
+  add_library(dsaX SHARED)
 else()
-  add_library(dsax STATIC)
+  add_library(dsaX STATIC)
 endif()
-add_library(DSA_XENGINE::dsax ALIAS dsax)
+add_library(DSA_XENGINE::dsaX ALIAS dsaX)
 
-# make one library                                                                                                                                                                                                  
-target_sources(dsax PRIVATE $<TARGET_OBJECTS:dsax_cpp> ${DSAX_CU_OBJS})
+# make one library
+target_sources(dsaX PRIVATE $<TARGET_OBJECTS:dsax_cpp> ${DSAX_CU_OBJS})
 
 if(CUDAToolkit_FOUND)
-  target_link_libraries(dsax INTERFACE CUDA::cudart_static ${CUDA_cublas_LIBRARY})
+  target_link_libraries(dsaX INTERFACE CUDA::cudart_static ${CUDA_cublas_LIBRARY})
 endif()
 
 if(DSA_XENGINE_ENABLE_PSRDADA)
   include_directories(${PSRDada_SOURCE_DIR}/src)
   set(PSRDada_LIB ${PSRDada_BINARY_DIR}/src/libpsrdada.so)
-  target_link_libraries(dsax PUBLIC ${PSRDada_LIB})
+  target_link_libraries(dsaX PUBLIC ${PSRDada_LIB})
 endif()
 
 if(DSA_XENGINE_ENABLE_XGPU) 
   include_directories(${xGPU_SOURCE_DIR}/src)
   set(XGPU_LIB ${xGPU_BINARY_DIR}/src/libxgpu.a)
-  target_link_libraries(dsax PUBLIC ${XGPU_LIB})
+  target_link_libraries(dsaX PUBLIC ${XGPU_LIB})
 endif()
 
 if(DSA_XENGINE_ENABLE_CUTLASS) 
   include_directories(${NvidiaCutlass_DIR}/../../../include)
   include_directories(${NvidiaCutlass_DIR}/../../../include/cutlass/util)
   set(NvidiaCutlass_LIB ${NvidiaCutlass_DIR}/../../../lib64/libcutlass.so)
-  target_link_libraries(dsax PUBLIC ${NvidiaCutlass_LIB})
+  target_link_libraries(dsaX PUBLIC ${NvidiaCutlass_LIB})
   
   # Some simple CUTLASS examples to test linking/benching
   #------------------------------------------------------
@@ -107,7 +108,7 @@ endif()
 #-----------------------------
 install(TARGETS
   # cmake-format: sortable
-  dsax
+  dsaX
   LIBRARY DESTINATION
   lib
   )

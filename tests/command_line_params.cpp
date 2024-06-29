@@ -14,7 +14,8 @@ bool run_correlator = false;
 double start_frequency = 1498.75;
 
 // Test file
-std::string test_filename;
+std::string input_filename = "input.dat";
+std::string output_filename = "output.dat";
 int n_channels = 384;
 int n_antennae = 63;
 int n_pol = 2;
@@ -34,7 +35,8 @@ std::shared_ptr<dsaXApp> make_app(std::string app_description, std::string app_n
   dsaX_app->add_option("--start-frequency", start_frequency, "start frequency (assumes 1498.75)");
 
   // Input file options
-  dsaX_app->add_option("--test-filename", test_filename, "Name of file on which to run tests");
+  dsaX_app->add_option("--input-filename", input_filename, "Name of file on which to run tests");
+  dsaX_app->add_option("--output-filename", output_filename, "Name of file on which to write results");
   dsaX_app->add_option("--n-channels", n_channels, "Number of frequency channels [default 384]");
   dsaX_app->add_option("--n-antennae", n_antennae, "Number of antennae [default 63]");
   dsaX_app->add_option("--n-pol", n_pol, "Number of polarizations [default 2]");

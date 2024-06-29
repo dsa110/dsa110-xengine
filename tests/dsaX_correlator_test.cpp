@@ -93,35 +93,16 @@ int main(int argc, char **argv) {
     return app->exit(e);
   }
   
-  // command line arguments
-  int device_ordinal = 0;
-  
-  std::cout << "NPACKETS_PER_BLOCK = " << NPACKETS_PER_BLOCK << std::endl;
-  std::cout << "NCHAN = " << NCHAN << std::endl;
-  std::cout << "NCHAN_PER_PACKET = " << NCHAN_PER_PACKET << std::endl;
-  std::cout << "NPOL = " << NPOL << std::endl;
-  std::cout << "NARM = " << 2 << std::endl;
-  unsigned long long size = sizeof(char);
-  size *= NPACKETS_PER_BLOCK;
-  size *= NANTS;
-  size *= NCHAN_PER_PACKET;
-  size *= NPOL;
-  size *= NCOMPLEX;
-  std::cout << "(bytes) char size * NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*NPOL*NCOMPLEX = " << size << std::endl;
-  std::cout << "Expected size of data array = " << (unsigned long long)(sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*NPOL*NCOMPLEX) << std::endl;
-  std::cout << "Expected size of input array = " << (unsigned long long)(sizeof(char)*4*NANTS*NCHAN_PER_PACKET*NPOL*NCOMPLEX) << std::endl;
-  
-  //dsaX_init();  
+  int device_ordinal = 0;    
   FILE *fin, *fout;
   uint64_t sz, output_size, in_block_size, rd_size;
   in_block_size = NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2;
-  char * output_data, * o1;
   int nreps = 1, nchunks = 1;
 
   // read one block of input data  
   // get size of file
-  std::cout << "attempting to read file " << test_filename.c_str() << std::endl; 
-  fin=fopen(test_filename.c_str(), "rb");
+  std::cout << "attempting to read file " << input_filename.c_str() << std::endl; 
+  fin=fopen(input_filename.c_str(), "rb");
   fseek(fin, 0L, SEEK_END);
   sz = ftell(fin);
   rewind(fin);
@@ -136,9 +117,29 @@ int main(int argc, char **argv) {
     rd_size = sz;
   }
 
-  std::cout << "Creating char input_array of size " << sizeof(char)*in_block_size << std::endl;
-  char *input_data = (char *)malloc(in_block_size);
+  // Start dsaX program
+  //---------------------------------------
+  dsaXInit(device_ordinal);
+  
+  // Create Correlator class instance.
+  dsaXCorrParam param = newDsaXCorrParam();
+  param.blas_lib = DSA_BLAS_LIB_CUBLAS;
+  param.data_type = DSA_BLAS_DATATYPE_4b_COMPLEX;
+  param.data_order = DSA_BLAS_DATAORDER_ROW;
+  printDsaXCorrParam(param);
+  auto correlator = new Correlator(&param);
 
+  output_size = NBASE*NCHAN_PER_PACKET*2*2*4;
+  std::cout << "Creating char output_array of size " << (1.0*sizeof(float)*NBASE*NCHAN_PER_PACKET*2*2)/pow(1024,2) << " MB." << std::endl;
+  char *output_data = (char *)malloc(output_size);
+
+  std::cout << "Creating char input_array of size " << (1.0*sizeof(char)*in_block_size)/pow(1024,2) << " MB." << std::endl;
+  char *input_data = (char *)malloc(in_block_size);
+  
+  std::cout << "Computing " << nreps << " repetitions of " << nchunks << " chunks of input data of size " << rd_size << " bytes." << endl;
+  std::cout << "Total input size = " << (1.0 * nreps * nchunks * rd_size)/pow(1024,3) << " GB." << endl;
+  std::cout << "Expected output size = " << (1.0 * nreps * nchunks * output_size)/pow(1024,3) << " GB." << endl;
+  
   // Loop over reps and chunks
   for (int reps = 0; reps<nreps; reps++) {
     for (int chunks = 0; chunks<nchunks; chunks++) {
@@ -147,27 +148,32 @@ int main(int argc, char **argv) {
       if (chunks>0) rewind(fin);
       fread(input_data + chunks*rd_size, rd_size, 1, fin);
 
-      std::cout << "Input peek " << std::endl;
+      //std::cout << "Input peek " << std::endl;
       //for (int i=0; i<8; i++) inspectPackedData(input_data[i], i);
-
-      std::cout << "Creating char output_array of size " << sizeof(char)*NBASE*NCHAN_PER_PACKET*2*2*4 << std::endl;
-      output_size = NBASE*NCHAN_PER_PACKET*2*2*4;
-      output_data = (char *)malloc(output_size);
       
       // run correlator and record output data
-      syslog(LOG_INFO,"run correlator");
-      dsaXCorrelator((void*)output_data, (void*)input_data);
+      //dsaXCorrelator((void*)output_data, (void*)input_data, &param);
+      correlator->compute((void*)output_data, (void*)input_data);
       
-      std::cout << "Output peek " << std::endl;
-      for(int i=0; i<output_size; i++) inspectPackedData(output_data[i], i, true);
+      //std::cout << "Output peek " << std::endl;
+      //for(int i=0; i<output_size; i++) inspectPackedData(output_data[i], i, true);
 
-      fout = fopen("output.dat","ab");
-      fwrite((unsigned char *)output_data,sizeof(unsigned char *),output_size,fout);
+      fout = fopen(output_filename.c_str(),"ab");
+      fwrite((unsigned char *)output_data, sizeof(unsigned char *), sizeof(float)*output_size, fout);
       fclose(fout);
       exit(0);
     }
   }
 
+  dsaXEnd();
+  // End dsaX program
+  //---------------------------------------
+
+  // free local data
+  free(input_data);
+  free(output_data);
+  return 0;
+  
   /*
   
   // Read data
@@ -209,11 +215,6 @@ int main(int argc, char **argv) {
   fwrite((float *)output_data, sizeof(float), NBASE*NCHAN_PER_PACKET*2*2, fout);
   fclose(fout);
   */
-    
-  // free
-  free(input_data);
-  free(output_data);
-  //dsaX_end();
-  
-  return 0;
+      
+
 }

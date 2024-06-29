@@ -319,6 +319,10 @@ void dsaXmemsetCuda(void *array, int ch, size_t n){
   cudaMemset(array, ch, n);
 }
 
+void dsaXDeviceSynchronizeCuda() {
+  cudaDeviceSynchronize();
+}
+
 void dsaXmemcpyCuda(void *array_out, void *array_in, size_t n, dsaXMemcpyKind kind){
   cudaError error = cudaSuccess;
   switch(kind) {
@@ -338,9 +342,5 @@ void dsaXmemcpyCuda(void *array_out, void *array_in, size_t n, dsaXMemcpyKind ki
     std::cout << "dsaX error: unknown dsaXMemcpyKind" << std::endl;
   }
   if(error != cudaSuccess) cudaGetLastError();
-}
-
-void dsaXDeviceSynchronizeCuda() {
-  cudaDeviceSynchronize();
 }
 

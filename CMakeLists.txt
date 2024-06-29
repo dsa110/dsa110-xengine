@@ -48,7 +48,6 @@ if(TARGET_TYPE_VALID LESS 0)
   message(SEND_ERROR "Please specify a valid DSA_XENGINE_TARGET_TYPE type! Valid target types are:" "${VALID_TARGET_TYPES}")
 endif()
 
-
 # Git helpers
 #------------
 find_package(Git)
@@ -231,7 +230,7 @@ if(DSA_XENGINE_ENABLE_OPENBLAS)
 endif()
 
 # Get psrdada dependency
-option(DSA_XENGINE_ENABLE_PSRDADA "Use PSRDada for correlatorss" ON)
+option(DSA_XENGINE_ENABLE_PSRDADA "Use PSRDada for IO" ON)
 option(DSA_XENGINE_DOWNLOAD_PSRDADA "Download and build PSRDada" ON)
 if(DSA_XENGINE_DOWNLOAD_PSRDADA)
   # Download, build and install
@@ -245,40 +244,80 @@ else()
   find_package(PSRDada REQUIRED)
 endif()
 
+# Get HDF5 dependency
+option(DSA_XENGINE_ENABLE_HDF5 "Use HDF5 for data IO" OFF)
+if(DSA_XENGINE_ENABLE_HDF5)
+  option(DSA_XENGINE_DOWNLOAD_HDF5 "Download and build HDf5" OFF)
+  if(DSA_XENGINE_DOWNLOAD_HDF5)
+    # Download, build and install
+    FetchContent_Declare(
+      HDF5
+      GIT_REPOSITORY https://github.com/HDFGroup/hdf5.git
+      GIT_TAG 5794814
+      )
+    FetchContent_MakeAvailable(HDF5)
+  else()
+    # Find and link to local install
+    find_package(HDF5 REQUIRED)
+  endif()
+endif()
+
 # Get CLI11 dependency
 # FIX ME: get static .hpp version and ship with package
 option(DSA_XENGINE_ENABLE_CLI11 "Enable CLI11 (required)" ON)
-option(DSA_XENGINE_DOWNLOAD_CLI11 "Download and build CLI11" ON)
-if(DSA_XENGINE_DOWNLOAD_CLI11)
-  # Download, build and install
-  FetchContent_Declare(
-    CLI11
-    GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
-    GIT_TAG main
-    )
-  FetchContent_MakeAvailable(CLI11)
-else()
-  # Find and link to local install
-  find_package(CLI11 REQUIRED)
+if(DSA_XENGINE_ENABLE_CLI11)
+  option(DSA_XENGINE_DOWNLOAD_CLI11 "Download and build CLI11" ON)
+  if(DSA_XENGINE_DOWNLOAD_CLI11)
+    # Download, build and install
+    FetchContent_Declare(
+      CLI11
+      GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
+      GIT_TAG main
+      )
+    FetchContent_MakeAvailable(CLI11)
+  else()
+    # Find and link to local install
+    find_package(CLI11 REQUIRED)
+  endif()
 endif()
 
-# Get CLI11 dependency
-# FIX ME: get static .hpp version and ship with package
-option(DSA_XENGINE_ENABLE_GOOGLETEST "Enable GOOGLETEST (required)" ON)
-option(DSA_XENGINE_DOWNLOAD_GOOGLETEST "Download and build GOOGLETEST" ON)
-if(DSA_XENGINE_DOWNLOAD_GOOGLETEST)
-  # Download, build and install
-  FetchContent_Declare(
-    GOOGLETEST
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG main
-    )
-  FetchContent_MakeAvailable(GOOGLETEST)
-else()
-  # Find and link to local install
-  find_package(GOOGLETEST REQUIRED)
+
+# Get ZFP dependency
+option(DSA_XENGINE_ENABLE_ZFP "Enable ZFP" OFF)
+if(DSA_XENGINE_ENABLE_ZFP)
+  option(DSA_XENGINE_DOWNLOAD_ZFP "Download and build ZFP" OFF)
+  if(DSA_XENGINE_DOWNLOAD_ZFP)
+    # Download, build and install
+    FetchContent_Declare(
+      ZFP
+      GIT_REPOSITORY https://github.com/LLNL/zfp.git
+      GIT_TAG f40868a
+      )
+    FetchContent_MakeAvailable(ZFP)
+  else()
+    # Find and link to local install
+    find_package(ZFP REQUIRED)
+  endif()
 endif()
 
+# Get Timer dependency https://github.com/cpp-core/timer.git
+# Get timer dependency
+option(DSA_XENGINE_ENABLE_TIMER "Enable timer" ON)
+if(DSA_XENGINE_ENABLE_TIMER)
+  option(DSA_XENGINE_DOWNLOAD_TIMER "Download and build timer" ON)
+  if(DSA_XENGINE_DOWNLOAD_TIMER)
+    # Download, build and install
+    FetchContent_Declare(
+      TIMER
+      GIT_REPOSITORY https://github.com/cpp-core/timer.git
+      GIT_TAG main
+      )
+    FetchContent_MakeAvailable(TIMER)
+  else()
+    # Find and link to local install
+    find_package(TIMER REQUIRED)
+  endif()
+endif()
 
 # Add src, include, tests, and legacy
 add_subdirectory(src)
