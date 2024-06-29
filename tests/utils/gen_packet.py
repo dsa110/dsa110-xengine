@@ -84,8 +84,8 @@ outfile = 'packet.out'
 n_packet = 4608 # 4608 for single packet
 
 # decide which sort of packet to make
-noise = False
-tone = True
+noise = True
+tone = False
 x16 = False
 
 # if tone
@@ -110,8 +110,8 @@ if tone is True:
     # make packet
     real_part = np.zeros(n_packet,dtype='int8')
     imag_part = np.zeros(n_packet,dtype='int8')
-    for ant in [0,1,2]: # 3 antennae
-        for i in chans: # 384 channels
+    for ant in [0,1,2]:
+        for i in chans:
 
             # time 1 pol A
             j = int(1536*ant + i*4)
@@ -214,15 +214,3 @@ newFile.close()
 
     
 #plot_spectrum(out_str,pol=1,ant=1)
-
-
-    
-
-
-
-    
-        
-    
-    
-        
-    
