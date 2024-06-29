@@ -300,25 +300,6 @@ if(DSA_XENGINE_ENABLE_ZFP)
   endif()
 endif()
 
-# Get Timer dependency https://github.com/cpp-core/timer.git
-# Get timer dependency
-option(DSA_XENGINE_ENABLE_TIMER "Enable timer" ON)
-if(DSA_XENGINE_ENABLE_TIMER)
-  option(DSA_XENGINE_DOWNLOAD_TIMER "Download and build timer" ON)
-  if(DSA_XENGINE_DOWNLOAD_TIMER)
-    # Download, build and install
-    FetchContent_Declare(
-      TIMER
-      GIT_REPOSITORY https://github.com/cpp-core/timer.git
-      GIT_TAG main
-      )
-    FetchContent_MakeAvailable(TIMER)
-  else()
-    # Find and link to local install
-    find_package(TIMER REQUIRED)
-  endif()
-endif()
-
 # Add src, include, tests, and legacy
 add_subdirectory(src)
 add_subdirectory(include)
