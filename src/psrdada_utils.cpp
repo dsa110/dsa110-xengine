@@ -1,4 +1,4 @@
-#include "dsaX_psrdada_utils.h"
+#include "psrdada_utils.h"
 
 void dsaX_dbgpu_cleanup(dada_hdu_t * in, dada_hdu_t * out)
 {

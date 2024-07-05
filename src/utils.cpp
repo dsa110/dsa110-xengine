@@ -1,9 +1,9 @@
 #include <iostream>
 
-#include "dsaX_utils.h"
-#include "dsaX_enums.h"
-#include "dsaX_params.h"
-#include "dsaX_cuda_interface.h"
+#include "utils.h"
+#include "enums.h"
+#include "params.h"
+#include "cuda_interface.h"
 
 using namespace std;
 

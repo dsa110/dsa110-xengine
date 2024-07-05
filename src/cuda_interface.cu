@@ -1,10 +1,10 @@
 #include <iostream>
 #include <vector>
 
-#include "dsaX_cuda_headers.h"
-#include "dsaX_cuda_interface.h"
-#include "dsaX_cuda_kernels.h"
-#include "dsaX_cuda_handles.h"
+#include "cuda_headers.h"
+#include "cuda_interface.h"
+#include "cuda_kernels.h"
+#include "cuda_handles.h"
 
 using namespace std;
 

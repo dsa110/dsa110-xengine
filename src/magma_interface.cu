@@ -1,9 +1,9 @@
 #include <iostream>
 
 #include "dsaX.h"
-#include "dsaX_params.h"
-#include "dsaX_cuda_headers.h"
-#include "dsaX_magma_headers.h"
+#include "params.h"
+#include "cuda_headers.h"
+#include "magma_headers.h"
 
 using namespace std;
 

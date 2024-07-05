@@ -1,7 +1,7 @@
 #pragma once
 
-#include "dsaX_enums.h"
-#include "dsaX_params.h"
+#include "enums.h"
+#include "params.h"
 #include "timer.h"
 
 using ms = std::chrono::microseconds;

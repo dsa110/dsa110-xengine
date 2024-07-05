@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "dsaX_params.h"
+#include "params.h"
 
 using namespace std;
 

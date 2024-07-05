@@ -1,9 +1,9 @@
 #include <iostream>
 
 #include "dsaX.h"
-#include "dsaX_params.h"
-#include "dsaX_cuda_headers.h"
-#include "dsaX_cuda_handles.h"
+#include "params.h"
+#include "cuda_headers.h"
+#include "cuda_handles.h"
 //#include "dsaX_cuda_kernels.h" // For debug
 
 using namespace std;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "dsaX_cuda_headers.h"
+#include "cuda_headers.h"
 
 __global__ void inspectPackedDataInKernel(char input, int i) {
   float re = (float)((char)((   (unsigned char)(input) & (unsigned char)(15)  ) << 4) >> 4);

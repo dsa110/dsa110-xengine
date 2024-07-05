@@ -11,10 +11,10 @@ key_t out_key = 0x0000fada; // XGPU_BLOCK_KEY in dsaX_def.h
 // Test params
 bool run_beamformer = false;
 bool run_correlator = false;
-bool input_rands = false;
+bool input_rands = true;
 bool write_output = false;
 int test_iter = 1;
-int n_streams = 10;
+int n_streams = 8;
 
 // Test files
 std::string input_filename = "input.dat";

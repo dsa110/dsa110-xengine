@@ -2,7 +2,7 @@
 
 #include <complex>
 
-#include "dsaX_enums.h"
+#include "enums.h"
 
 // Structure that carries BLAS parameters
 // This should be able to communicate to all

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "dsaX_params.h"
+#include "params.h"
 #include "timer.h"
 
 void dsaXmemset(void *array, int ch, size_t n);

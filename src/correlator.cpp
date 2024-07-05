@@ -11,10 +11,10 @@ Workflow is similar for BF and corr applications
 
 #include "dsaX_def.h"
 #include "dsaX.h"
-#include "dsaX_ftd.h"
-#include "dsaX_blas_interface.h"
-#include "dsaX_utils.h"
-#include "dsaX_psrdada_utils.h"
+#include "fast_time_domain.h"
+#include "blas_interface.h"
+#include "utils.h"
+#include "psrdada_utils.h"
 
 using namespace std;
 

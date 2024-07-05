@@ -3,10 +3,10 @@
 #include <cstring>
 #include <string>
 
-#include "dsaX_params.h"
-#include "dsaX_cuda_interface.h"
-#include "dsaX_utils.h"
-#include "dsaX_ftd.h"
+#include "params.h"
+#include "cuda_interface.h"
+#include "utils.h"
+#include "fast_time_domain.h"
 
 using namespace std;
 

@@ -3,9 +3,9 @@
 // Expose the use to compile time definitions,
 // enums, parameters, and classes
 #include "dsaX_def.h"
-#include "dsaX_enums.h"
-#include "dsaX_params.h"
-#include "dsaX_ftd.h"
+#include "enums.h"
+#include "params.h"
+#include "fast_time_domain.h"
 
 // Use manual transpose route
 // Uncomment to try new pure cuBLAS

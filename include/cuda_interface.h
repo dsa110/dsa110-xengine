@@ -3,7 +3,7 @@
 #include <vector>
 
 #include "dsaX_def.h"
-#include "dsaX_enums.h"
+#include "enums.h"
 #include "dsaX.h"
 
 void dsaXInitCuda(int dev);

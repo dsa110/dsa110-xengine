@@ -11,18 +11,18 @@ endif()
 # DSA Fast Time Domain library
 #-----------------------------
 set(DSAX_OBJS
-  dsaX_cuda_interface.cu
-  dsaX_cublas_interface.cu
-  dsaX_cuda_handles.cu
-  dsaX_magma_interface.cu
-  dsaX_blas_interface.cpp
-  dsaX_beamformer.cpp
+  cuda_interface.cu
+  cublas_interface.cu
+  cuda_handles.cu
+  magma_interface.cu
+  blas_interface.cpp
+  beamformer.cpp
   dsaX_base.cpp
-  dsaX_correlator.cpp
-  dsaX_interface.cpp
-  dsaX_utils.cpp
-  dsaX_params.cpp
-  dsaX_psrdada_utils.cpp
+  correlator.cpp
+  interface.cpp
+  utils.cpp
+  params.cpp
+  psrdada_utils.cpp
   )
 
 # split source into cu and cpp files
@@ -115,18 +115,3 @@ install(TARGETS
   lib
   )
 #-----------------------------
-
-# install step for executables
-#-----------------------------
-install(TARGETS
-  # cmake-format: sortable
-  #dsaX_beamformer_correlator
-  RUNTIME DESTINATION
-  bin
-  )
-#-----------------------------
-
-if(CUDAToolkit_FOUND)
-  #add_executable(dsaX_beamformer_correlator_exe dsaX_beamformer_correlator_exe.cu)
-  #target_link_libraries(dsaX_beamformer_correlator_exe PUBLIC dsax ${CUDA_cublas_LIBRARY} ${PSRDada_LIB})
-endif()
