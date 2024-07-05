@@ -13,9 +13,11 @@ endif()
 set(DSAX_OBJS
   dsaX_cuda_interface.cu
   dsaX_cublas_interface.cu
+  dsaX_cuda_handles.cu
   dsaX_magma_interface.cu
   dsaX_blas_interface.cpp
   dsaX_beamformer.cpp
+  dsaX_base.cpp
   dsaX_correlator.cpp
   dsaX_interface.cpp
   dsaX_utils.cpp

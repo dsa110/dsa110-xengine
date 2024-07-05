@@ -15,10 +15,11 @@ void dsaXmemset(void *array, int ch, size_t n){
 #endif
 }
 
-void dsaXmemcpy(void *array_out, void *array_in, size_t n, dsaXMemcpyKind kind){
+void dsaXmemcpy(void *array_out, void *array_in, size_t n, dsaXMemcpyKind kind, int stream){
+
 #ifdef DSA_XENGINE_TARGET_CUDA
   // Perform host to device memcopy on data
-  dsaXmemcpyCuda(array_out, array_in, n, kind);
+  dsaXmemcpyCuda(array_out, array_in, n, kind, stream);
 #else  
   memcpy(array_out, array_in, n);
 #endif
@@ -33,19 +34,25 @@ void dsaXDeviceSynchronize() {
 #endif
 }
 
-void initDsaXCorrDeviceMemory(dmem_corr *d) {
+void initDsaXCorrDeviceMemory(corr_handle *d, unsigned int n_streams) {
+
 #ifdef DSA_XENGINE_TARGET_CUDA
-  initializeCorrCudaMemory(d);
+  d->dev_malloc_timer.start();
+  initializeCorrCudaMemory(d, n_streams);
+  d->dev_malloc_timer.stop();
 #else  
   cout << "dsaX Error: Not implemented." << endl;
   exit(0);
 #endif  
 }
 
-void destroyDsaXCorrDeviceMemory(dmem_corr *d) {
+void destroyDsaXCorrDeviceMemory(corr_handle *d) {
+
 #ifdef DSA_XENGINE_TARGET_CUDA
+  d->dev_malloc_timer.start();
   deallocateCorrCudaMemory(d);
-#else  
+  d->dev_malloc_timer.stop();
+#else
   cout << "dsaX Error: Not implemented." << endl;
   exit(0);
 #endif  

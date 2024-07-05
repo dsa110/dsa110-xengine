@@ -5,21 +5,27 @@ int core = 0;
 bool debug = false;
 
 // Data block HDU keys 
-key_t in_key = REORDER_BLOCK_KEY;
-key_t out_key = XGPU_BLOCK_KEY;
+key_t in_key = 0x0000eada;  // REORDER_BLOCK_KEY in dsaX_def.h
+key_t out_key = 0x0000fada; // XGPU_BLOCK_KEY in dsaX_def.h
 
-// Test mode
+// Test params
 bool run_beamformer = false;
 bool run_correlator = false;
-double start_frequency = 1498.75;
+bool input_rands = false;
+bool write_output = false;
+int test_iter = 1;
+int n_streams = 10;
 
-// Test file
+// Test files
 std::string input_filename = "input.dat";
 std::string output_filename = "output.dat";
+
+// DSA hardware configuration
 int n_channels = 384;
 int n_antennae = 63;
 int n_pol = 2;
 int n_times = 30720;
+double start_frequency = 1498.75;
 
 std::shared_ptr<dsaXApp> make_app(std::string app_description, std::string app_name) {
 
@@ -32,15 +38,19 @@ std::shared_ptr<dsaXApp> make_app(std::string app_description, std::string app_n
   dsaX_app->add_option("--out-key", out_key, "[default XGPU_BLOCK_KEY]");
   dsaX_app->add_option("--run-beamformer", run_beamformer, "Run the beamformer [default false]");
   dsaX_app->add_option("--run-correlator", run_correlator, "Run the correlator [default false]");
-  dsaX_app->add_option("--start-frequency", start_frequency, "start frequency (assumes 1498.75)");
-
+  dsaX_app->add_option("--test-iter", test_iter, "Run the test 'test_iter' times [default 1]");
+  dsaX_app->add_option("--write-output", write_output, "Write output to disk [default true]");
+  dsaX_app->add_option("--n-streams", n_streams, "The number of device streams [default 10]");
+  
   // Input file options
+  dsaX_app->add_option("--input-rands", input_rands, "Generate random input (default false)");
   dsaX_app->add_option("--input-filename", input_filename, "Name of file on which to run tests");
+
   dsaX_app->add_option("--output-filename", output_filename, "Name of file on which to write results");
   dsaX_app->add_option("--n-channels", n_channels, "Number of frequency channels [default 384]");
   dsaX_app->add_option("--n-antennae", n_antennae, "Number of antennae [default 63]");
   dsaX_app->add_option("--n-pol", n_pol, "Number of polarizations [default 2]");
   dsaX_app->add_option("--n-times", n_times, "Number of times [default 30720]");
-
+  dsaX_app->add_option("--start-frequency", start_frequency, "start frequency (assumes 1498.75)");
   return dsaX_app;
 }

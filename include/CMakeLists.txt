@@ -8,6 +8,7 @@ set(DSA_XENGINE_HEADERS
   dsaX_def.h
   dsaX_ftd.h  
   dsaX_cuda_interface.h
+  dsaX_cuda_handles.h
   dsaX_cuda_headers.h
   dsaX_capture.h
   dsaX_capture_manythread.h

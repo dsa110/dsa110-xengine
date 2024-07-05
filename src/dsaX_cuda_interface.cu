@@ -4,43 +4,86 @@
 #include "dsaX_cuda_headers.h"
 #include "dsaX_cuda_interface.h"
 #include "dsaX_cuda_kernels.h"
+#include "dsaX_cuda_handles.h"
 
 using namespace std;
 
+// DMH: Everything in this file is CUDA aware.
+
+__global__ void deviceInspectHalfCI(half *input, int stage) {
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  printf("CUDA_INTERFACE[%d]: device inspect half [%d] =  %f\n", stage, x, __half2float(input[x])); 
+}
+
+__global__ void deviceInspectFloatCI(float *input, int stage) {
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  printf("CUDA_INTERFACE[%d]: device inspect float [%d] =  %f\n", stage, x, input[x]); 
+}
+
 void dsaXInitCuda(int dev){
-  cudaSetDevice(dev);
+  if(dev >= 0) cudaSetDevice(dev);
+  else {
+    cout << "dsaX Error: invalid device ordinal " << dev << " passed to dsaX." << endl;
+    exit(0);
+  }
+}
+
+void initStreamsCuda(unsigned int n_streams){
+  init_streams(n_streams);
+}
+
+void destroyStreamsCuda(){
+  destroy_streams();
+}
+
+void dsaXDestroyCuda(int dev){
+  //
+}
+
+void *dsaXHostRegisterCuda(size_t size) {
+
+  void *ptr = malloc(size);  
+  cudaError_t err = cudaHostRegister(ptr, size, cudaHostRegisterDefault);
+  if (err != cudaSuccess) {
+    cout << "dsaX Error: Failed to register pinned memory of size " << size << endl;
+    exit(0);
+  }
+  return ptr;
 }
 
 // allocate device memory
-void initializeCorrCudaMemory(dmem_corr *d) {
-  
+void initializeCorrCudaMemory(corr_handle *d, unsigned int n_streams) {
+
   // for correlator
-  cudaMalloc((void **)(&d->d_input), sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
-  cudaMalloc((void **)(&d->d_r), sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2);
-  cudaMalloc((void **)(&d->d_i), sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2);
-  cudaMalloc((void **)(&d->d_tx), sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
-  cudaMalloc((void **)(&d->d_output), sizeof(float)*NBASE*NCHAN_PER_PACKET*2*2);
-  cudaMalloc((void **)(&d->d_outr), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
-  cudaMalloc((void **)(&d->d_outi), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
-  cudaMalloc((void **)(&d->d_tx_outr), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
-  cudaMalloc((void **)(&d->d_tx_outi), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac);
+  cudaMalloc((void **)(&d->d_input), sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2*n_streams);
+  cudaMalloc((void **)(&d->d_r), sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2*n_streams);
+  cudaMalloc((void **)(&d->d_i), sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2*n_streams);
+  cudaMalloc((void **)(&d->d_tx), sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2*n_streams);
+  cudaMalloc((void **)(&d->d_output), sizeof(float)*NBASE*NCHAN_PER_PACKET*2*2*n_streams);
+  cudaMalloc((void **)(&d->d_outr), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*n_streams);
+  cudaMalloc((void **)(&d->d_outi), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*n_streams);
+  cudaMalloc((void **)(&d->d_tx_outr), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*n_streams);
+  cudaMalloc((void **)(&d->d_tx_outi), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*n_streams);
+
+  // DMH: fix me
+  cudaMalloc((void **)(&d->d_idxs), sizeof(int)*NBASE);
 }
 
-void initializeBFCudaMemory(dmem_bf *d) {
+void initializeBFCudaMemory(bf_handle *d, int n_streams) {
   
   // for beamformer
-  cudaMalloc((void **)(&d->d_input), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS/2)*NCHAN_PER_PACKET*2*2);
-  cudaMalloc((void **)(&d->d_big_input), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS)*NCHAN_PER_PACKET*2*2);
-  cudaMalloc((void **)(&d->d_tx), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS/2)*NCHAN_PER_PACKET*2*2);
-  cudaMalloc((void **)(&d->d_br), sizeof(half)*NCHAN_PER_PACKET*2*(NANTS/2)*(NPACKETS_PER_BLOCK)*2);
-  cudaMalloc((void **)(&d->d_bi), sizeof(half)*NCHAN_PER_PACKET*2*(NANTS/2)*(NPACKETS_PER_BLOCK)*2);
-  cudaMalloc((void **)(&d->weights_r), sizeof(half)*2*4*(NANTS/2)*8*2*2*(NBEAMS/2)*(NCHAN_PER_PACKET/8));
-  cudaMalloc((void **)(&d->weights_i), sizeof(half)*2*4*(NANTS/2)*8*2*2*(NBEAMS/2)*(NCHAN_PER_PACKET/8));
-  cudaMalloc((void **)(&d->d_bigbeam_r), sizeof(half)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2));
-  cudaMalloc((void **)(&d->d_bigbeam_i), sizeof(half)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2));
-  cudaMalloc((void **)(&d->d_bigpower), sizeof(unsigned char)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS));
-  cudaMalloc((void **)(&d->d_scf), sizeof(float)*(NBEAMS/2)); // beam scale factor
-  cudaMalloc((void **)(&d->d_chscf), sizeof(float)*(NBEAMS/2)*(NCHAN_PER_PACKET/8)); // beam scale factor
+  cudaMalloc((void **)(&d->d_input), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS/2)*NCHAN_PER_PACKET*2*2*n_streams);
+  cudaMalloc((void **)(&d->d_big_input), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS)*NCHAN_PER_PACKET*2*2*n_streams);
+  cudaMalloc((void **)(&d->d_tx), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS/2)*NCHAN_PER_PACKET*2*2*n_streams);
+  cudaMalloc((void **)(&d->d_br), sizeof(half)*NCHAN_PER_PACKET*2*(NANTS/2)*(NPACKETS_PER_BLOCK)*2*n_streams);
+  cudaMalloc((void **)(&d->d_bi), sizeof(half)*NCHAN_PER_PACKET*2*(NANTS/2)*(NPACKETS_PER_BLOCK)*2*n_streams);
+  cudaMalloc((void **)(&d->weights_r), sizeof(half)*2*4*(NANTS/2)*8*2*2*(NBEAMS/2)*(NCHAN_PER_PACKET/8)*n_streams);
+  cudaMalloc((void **)(&d->weights_i), sizeof(half)*2*4*(NANTS/2)*8*2*2*(NBEAMS/2)*(NCHAN_PER_PACKET/8)*n_streams);
+  cudaMalloc((void **)(&d->d_bigbeam_r), sizeof(half)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*n_streams);
+  cudaMalloc((void **)(&d->d_bigbeam_i), sizeof(half)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*n_streams);
+  cudaMalloc((void **)(&d->d_bigpower), sizeof(unsigned char)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS)*n_streams);
+  cudaMalloc((void **)(&d->d_scf), sizeof(float)*(NBEAMS/2)*n_streams); // beam scale factor
+  cudaMalloc((void **)(&d->d_chscf), sizeof(float)*(NBEAMS/2)*(NCHAN_PER_PACKET/8)*n_streams); // beam scale factor
   
   // input weights: first is [NANTS, E/N], then [NANTS, 48, 2pol, R/I]
   d->h_winp = (float *)malloc(sizeof(float)*(NANTS*2+NANTS*(NCHAN_PER_PACKET/8)*2*2));
@@ -56,7 +99,7 @@ void initializeBFCudaMemory(dmem_bf *d) {
 }
 
 // deallocate device memory
-void deallocateCorrCudaMemory(dmem_corr *d) {
+void deallocateCorrCudaMemory(corr_handle *d) {
   
   cudaFree(d->d_input);
   cudaFree(d->d_r);
@@ -67,10 +110,11 @@ void deallocateCorrCudaMemory(dmem_corr *d) {
   cudaFree(d->d_outi);
   cudaFree(d->d_tx_outr);
   cudaFree(d->d_tx_outi);
+  cudaFree(d->d_idxs);
 }
 
 // deallocate device memory
-void deallocateBFCudaMemory(dmem_bf *d) {
+void deallocateBFCudaMemory(bf_handle *d) {
 
   cudaFree(d->d_input);
   cudaFree(d->d_tx);
@@ -89,89 +133,52 @@ void deallocateBFCudaMemory(dmem_bf *d) {
   free(d->h_freqs);
 }  
 
+void computeIndicesCuda(corr_handle *d) {
+  
+  // now run kernel to sum into output
+  int *h_idxs = (int *)malloc(sizeof(int)*NBASE);
+  int ii = 0;
+  // upper triangular order (column major) to match xGPU (not the same as CASA!)
+  for (int i=0; i<NANTS; i++) {
+    for (int j=0; j<=i; j++) {
+      h_idxs[ii] = i*NANTS + j;
+      ii++;
+    }
+  }
+  cudaMemcpy(d->d_idxs, h_idxs, sizeof(int)*NBASE, cudaMemcpyHostToDevice);
+  free(h_idxs);
+}
+
 
 // function to copy d_outr and d_outi to d_output
 // inputs are [NCHAN_PER_PACKET, 2 time, 2 pol, NANTS, NANTS]
 // the corr matrices are column major order
 // output needs to be [NBASE, NCHAN_PER_PACKET, 2 pol, 2 complex]
 // start with transpose to get [NANTS*NANTS, NCHAN_PER_PACKET*2*2], then sum into output using kernel
-void reorderCorrOutputCuda(dmem_corr * d) {
+void reorderCorrOutputCuda(corr_handle *d, int stream) {
+
+  cudaStream_t str = get_stream(stream);
+
+  uint64_t input_offset = sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2 * stream;
+  uint64_t output_offset = sizeof(float)*NBASE*NCHAN_PER_PACKET*2*2 * stream;
   
   // transpose input data
 #if defined (OLD_BLAS)
   dim3 dimBlock(32, 8), dimGrid((NANTS*NANTS)/32, (NCHAN_PER_PACKET*2*2*halfFac)/32);
-  transpose_matrix<<<dimGrid, dimBlock>>>((half*)d->d_outr, (half*)d->d_tx_outr);
-  transpose_matrix<<<dimGrid, dimBlock>>>((half*)d->d_outi, (half*)d->d_tx_outi);
-#endif  
-  // look at output
-  /*char * odata = (char *)malloc(sizeof(char)*384*4*NANTS*NANTS*2*halfFac);
-  cudaMemcpy(odata,d->d_tx_outr,384*4*NANTS*NANTS*2*halfFac,cudaMemcpyDeviceToHost);
-  FILE *fout;
-  fout=fopen("test2.test","wb");
-  fwrite(odata,sizeof(char),384*4*NANTS*NANTS*2*halfFac,fout);
-  fclose(fout);*/
-
+  transpose_matrix_float<<<dimGrid, dimBlock, 0, str>>>((half*)d->d_outr, (half*)d->d_tx_outr);
+  transpose_matrix_float<<<dimGrid, dimBlock, 0, str>>>((half*)d->d_outi, (half*)d->d_tx_outi);
+#endif
   
-  /*
-  // set up for geam
-  cublasHandle_t cublasH = NULL;
-  cudaStream_t stream = NULL;
-  cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
-  cublasSetStream(cublasH, stream);
-
-  // transpose output matrices into tx_outr and tx_outi
-  cublasOperation_t transa = CUBLAS_OP_T;
-  cublasOperation_t transb = CUBLAS_OP_N;
-  const int m = NCHAN_PER_PACKET*2*2;
-  const int n = NANTS*NANTS/16; // columns in output
-  const double alpha = 1.0;
-  const double beta = 0.0;
-  const int lda = n;
-  const int ldb = m;
-  const int ldc = ldb;
-  cublasDgeam(cublasH,transa,transb,m,n,
-	      &alpha,(double *)(d->d_outr),
-	      lda,&beta,(double *)(d->d_tx_outr),
-	      ldb,(double *)(d->d_tx_outr),ldc);
-  cublasDgeam(cublasH,transa,transb,m,n,
-	      &alpha,(double *)(d->d_outi),
-	      lda,&beta,(double *)(d->d_tx_outi),
-	      ldb,(double *)(d->d_tx_outi),ldc);
-  */
-  // now run kernel to sum into output
-  int * h_idxs = (int *)malloc(sizeof(int)*NBASE);
-  int * d_idxs;
-  cudaMalloc((void **)(&d_idxs), sizeof(int)*NBASE);
-  int ii = 0;
-  // upper triangular order (column major) to match xGPU (not the same as CASA!)
-  for (int i=0;i<NANTS;i++) {
-    for (int j=0;j<=i;j++) {
-      h_idxs[ii] = i*NANTS + j;
-      ii++;
-    }
-  }
-  cudaMemcpy(d_idxs, h_idxs, sizeof(int)*NBASE,cudaMemcpyHostToDevice);
-
   // run kernel to finish things
   // TUNABLE
   int blockDim = 128;
   int blocks = NCHAN_PER_PACKET*2*NBASE/blockDim;
 #if defined (OLD_BLAS)
-  corr_output_copy<<<blocks, blockDim>>>((half*)d->d_tx_outr, (half*)d->d_tx_outi, d->d_output, d_idxs);
+  corr_output_copy<<<blocks, blockDim, 0, str>>>((half*)d->d_tx_outr, (half*)d->d_tx_outi, d->d_output, (int*)d->d_idxs);
 #else
-  corr_output_copy<<<blocks, blockDim>>>((half*)d->d_outr, (half*)d->d_outi, d->d_output, d_idxs);
-#endif
-  
-  /*char * odata = (char *)malloc(sizeof(char)*384*4*NBASE*4);
-  cudaMemcpy(odata,d->d_output,384*4*NBASE*4,cudaMemcpyDeviceToHost);
-  FILE *fout;
-  fout=fopen("test3.test","wb");
-  fwrite(odata,sizeof(char),384*4*NBASE*4,fout);
-  fclose(fout);*/
-  
-  cudaFree(d_idxs);
-  free(h_idxs);
-  //cudaStreamDestroy(stream);  
+  corr_output_copy<<<blocks, blockDim, 0, str>>>((half*)d->d_outr + input_offset, (half*)d->d_outi + input_offset, d->d_output + output_offset, (int*)d->d_idxs);
+#endif  
+  //deviceInspectHalfCI<<<1,8>>>((half*)d->d_outi, 0);  
 }
 
 
@@ -182,22 +189,43 @@ void reorderCorrOutputCuda(dmem_corr * d) {
 // output is [NCHAN_PER_PACKET, 2times, 2pol, NPACKETS_PER_BLOCK, NANTS]
 // starts by running transpose on [NPACKETS_PER_BLOCK * NANTS, NCHAN_PER_PACKET * 2 * 2] matrix in doubleComplex form.
 // then fluffs using simple kernel
-void reorderCorrInputCuda(dmem_corr *d) {
+void reorderCorrInputCuda(corr_handle *d, int stream) {
+
+  // DMH: globalise me
+  int offset = sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2 * stream;
+
+  cudaStream_t str = get_stream(stream);
+  
+  // TUNABLE
+  int blockDim = 128;
+  int blocks = NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4/blockDim;
   
   // transpose input data
 #if defined (OLD_BLAS)  
   dim3 dimBlock(32, 32), dimGrid((NCHAN_PER_PACKET*2*2)/32, ((NPACKETS_PER_BLOCK)*NANTS)/32);
 
-  // TUNABLE
-  int blockDim = 128;
-  int blocks = NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4/blockDim;
-  transpose_matrix_char<<<dimGrid, dimBlock>>>(d->d_input, d->d_tx);
-  promoteComplexCharToPlanarHalf<<<blocks, blockDim>>>(d->d_tx, (half*)d->d_r, (half*)d->d_i);
+  transpose_matrix_char<<<dimGrid, dimBlock, 0, str>>>((char*)d->d_input + offset, (char*)d->d_tx + offset);
+
+  // DMH: These two can run concurrently
+  promoteComplexCharToPlanarHalf<<<blocks, blockDim, 0, str>>>((char*)d->d_tx + offset, (half*)d->d_r + offset, (half*)d->d_i + offset);
 #else
-  promoteComplexCharToPlanarHalf<<<blocks, blockDim>>>(d->d_input, (half*)d->d_r, (half*)d->d_i);
+  promoteComplexCharToPlanarHalf<<<blocks, blockDim, 0, str>>>((char*)d->d_input + offset, (half*)d->d_r + offset, (half*)d->d_i + offset);
 #endif
 }
 
+void promoteComplexCharToPlanarHalfCuda(corr_handle *d, unsigned int stream) {
+
+  // DMH: globalise me
+  int offset = sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2 * stream;
+
+  cudaStream_t str = get_stream(stream);
+  
+  // TUNABLE
+  int blockDim = 128;
+  int blocks = NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4/blockDim;
+
+  promoteComplexCharToPlanarHalf<<<blocks, blockDim, 0, str>>>((char*)d->d_input + offset, (half*)d->d_r + offset, (half*)d->d_i + offset);
+}
 
 // kernels to reorder and fluff input data for beamformer
 // initial data is [NPACKETS_PER_BLOCK, (NANTS/2), NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex]            
@@ -223,7 +251,7 @@ void transposeInputBeamformerCuda(double *idata, double *odata, std::vector<int>
 // sequential pairs of eastings and northings
 // then [NANTS, 48, R/I] calibs
 
-void calcWeightsCuda(dmem_bf *d) {
+void calcWeightsCuda(bf_handle *d) {
 
   // allocate
   float *antpos_e = (float *)malloc(sizeof(float)*NANTS);
@@ -323,20 +351,35 @@ void dsaXDeviceSynchronizeCuda() {
   cudaDeviceSynchronize();
 }
 
-void dsaXmemcpyCuda(void *array_out, void *array_in, size_t n, dsaXMemcpyKind kind){
+void dsaXmemcpyCuda(void *array_out, void *array_in, size_t n, dsaXMemcpyKind kind, int stream){
+
   cudaError error = cudaSuccess;
+  cudaStream_t str = get_stream(stream);
+  
   switch(kind) {
   case dsaXMemcpyHostToHost:
     error = cudaMemcpy(array_out, array_in, n, cudaMemcpyHostToHost);
     break;
   case dsaXMemcpyHostToDevice:
-   error = cudaMemcpy(array_out, array_in, n, cudaMemcpyHostToDevice);
-   break;
+    error = cudaMemcpy(array_out, array_in, n, cudaMemcpyHostToDevice);
+    break;
   case dsaXMemcpyDeviceToHost:
     error = cudaMemcpy(array_out, array_in, n, cudaMemcpyDeviceToHost);
     break;
   case dsaXMemcpyDeviceToDevice:
     error = cudaMemcpy(array_out, array_in, n, cudaMemcpyDeviceToDevice);
+    break;
+  case dsaXMemcpyHostToHostAsync:
+    error = cudaMemcpyAsync(array_out, array_in, n, cudaMemcpyHostToHost, str);
+    break;
+  case dsaXMemcpyHostToDeviceAsync:
+    error = cudaMemcpyAsync(array_out, array_in, n, cudaMemcpyHostToDevice, str);
+    break;
+  case dsaXMemcpyDeviceToHostAsync:
+    error = cudaMemcpyAsync(array_out, array_in, n, cudaMemcpyDeviceToHost, str);
+    break;
+  case dsaXMemcpyDeviceToDeviceAsync:
+    error = cudaMemcpyAsync(array_out, array_in, n, cudaMemcpyDeviceToDevice, str);
     break;
   default:
     std::cout << "dsaX error: unknown dsaXMemcpyKind" << std::endl;

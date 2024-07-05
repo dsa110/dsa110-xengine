@@ -33,7 +33,7 @@ typedef struct dsaXBLASParam_s {
   std::complex<double>  beta;     /**< scalar used for multiplication. If beta==0, C does not have to be a valid input. */
   
   // Common params
-  int batch_count;             /**< number of pointers contained in arrayA, arrayB and arrayC. */
+  int batch_count;              /**< number of pointers contained in arrayA, arrayB and arrayC. */
   dsaXBLASDataType data_type;   /**< Specifies if using S(C) or D(Z) BLAS type */
   dsaXBLASDataOrder data_order; /**< Specifies if using Row or Column major */
   
@@ -41,36 +41,15 @@ typedef struct dsaXBLASParam_s {
 
 // Structure that carries Correlator class parameters
 typedef struct dsaXCorrParam_s {  
-  size_t struct_size;        /**< Size of this struct in bytes.  Used to ensure that the host application and DSA see the same struct*/
+  size_t struct_size;           /**< Size of this struct in bytes.  Used to ensure that the host application and DSA see the same struct*/
   
   dsaXBLASLib blas_lib;         /**< Which BLAS library to use for BLAS ops */
   dsaXBLASDataType data_type;   /**< Specifies if using S(C) or D(Z) BLAS type */
   dsaXBLASDataOrder data_order; /**< Specifies if using Row or Column major */
+
+  int n_streams;                /**< The number streams over which to compute input data */
   
 } dsaXCorrParam;
-
-// Global timing and metrics structure for dsaX 
-typedef struct metrics_s {
-
-  // Mem copy times
-  double mem_copy_time_H2H;
-  double mem_copy_time_H2D;
-  double mem_copy_time_D2H;
-  double mem_copy_time_D2D;
-
-  // Mem copy size
-  double mem_copy_size_H2H;
-  double mem_copy_size_H2D;
-  double mem_copy_size_D2H;
-  double mem_copy_size_D2D;
-
-  // Compute
-  double compute_time;
-  double compute_flops;
-
-  // Initialisation
-  double initialisation_time;
-} metrics;
 
 // Parameter struct helper functions for user
 const char *getBLASLibString(dsaXBLASLib lib);

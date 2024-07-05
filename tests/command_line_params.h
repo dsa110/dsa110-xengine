@@ -1,7 +1,6 @@
 #pragma once
 
 #include <CLI.hpp>
-#include <dsaX.h>
 
 class dsaXApp : public CLI::App {
   
@@ -24,12 +23,16 @@ extern key_t out_key;
 // Test mode
 extern bool run_beamformer;
 extern bool run_correlator;
-extern double start_frequency;
+extern bool input_rands;
+extern bool write_output;
+extern int test_iter;
+extern int n_streams;
 
-// Test file
+// DSA hardware configureation
 extern std::string input_filename;
 extern std::string output_filename;
 extern int n_channels;
 extern int n_antennae;
 extern int n_pol;
 extern int n_times;
+extern double start_frequency;

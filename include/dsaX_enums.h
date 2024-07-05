@@ -57,5 +57,9 @@ typedef enum dsaXMemcpyKind_s {
   dsaXMemcpyHostToDevice = 1,
   dsaXMemcpyDeviceToHost = 2,
   dsaXMemcpyDeviceToDevice = 3,
+  dsaXMemcpyHostToHostAsync = 4,
+  dsaXMemcpyHostToDeviceAsync = 5,
+  dsaXMemcpyDeviceToHostAsync = 6,
+  dsaXMemcpyDeviceToDeviceAsync = 7,
   dsaXMemcpyInvalid = DSA_INVALID_ENUM
 } dsaXMemcpyKind;

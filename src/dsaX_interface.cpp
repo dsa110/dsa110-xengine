@@ -10,82 +10,131 @@
 
 using namespace std;
 
+using ms = std::chrono::microseconds;
+using hrc = std::chrono::high_resolution_clock;  
+
+timer::Timer<ms, hrc> app_timer;
+timer::Timer<ms, hrc> init_timer;
 
 void dsaXInit(int dev){
+  app_timer.start();
 #if DSA_XENGINE_TARGET_CUDA
+  init_timer.start();
   dsaXInitCuda(dev);
+  initBLAS();
+  init_timer.stop();
 #endif
-
-  std::cout << " --- Starting dsaX with configuration (defined in dsaX_def.h) --- " << endl;
-  std::cout << "NPACKETS_PER_BLOCK = " << NPACKETS_PER_BLOCK << std::endl;
-  std::cout << "NCHAN = " << NCHAN << std::endl;
-  std::cout << "NCHAN_PER_PACKET = " << NCHAN_PER_PACKET << std::endl;
-  std::cout << "NPOL = " << NPOL << std::endl;
-  std::cout << "NARM = " << 3 << std::endl;
-  std::cout << " --- End dsaX configuration --- " << endl;
+  cout << " --- Starting dsaX with configuration (defined in dsaX_def.h) --- " << endl;
+  cout << "NPACKETS_PER_BLOCK = " << NPACKETS_PER_BLOCK << endl;
+  cout << "NCHAN = " << NCHAN << endl;
+  cout << "NCHAN_PER_PACKET = " << NCHAN_PER_PACKET << endl;
+  cout << "NPOL = " << NPOL << endl;
+  cout << "NARM = " << 2 << endl;
+#if DSA_XENGINE_TARGET_CUDA
+  cout << "CUDA is ENABLED " << endl;
+#else
+  cout << "CUDA is DISABLED " << endl;
+#endif
+  cout << " --- End dsaX configuration --- " << endl;
   //DMH: Add more (ask Vikram)
 }
 
 void dsaXEnd() {
+  app_timer.stop();
   // output metrics
+  cout << "dsaX lifetime = " << (1.0*app_timer.elapsed().count())/(1e6) << endl;
+  cout << "dsaX init = " << (1.0*init_timer.elapsed().count())/(1e6) << endl;
+}
+
+void *dsaXHostRegister(size_t size) {
+#if DSA_XENGINE_TARGET_CUDA  
+  return dsaXHostRegisterCuda(size);
+#endif
 }
 
 void inspectPackedData(char input, int i, bool non_zeros) {
   float re = (float)((char)((   (unsigned char)(input) & (unsigned char)(15)  ) << 4) >> 4);
   float im = (float)((char)((   (unsigned char)(input) & (unsigned char)(240))) >> 4);
-
+  
   if(non_zeros) {
     if(re != 0 || im != 0) 
-      std::cout << "val["<<i<<"] = ("<<re<<","<<im<<")" << std::endl;
+      cout << "val["<<i<<"] = ("<<re<<","<<im<<")" << endl;
   } else {
-    std::cout << "val["<<i<<"] = ("<<re<<","<<im<<")" << std::endl;
+    cout << "val["<<i<<"] = ("<<re<<","<<im<<")" << endl;
   }
 }
 
-void dsaXCorrelator(void *output_data, void *input_data, dsaXCorrParam *param) {  
-
-  dmem_corr d;
-#if DSA_XENGINE_TARGET_CUDA  
-  initializeCorrCudaMemory(&d);
-  d.h_input = (char *)malloc(sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
-  memcpy(d.h_input, (char*)input_data, sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2);
-  dcorrelator(&d);
-  dsaXmemcpy(output_data, d.d_output, NBASE*NCHAN_PER_PACKET*2*2*4, dsaXMemcpyDeviceToHost);
-  deallocateCorrCudaMemory(&d);
-#else
-  std::cout << "dsaX error: not implemented" << std::endl;
-#endif
-}
-
-void reorderCorrInput(dmem_corr *d) {
+void promoteComplexCharToPlanarHalf(corr_handle *d, unsigned int stream) {
 #if DSA_XENGINE_TARGET_CUDA
-  reorderCorrInputCuda(d);
+  promoteComplexCharToPlanarHalfCuda(d, stream);
 #else
-  std::cout << "dsaX error: not implemented" << std::endl;
+  cout << "dsaX error: not implemented" << endl;
 #endif
 }
 
-void reorderCorrOutput(dmem_corr *d) {
+void reorderCorrInput(corr_handle *d, int stream) {
+#if DSA_XENGINE_TARGET_CUDA
+  reorderCorrInputCuda(d, stream);
+#else
+  cout << "dsaX error: not implemented" << endl;
+#endif
+}
+
+void initBLAS() {
+#if DSA_XENGINE_TARGET_CUDA
+  // DMH: Fix me for orther libs
+  initBLASCuda();
+#else
+  cout << "dsaX error: not implemented" << endl;
+#endif
+}
+
+void initStreams(unsigned int n_streams) {
+#if DSA_XENGINE_TARGET_CUDA
+  initStreamsCuda(n_streams);
+#else
+  // NO OP
+#endif
+}
+
+void destroyStreams() {
+#if DSA_XENGINE_TARGET_CUDA
+  destroyStreamsCuda();
+#else
+  // NO OP
+#endif
+}
+
+void computeIndices(corr_handle *d) {
+#if DSA_XENGINE_TARGET_CUDA
+  computeIndicesCuda(d);
+#else
+  cout << "dsaX error: not implemented" << endl;
+#endif
+}
+
+
+void reorderCorrOutput(corr_handle *d, int stream) {
 #if DSA_XENGINE_TARGET_CUDA  
-  reorderCorrOutputCuda(d);
+  reorderCorrOutputCuda(d, stream);
 #else
-  std::cout << "dsaX error: not implemented" << std::endl;
+  cout << "dsaX error: not implemented" << endl;
 #endif
 }
 
-void transposeInputBeamformer(double *input, double *output, std::vector<int> &dimBlock, std::vector<int> &dimGrid) {
+void transposeInputBeamformer(double *input, double *output, vector<int> &dimBlock, vector<int> &dimGrid) {
 #if DSA_XENGINE_TARGET_CUDA
   transposeInputBeamformerCuda(input, output, dimBlock, dimGrid);
 #else
-  std::cout << "dsaX error: not implemented" << std::endl;
+  cout << "dsaX error: not implemented" << endl;
 #endif
 }
 
-void transposeScaleBeamformer(void *real, void *imag, unsigned char *output, std::vector<int> &dimBlock, std::vector<int> &dimGrid) {
+void transposeScaleBeamformer(void *real, void *imag, unsigned char *output, vector<int> &dimBlock, vector<int> &dimGrid) {
 #if DSA_XENGINE_TARGET_CUDA
   transposeScaleBeamformerCuda(real, imag, output, dimBlock, dimGrid);
 #else
-  std::cout << "dsaX error: not implemented" << std::endl;
+  cout << "dsaX error: not implemented" << endl;
 #endif
 }
 
@@ -93,7 +142,7 @@ void fluffInputBeamformer(char *input, void *array_real, void *array_imag, int b
 #if DSA_XENGINE_TARGET_CUDA
   fluffInputBeamformerCuda(input, array_real, array_imag, blocks, tpb);
 #else
-  std::cout << "dsaX error: not implemented" << std::endl;
+  cout << "dsaX error: not implemented" << endl;
 #endif
 }
 
@@ -101,6 +150,6 @@ void sumBeam(unsigned char *input, float *output, int blocks, int tpb) {
 #if DSA_XENGINE_TARGET_CUDA
   sumBeamCuda(input, output, blocks, tpb);
 #else
-  std::cout << "dsaX error: not implemented" << std::endl;
+  cout << "dsaX error: not implemented" << endl;
 #endif
 }

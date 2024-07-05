@@ -2,11 +2,11 @@
 
 #include "dsaX_cuda_headers.h"
 
-__device__ void inspectPackedDataInKernel(char input, int i) {
+__global__ void inspectPackedDataInKernel(char input, int i) {
   float re = (float)((char)((   (unsigned char)(input) & (unsigned char)(15)  ) << 4) >> 4);
   float im = (float)((char)((   (unsigned char)(input) & (unsigned char)(240))) >> 4);
   
-  if(re != 0 || im != 0) printf("val[%d] = (%f,%f)\n", i, re, im);
+  if(re != 0 || im != 0) printf("K val[%d] = (%f,%f)\n", i, re, im);
 }
 
 // KERNELS
@@ -58,15 +58,20 @@ __global__ void corr_output_copy(half *outr, half *outi, float *output, int *ind
 
   float v1=0., v2=0.;
 
+  //if(idx<1) printf("output pre (%f, %f)\n", output[2*idx], output[2*idx+1]);
+  
   // Use CUDA casting intrinsic __half2float
   for (int i=0;i<halfFac;i++) {
     v1 += __half2float(outr[(4*iidx+pol)*halfFac+i])+__half2float(outr[(4*iidx+2+pol)*halfFac+i]);
     v2 += __half2float(outi[(4*iidx+pol)*halfFac+i])+__half2float(outi[(4*iidx+2+pol)*halfFac+i]);
+    //if(idx < 1) printf("real loop %d, (%f, %f)\n", i, __half2float(outr[(4*iidx+pol)*halfFac+i]), __half2float(outr[(4*iidx+2+pol)*halfFac+i]));
+    //if(idx < 1) printf("imag loop %d, (%f, %f)\n", i, __half2float(outi[(4*iidx+pol)*halfFac+i]), __half2float(outi[(4*iidx+2+pol)*halfFac+i]));
+    //if(idx < 1) printf("v1 = %f, v2 = %f\n", v1, v2);
   }
-
+  
   output[2*idx] = v1;
   output[2*idx+1] = v2;
-  
+  //if(idx<1) printf("output post (%f, %f)\n", output[2*idx], output[2*idx+1]);  
 }
 
 // transpose kernel
@@ -92,10 +97,41 @@ template <typename in_prec, typename out_prec> __global__ void transpose_matrix(
   y = blockIdx.x * 32 + threadIdx.y;
   width = gridDim.y * 32;
 
-  for (int j = 0; j < 32; j += 8)
-     odata[(y+j)*width + x] = tile[threadIdx.x][threadIdx.y + j];
-
+  for (int j = 0; j < 32; j += 8) {
+    odata[(y+j)*width + x] = tile[threadIdx.x][threadIdx.y + j];
+    //inspectPackedDataInKernel(odata[(y+j)*width + x], (y+j)*width + x);
+  }
 }
+
+// transpose kernel
+// assume breakdown into tiles of 32x32, and run with 32x8 threads per block
+// launch with dim3 dimBlock(32, 8) and dim3 dimGrid(Width/32, Height/32)
+// here, width is the dimension of the fastest index
+__global__ void transpose_matrix_float(half * idata, half * odata) {
+  
+  __shared__ float tile[32][33];
+  
+  int x = blockIdx.x * 32 + threadIdx.x;
+  int y = blockIdx.y * 32 + threadIdx.y;
+  int width = gridDim.x * 32;
+
+  for (int j = 0; j < 32; j += 8) {
+    tile[threadIdx.y+j][threadIdx.x] = idata[(y+j)*width + x];
+    //printf("K transpose_matrix_float_in[%d] =  %f\n", (y+j)*width + x, __half2float(idata[(y+j)*width + x]));
+  }
+  
+  __syncthreads();
+
+  x = blockIdx.y * 32 + threadIdx.x;  // transpose block offset
+  y = blockIdx.x * 32 + threadIdx.y;
+  width = gridDim.y * 32;
+
+  for (int j = 0; j < 32; j += 8) {
+    odata[(y+j)*width + x] = tile[threadIdx.x][threadIdx.y + j];    
+    //printf("K transpose_matrix_float_out[%d] =  %f\n", (y+j)*width + x, __half2float(odata[(y+j)*width + x]));
+  }
+}
+
 
 // DMH: TUNABLE
 // transpose kernel
@@ -126,6 +162,7 @@ __global__ void transpose_matrix_char(char * idata, char * odata) {
   for (int j = 0; j < blockDim.x; j += blockDim.y) {
     odata[(y+j)*width + x] = tile[threadIdx.x][threadIdx.y + j];
     //odata[(y+j)*width + x] = tile[threadIdx.x + blockDim.x*(threadIdx.y + j)];
+    //inspectPackedDataInKernel(idata[(y+j)*width + x], (y+j)*width + x);
   }
 }
 
@@ -165,6 +202,7 @@ __global__ void promoteComplexCharToPlanarHalf(char *input, half *inr, half *ini
   // Cast to float and use CUDA intrinsic to cast to signed half
   ini[iidx] = __float2half((float)((char)((   (unsigned char)(input[iidx]) & (unsigned char)(240)  )) >> 4));
 
+  //good
   //if(__half2float(inr[iidx]) != 0 || __half2float(ini[iidx]) != 0) printf("corr_input_copy %i = (%f,%f)\n", iidx, __half2float(inr[iidx]), __half2float(ini[iidx]));
 }
 

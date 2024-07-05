@@ -3,23 +3,55 @@
 #include "dsaX.h"
 #include "dsaX_params.h"
 #include "dsaX_cuda_headers.h"
+#include "dsaX_cuda_handles.h"
+//#include "dsaX_cuda_kernels.h" // For debug
 
 using namespace std;
 
-void dsaXHgemmStridedBatchedCuda(void *real_a, void *imag_a, void *real_b, void *imag_b, void *real_c, void *imag_c, dsaXBLASParam blas_param) {
+__global__ void deviceInspectHalf(half *input, int stage) {
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  printf("CUBLAS[%d]: device inspect half [%d] =  %f\n", stage, x, __half2float(input[x])); 
+}
+
+void init_cublas_local() {
+  if (!cublas_init) {
+    //cublasError_t error = cudaStreamCreate(streams);
+    cublasStatus_t error = cublasCreate(&cublasH);
+    //cublasSetStream(handle, stream);
+    //cublasStatus_t error = cublasCreate(&handle);
+    if (error != CUBLAS_STATUS_SUCCESS)
+      cout << "cublasCreate failed with error " << error << endl;
+    else
+      cout << "cublasCreated successfully." << endl;
+    cublas_init = true;
+  }
+}
+
+void destroy_cublas_local() {
+  if(cublas_init)
+    cublasDestroy(cublasH);
+  cublas_init = false;
+}
+
+void initBLASCuda() {
+  init_cublas_local();
+}
+
+using namespace std;
+
+void dsaXHgemmStridedBatchedCuda(void *real_a, void *imag_a, void *real_b, void *imag_b, void *real_c, void *imag_c, dsaXBLASParam blas_param, int stream) {
 #ifdef DSA_XENGINE_TARGET_CUDA
   
   // not sure if essential
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
+
+  cublasSetStream(cublasH, get_stream(stream));
+
+  bool verbose = false;
   
   // Set up for gemm
-  cublasHandle_t cublasH = NULL;
-  cudaStream_t stream = NULL;
-  cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
-  cublasCreate(&cublasH);
-  cublasSetStream(cublasH, stream);  
-
-  // Transfer params  
+  //----------------
+  // Transfer params
   const int m = blas_param.m;
   const int n = blas_param.n;
   const int k = blas_param.k;
@@ -71,9 +103,9 @@ void dsaXHgemmStridedBatchedCuda(void *real_a, void *imag_a, void *real_b, void 
   default:
     std::cout << "Unknown cublas transpose" << std::endl;
   }
-
+  
   int B_imag_alpha_sign = alpha;
-    switch (blas_param.trans_b) {
+  switch (blas_param.trans_b) {
   case DSA_BLAS_OP_N:
     transb = CUBLAS_OP_N;
     break;
@@ -93,7 +125,7 @@ void dsaXHgemmStridedBatchedCuda(void *real_a, void *imag_a, void *real_b, void 
     // A array requests conjugation, hence we
     // must apply supply a factor of -1 to alpha
     // when dealing with the imaginary component
-    // of A.
+    // of B.
     B_imag_alpha_sign *= -1;
     break;
   default:
@@ -102,9 +134,11 @@ void dsaXHgemmStridedBatchedCuda(void *real_a, void *imag_a, void *real_b, void 
 
   // Run strided batched gemm for datatype 
   // (a + ib)(c + id) = (ac - bd) + i(bc + ad)
-  // on matrices alpha * op(A) * op(B) + beta * C
+  // on matrices C = alpha * op(A) * op(B) + beta * C
   // where op(M) is defined by the transposition variable
   // cublasOperation_t transM
+
+  //deviceInspectHalf<<<1, 8>>>((half *)real_a);
   
   // Accumulate results into C matrix
   // ac
@@ -114,6 +148,9 @@ void dsaXHgemmStridedBatchedCuda(void *real_a, void *imag_a, void *real_b, void 
 			    (half *)real_b + b_offset, ldb, strideB, &beta0,
 			    (half *)real_c + c_offset, ldc, strideC,
 			    batchCount);
+
+  if(verbose) deviceInspectHalf<<<1, 8>>>((half *)real_c, 0);
+  
   // -bd (minus sign from i*i)
   half alpha_bd = alpha * (-1.0 * A_imag_alpha_sign * B_imag_alpha_sign);
   cublasHgemmStridedBatched(cublasH, transa, transb, m,n,k, &(alpha_bd),
@@ -121,6 +158,9 @@ void dsaXHgemmStridedBatchedCuda(void *real_a, void *imag_a, void *real_b, void 
 			    (half*)imag_b + b_offset, ldb, strideB, &beta1,
 			    (half*)real_c + c_offset, ldc, strideC,
 			    batchCount);
+  
+  if(verbose) deviceInspectHalf<<<1, 8>>>((half *)real_c, 1);
+  
   // bc
   half alpha_bc = alpha * A_imag_alpha_sign;
   cublasHgemmStridedBatched(cublasH, transa, transb, m,n,k, &(alpha_bc),
@@ -128,6 +168,9 @@ void dsaXHgemmStridedBatchedCuda(void *real_a, void *imag_a, void *real_b, void 
 			    (half*)real_b + b_offset, ldb, strideB, &beta0,
 			    (half*)imag_c + c_offset, ldc, strideC,
 			    batchCount);
+  
+  if(verbose) deviceInspectHalf<<<1, 8>>>((half *)imag_c, 2);
+  
   // ad
   half alpha_ad = alpha * B_imag_alpha_sign;
   cublasHgemmStridedBatched(cublasH, transa, transb, m,n,k, &(alpha_ad),
@@ -135,13 +178,11 @@ void dsaXHgemmStridedBatchedCuda(void *real_a, void *imag_a, void *real_b, void 
 			    (half*)imag_b + b_offset, ldb, strideB, &beta1,
 			    (half*)imag_c + c_offset, ldc, strideC,
 			    batchCount);
+
+  if(verbose) deviceInspectHalf<<<1, 8>>>((half *)imag_c, 3);
   
-  // shown to be essential
-  cudaDeviceSynchronize();
-  
-  // destroy stream
-  cudaStreamDestroy(stream);
-  cublasDestroy(cublasH);  
+  // shown to be essential (only with streams, fix me) 
+  //cudaDeviceSynchronize();
 #else
   std::cout "dsaX not built with CUDA target." << std::endl;
   exit(0);

@@ -7,26 +7,39 @@
 #include "dsaX.h"
 
 void dsaXInitCuda(int dev);
+void dsaXDestroyCuda(int dev);
 
-void initializeCorrCudaMemory(dmem_corr *d);
+void initBLASCuda();
+void destroyBLASCuda();
 
-void initializeBFCudaMemory(dmem_bf *d);
+void initStreamsCuda(unsigned int n);
+void destroyStreamsCuda();
 
-void deallocateCorrCudaMemory(dmem_corr *d);
+void promoteComplexCharToPlanarHalfCuda(corr_handle *d, unsigned int stream);
 
-void deallocateBFCudaMemory(dmem_bf *d);
+void initializeCorrCudaMemory(corr_handle *d, unsigned int n_streams);
+
+void initializeBFCudaMemory(bf_handle *d);
+
+void deallocateCorrCudaMemory(corr_handle *d);
+
+void deallocateBFCudaMemory(bf_handle *d);
 
 void dsaXmemsetCuda(void *array, int ch, size_t n);
 
-void dsaXmemcpyCuda(void *array_device, void *array_host, size_t n, dsaXMemcpyKind kind);
+void dsaXmemcpyCuda(void *array_device, void *array_host, size_t n, dsaXMemcpyKind kind, int stream);
+
+void *dsaXHostRegisterCuda(size_t size);
 
 void dsaXDeviceSynchronizeCuda();
 
-void reorderCorrOutputCuda(dmem_corr *d);
+void reorderCorrOutputCuda(corr_handle *d, int stream);
 
-void reorderCorrInputCuda(dmem_corr *d);
+void computeIndicesCuda(corr_handle *d);
 
-void calcWeightsCuda(dmem_bf *d);
+void reorderCorrInputCuda(corr_handle *d, int stream);
+
+void calcWeightsCuda(bf_handle *d);
 
 template <typename in_prec, typename out_prec> void transposeMatrixCuda(in_prec *idata, out_prec *odata);
 

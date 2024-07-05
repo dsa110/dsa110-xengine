@@ -56,11 +56,13 @@ const char *getBLASDataOrderString(dsaXBLASDataOrder order)
 
 void printDsaXCorrParam(const dsaXCorrParam param) {
 
-  cout << "--- dsaXCorrParam begin ---" << endl;
+  cout << " --- dsaXCorrParam begin ---" << endl;
   cout << "struct_size = " << param.struct_size << endl;
-  cout << "blas_lib = " << getBLASLibString(param.blas_lib) << endl;
-  cout << "data_type = " << getBLASDataTypeString(param.data_type) << endl;
-  cout << "data_order = " << getBLASDataOrderString(param.data_order) << endl;
+  cout << "blas_lib    = " << getBLASLibString(param.blas_lib) << endl;
+  cout << "data_type   = " << getBLASDataTypeString(param.data_type) << endl;
+  cout << "data_order  = " << getBLASDataOrderString(param.data_order) << endl;
+  cout << "n_streams   = " << param.n_streams << endl;
+  
   cout << " --- dsaXCorrParam end ---" << endl;
 }
 
@@ -69,9 +71,9 @@ void printDsaXBLASParam(const dsaXBLASParam param) {
   cout << " --- dsaXBLASParam begin ---" << endl;
   cout << "struct_size = " << param.struct_size << endl;
   cout << "blas_type = " << param.blas_type << endl;
-  cout << "blas_lib = " << param.blas_lib << endl;
-  cout << "data_type = " << param.data_type << endl;
-  cout << "data_order = " << param.data_order << endl;
+  cout << "blas_lib = " << getBLASLibString(param.blas_lib) << endl;
+  cout << "data_type = " << getBLASDataTypeString(param.data_type) << endl;
+  cout << "data_order = " << getBLASDataOrderString(param.data_order) << endl;
   cout << "trans_a = " << param.trans_a << endl;
   cout << "trans_b = " << param.trans_b << endl;
   cout << "m = " << param.m << endl;
