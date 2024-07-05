@@ -18,9 +18,10 @@
 #define sep 1.0 // arcmin
 
 void dsaXInit(int device_ordinal = -1);
+
 void dsaXEnd();
 
-//void dsaX
+
 
 void *dsaXHostRegister(size_t size);
 
