@@ -5,10 +5,12 @@
 #include "cuda_interface.h"
 #include "cuda_kernels.h"
 #include "cuda_handles.h"
+// DMH: Everything in this file is CUDA aware.
+
+//#include "dsaX_malloc.h"
+#include "dsaX_ptr.h"
 
 using namespace std;
-
-// DMH: Everything in this file is CUDA aware.
 
 __global__ void deviceInspectHalfCI(half *input, int stage) {
   int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -36,8 +38,8 @@ void destroyStreamsCuda(){
   destroy_streams();
 }
 
-void dsaXDestroyCuda(int dev){
-  //
+void dsaXDestroyCuda(){
+  cudaDeviceReset();
 }
 
 void *dsaXHostRegisterCuda(size_t size) {
@@ -55,16 +57,34 @@ void *dsaXHostRegisterCuda(size_t size) {
 void initializeCorrCudaMemory(corr_handle *d, unsigned int n_streams) {
 
   // for correlator
-  cudaMalloc((void **)(&d->d_input), sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2*n_streams);
-  cudaMalloc((void **)(&d->d_r), sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2*n_streams);
-  cudaMalloc((void **)(&d->d_i), sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2*n_streams);
-  cudaMalloc((void **)(&d->d_tx), sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2*n_streams);
-  cudaMalloc((void **)(&d->d_output), sizeof(float)*NBASE*NCHAN_PER_PACKET*2*2*n_streams);
-  cudaMalloc((void **)(&d->d_outr), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*n_streams);
-  cudaMalloc((void **)(&d->d_outi), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*n_streams);
-  cudaMalloc((void **)(&d->d_tx_outr), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*n_streams);
-  cudaMalloc((void **)(&d->d_tx_outi), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*n_streams);
+  
+  cudaMalloc((void **)(&d->d_input),   sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2*n_streams);
+  //dsaX_ptr ptr = dsaX_ptr(DSA_MEMORY_DEVICE, sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2*n_streams, true);
 
+  //cout << &ptr << endl;
+  
+  //d->d_input = 
+    
+  cudaMalloc((void **)(&d->d_r),       sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2*n_streams);
+  cudaMalloc((void **)(&d->d_i),       sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2*n_streams);
+  //cudaMalloc((void **)(&d->d_tx),      sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2*n_streams);
+  cudaMalloc((void **)(&d->d_output),  sizeof(float)*NBASE*NCHAN_PER_PACKET*2*2*n_streams);
+  cudaMalloc((void **)(&d->d_outr),    sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*n_streams);
+  cudaMalloc((void **)(&d->d_outi),    sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*n_streams);
+  //cudaMalloc((void **)(&d->d_tx_outr), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*n_streams);
+  //cudaMalloc((void **)(&d->d_tx_outi), sizeof(half)*NCHAN_PER_PACKET*2*2*NANTS*NANTS*halfFac*n_streams);
+
+  // Total device memeory
+  uint64_t mem_size = sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2*n_streams;
+  mem_size += sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2*n_streams;
+  mem_size += sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2*n_streams;
+  mem_size += sizeof(float)*NBASE*NCHAN_PER_PACKET*2*2*n_streams;
+  mem_size += sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2*n_streams;
+  mem_size += sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2*n_streams;
+  mem_size += sizeof(int)*NBASE;
+
+  cout << "mem_size = " << mem_size/pow(1024,3) << " GB"  << endl;
+  //exit(0);
   // DMH: fix me
   cudaMalloc((void **)(&d->d_idxs), sizeof(int)*NBASE);
 }
@@ -343,18 +363,45 @@ void sumBeamCuda(unsigned char *input, float *output, int blocks, int tpb) {
   sum_beam<<<blocks,tpb>>>(input, output);  
 }
 
-void dsaXmemsetCuda(void *array, int ch, size_t n){
-  cudaMemset(array, ch, n);
+// CUDA API wrappers
+// DMH: Wrap all these calls around a CHECK_ERROR to save on
+// lines of code
+void dsaXDeviceSynchronizeCuda() {
+
+  cudaError error = cudaSuccess;
+  cudaDeviceSynchronize();
+  if(error != cudaSuccess) {
+    cudaGetLastError();
+    exit(0);
+  }  
 }
 
-void dsaXDeviceSynchronizeCuda() {
-  cudaDeviceSynchronize();
+void dsaXmemsetCuda(void *array, int ch, size_t n){
+  
+  cudaError error = cudaSuccess;  
+  error = cudaMemset(array, ch, n);
+  if(error != cudaSuccess) {
+    cudaGetLastError();
+    exit(0);
+  }
+  
+}
+
+void dsaXmallocCuda(void *array, size_t array_length){
+
+  // for correlator
+  //cudaMalloc((void **)(&d->d_input),   sizeof(char)*NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2*n_streams);
+  //cudaMalloc((void **)(&d->d_r),       sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2*n_streams);
+  //cudaMalloc((void **)(&d->d_i),       sizeof(half)*NCHAN_PER_PACKET*2*NANTS*NPACKETS_PER_BLOCK*2*n_streams);
+  
 }
 
 void dsaXmemcpyCuda(void *array_out, void *array_in, size_t n, dsaXMemcpyKind kind, int stream){
 
   cudaError error = cudaSuccess;
   cudaStream_t str = get_stream(stream);
+
+  cout << "kind = " << dsaXMemcpyHostToHost << endl;
   
   switch(kind) {
   case dsaXMemcpyHostToHost:
@@ -384,6 +431,12 @@ void dsaXmemcpyCuda(void *array_out, void *array_in, size_t n, dsaXMemcpyKind ki
   default:
     std::cout << "dsaX error: unknown dsaXMemcpyKind" << std::endl;
   }
-  if(error != cudaSuccess) cudaGetLastError();
+  
+  if(error != cudaSuccess) {
+    const char *string = cudaGetErrorString(error);
+    //cudaGetLastError();
+    //cudaGetErrorString(&string);
+    printf("dsaXmemcpyCuda failed with error %s\n", string);
+    exit(0);
+  }
 }
-

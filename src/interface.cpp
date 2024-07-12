@@ -44,6 +44,9 @@ void dsaXEnd() {
   // output metrics
   cout << "dsaX lifetime = " << (1.0*app_timer.elapsed().count())/(1e6) << endl;
   cout << "dsaX init = " << (1.0*init_timer.elapsed().count())/(1e6) << endl;
+#if DSA_XENGINE_TARGET_CUDA
+  dsaXDestroyCuda();
+#endif
 }
 
 void *dsaXHostRegister(size_t size) {

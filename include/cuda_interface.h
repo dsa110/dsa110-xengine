@@ -7,7 +7,7 @@
 #include "dsaX.h"
 
 void dsaXInitCuda(int dev);
-void dsaXDestroyCuda(int dev);
+void dsaXDestroyCuda();
 
 void initBLASCuda();
 void destroyBLASCuda();

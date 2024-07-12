@@ -10,10 +10,10 @@ using namespace std;
 //-------------------------
 void init_streams(unsigned int n_streams) {
 
-  if(n_streams < 2 || n_streams > 9) {
-    cout << "dsaX Error: Must have at least 2 and fewer than 9 streams, requested " << n_streams << endl;
-    exit(0);
-  }
+  //if(n_streams < 2 || n_streams > 9) {
+  //cout << "dsaX Error: Must have at least 2 and fewer than 9 streams, requested " << n_streams << endl;
+  //exit(0);
+  //}
   
   if(!stream_init) {
     streams.reserve(n_streams);

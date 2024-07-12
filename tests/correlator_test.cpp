@@ -13,6 +13,9 @@ using namespace std;
 // Include this file to access input parameters
 #include "command_line_params.h"
 
+// Include the dsaX.h header in your application
+#include <dsaX.h>
+
 // Include this file to access test utilities
 /**
  * Promote complex char riri... data to planar half rr.. ii.. 
@@ -110,9 +113,7 @@ template <typename prec> prec test_hermiticity(const prec *C, const int m, const
   return frob_norm/(m*n*2);
 }
 
-// Include the dsaX.h header in your application
-#include <dsaX.h>
-
+/*
 // The class offers entire file content read/write in single operation
 class BinaryFileVector : public vector<char>
 {
@@ -180,7 +181,7 @@ public:
     }
   }
 };
-
+*/
 int main(int argc, char **argv) {
 
   // Parse command line
@@ -297,7 +298,6 @@ int main(int argc, char **argv) {
 
   float frob_norm = test_hermiticity((float*)output_data, 96, 96);
   cout << "Frobenius norm = " << frob_norm << endl;
-
   
   //cout << "Output peek " << endl;
   float *p = (float*)output_data;

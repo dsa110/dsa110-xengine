@@ -6,6 +6,8 @@ set(DSA_XENGINE_HEADERS
   # cmake-format: sortable
   dsaX.h
   dsaX_def.h
+  dsaX_malloc.h
+  dsaX_ptr.h
   fast_time_domain.h  
   cuda_interface.h
   cuda_handles.h

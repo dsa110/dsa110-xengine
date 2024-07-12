@@ -13,11 +13,14 @@ endif()
 set(DSAX_OBJS
   cuda_interface.cu
   cublas_interface.cu
+  malloc.cu
+  dsaX_ptr.cpp
   cuda_handles.cu
   magma_interface.cu
   blas_interface.cpp
   beamformer.cpp
   dsaX_base.cpp
+
   correlator.cpp
   interface.cpp
   utils.cpp
@@ -65,7 +68,7 @@ add_library(DSA_XENGINE::dsaX ALIAS dsaX)
 target_sources(dsaX PRIVATE $<TARGET_OBJECTS:dsax_cpp> ${DSAX_CU_OBJS})
 
 if(CUDAToolkit_FOUND)
-  target_link_libraries(dsaX INTERFACE CUDA::cudart_static ${CUDA_cublas_LIBRARY})
+  target_link_libraries(dsaX INTERFACE CUDA::cuda_driver CUDA::cudart_static ${CUDA_cublas_LIBRARY})
 endif()
 
 if(DSA_XENGINE_ENABLE_PSRDADA)

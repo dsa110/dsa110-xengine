@@ -91,3 +91,10 @@
 #define NBMS 256
 #define P_SIZE 4108
 #define NWAIT 100000
+
+// required to prevent overflow in corr matrix multiply
+#define halfFac 4
+
+// beam sep
+#define sep 1.0 // arcmin
+

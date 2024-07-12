@@ -188,7 +188,7 @@ void Correlator::compute(void *output, void *input) {
   dsaXDeviceSynchronize();
 }
 
- 
+/*
 // correlator function
 // workflow: copy to device, reorder, stridedBatchedGemm, reorder, copy back to host
 // DMH: CUDA references excised. Make me a class
@@ -282,3 +282,4 @@ void dcorrelator(corr_handle *d) {
   // reorder output data
   reorderCorrOutput(d);
 }
+*/

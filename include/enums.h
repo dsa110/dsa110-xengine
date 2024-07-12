@@ -2,6 +2,16 @@
 
 #define DSA_INVALID_ENUM (-0x7fffffff - 1)
 
+typedef enum dsaXMemoryType_s {
+  DSA_MEMORY_DEVICE,
+  DSA_MEMORY_DEVICE_PINNED,
+  DSA_MEMORY_HOST,
+  DSA_MEMORY_HOST_PINNED,
+  DSA_MEMORY_MAPPED,
+  DSA_MEMORY_MANAGED,
+  DSA_MEMORY_INVALID = DSA_INVALID_ENUM
+} dsaXMemoryType;
+
 typedef enum dsaXError_t {
   DSA_SUCCESS = 0,
   DSA_ERROR = 1,
@@ -63,3 +73,4 @@ typedef enum dsaXMemcpyKind_s {
   dsaXMemcpyDeviceToDeviceAsync = 7,
   dsaXMemcpyInvalid = DSA_INVALID_ENUM
 } dsaXMemcpyKind;
+
