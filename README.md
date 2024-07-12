@@ -1,5 +1,9 @@
 # dsa110-xengine
 
+<p align="center">
+    <a href="https://github.com/dsa110/dsa110-xengine/commits/master"><img src="https://img.shields.io/github/last-commit/dsa110/dsa110-xengine" alt="GitHub last commit"></a>
+    <a href="https://github.com/dsa110/dsa110-xengine/commits/master"><img src="https://img.shields.io/github/commit-activity/y/dsa110/dsa110-xengine" alt="GitHub commit activity the past week"></a>
+</p>
 
 This repo contains code used for the DSA X-engine. The requirements are to:
  - capture SNAP F-engine packets on an ethernet interface, and place them in a psrdada buffer
@@ -67,11 +71,4 @@ Finally, `dsaX_dbnic` and `dsaX_nicdb` implement the corner turn to feed `mbheim
 
 ### scripts and utils
 
-The "scripts" dir contains some useful scripts to test various aspects of the system (corr, bf, cornerturn). The "utils" dir includes functionality to generate fake data and beamforming weights. 
-
-
-
- 
- 
- 
-
+The "scripts" dir contains some useful scripts to test various aspects of the system (corr, bf, cornerturn). The "utils" dir includes functionality to generate fake data and beamforming weights.
