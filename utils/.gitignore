@@ -1,2 +1,5 @@
 antennas.out
 gen_antennas.py
+check_bfCorr.ipynb
+*.conf
+flagants.dat

@@ -31,3 +31,5 @@ dsaX_capture_pcap
 dsaX_testdada
 dsaX_bfCorr
 dsaX_merge
+dsaX_hella
+*.out

@@ -69,7 +69,7 @@ typedef struct dmem {
   half * d_bigbeam_r, * d_bigbeam_i; //output: [tc, b]
   unsigned char * d_bigpower; //output: [b, tc]
   float * d_scf; // scale factor per beam
-  float * d_chscf;
+  float * d_chscf, * h_chscf;
   float * h_winp;
   int * flagants, nflags;
   float * h_freqs, * d_freqs;
@@ -151,9 +151,10 @@ void initialize(dmem * d, int bf) {
     cudaMalloc((void **)(&d->d_bigbeam_r), sizeof(half)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2));
     cudaMalloc((void **)(&d->d_bigbeam_i), sizeof(half)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2));
     cudaMalloc((void **)(&d->d_bigpower), sizeof(unsigned char)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS));
-    cudaMalloc((void **)(&d->d_scf), sizeof(float)*(NBEAMS/2)); // beam scale factor
-    cudaMalloc((void **)(&d->d_chscf), sizeof(float)*(NBEAMS/2)*(NCHAN_PER_PACKET/8)); // beam scale factor
-
+    //cudaMalloc((void **)(&d->d_scf), sizeof(float)*(NBEAMS/2)); // beam scale factor
+    cudaMalloc((void **)(&d->d_chscf), sizeof(float)*NBEAMS); // beam scale factor
+    d->h_chscf = (float *)malloc(sizeof(float)*NBEAMS);
+    
     // input weights: first is [NANTS, E/N], then [NANTS, 48, 2pol, R/I]
     d->h_winp = (float *)malloc(sizeof(float)*(NANTS*2+NANTS*(NCHAN_PER_PACKET/8)*2*2));
     d->flagants = (int *)malloc(sizeof(int)*NANTS);
@@ -195,7 +196,7 @@ void deallocate(dmem * d, int bf) {
     cudaFree(d->d_bigbeam_r);
     cudaFree(d->d_bigbeam_i);
     cudaFree(d->d_bigpower);
-    cudaFree(d->d_scf);
+    //cudaFree(d->d_scf);
     cudaFree(d->d_chscf);
     free(d->h_winp);
     free(d->flagants);
@@ -240,7 +241,8 @@ fprintf (stdout,
 	 " -f flagants file\n"
 	 " -a calib file\n"
 	 " -s start frequency (assumes -0.244140625MHz BW)\n"
-	 " -g observing DEC in degrees (default 71.66)\n");
+	 " -g observing DEC in degrees (default 71.66)\n"
+	 " -p full path of beam powers file (default powers.out)\n");
 }
 
 // kernel to fluff input
@@ -647,34 +649,36 @@ __global__ void transpose_scale_bf(half * ir, half * ii, unsigned char * odata) 
 
 }
 
-// sum over all times in output beam array
-// run with (NCHAN_PER_PACKET/8)*(NBEAMS/2) blocks of (NPACKETS_PER_BLOCK/4) threads
+// sum over all times and channels in output beam array
+// run with NBEAMS blocks of 512 threads
 __global__ void sum_beam(unsigned char * input, float * output) {
 
-  __shared__ float summ[512];
-  int bidx = blockIdx.x;
-  int tidx = threadIdx.x;
-  int idx = bidx*256+tidx;
-  int bm = (int)(bidx/48);
-  int ch = (int)(bidx % 48);
+  extern __shared__ float psum[512];
+  int bid = blockIdx.x;
+  int tid = threadIdx.x;
+  int npartials = 48; // number partial sums
 
-  summ[tidx] = (float)(input[bm*256*48 + tidx*48 + ch]);
+  int idx0 = bid*512*48 + tid*48;
+  psum[tid] = 0.;
+  for (int i=idx0;i<npartials+idx0;i++)
+    psum[tid] += (float)(input[i]);
 
   __syncthreads();
 
-  if (tidx<256) {
-    summ[tidx] += summ[tidx+256];
-    summ[tidx] += summ[tidx+128];
-    summ[tidx] += summ[tidx+64];
-    summ[tidx] += summ[tidx+32];
-    summ[tidx] += summ[tidx+16];
-    summ[tidx] += summ[tidx+8];
-    summ[tidx] += summ[tidx+4];
-    summ[tidx] += summ[tidx+2];
-    summ[tidx] += summ[tidx+1];
-  }
+  // sum over shared memory
+  if (tid < 256) { psum[tid] += psum[tid + 256]; } __syncthreads(); 
+  if (tid < 128) { psum[tid] += psum[tid + 128]; } __syncthreads(); 
+  if (tid < 64) { psum[tid] += psum[tid + 64]; } __syncthreads();
+  if (tid < 32) { psum[tid] += psum[tid + 32]; } __syncthreads();
+  if (tid < 16) { psum[tid] += psum[tid + 16]; } __syncthreads();
+  if (tid < 8) { psum[tid] += psum[tid + 8]; } __syncthreads();
+  if (tid < 4) { psum[tid] += psum[tid + 4]; } __syncthreads();
+  if (tid < 2) { psum[tid] += psum[tid + 2]; } __syncthreads();
+  if (tid < 1) { psum[tid] += psum[tid + 1]; } __syncthreads(); 
 
-  if (tidx==0) output[bidx] = summ[tidx];
+  __syncthreads();
+
+  if (tid==0) output[bid] = psum[0];
   
 }
 
@@ -806,7 +810,8 @@ void dbeamformer(dmem * d) {
   cublasDestroy(cublasH);
 
   // form sum over times
-  //sum_beam<<<24576,512>>>(d->d_bigpower,d->d_chscf);
+  sum_beam<<<NBEAMS,512>>>(d->d_bigpower,d->d_chscf);
+  cudaMemcpy(d->h_chscf,d->d_chscf,4*NBEAMS,cudaMemcpyDeviceToHost);
   
 }
 
@@ -952,11 +957,11 @@ int main (int argc, char *argv[]) {
   int bf = 0;
   int test = 0;
   float mydec = 71.66;
-  char ftest[200], fflagants[200], fcalib[200];
+  char ftest[200], fflagants[200], fcalib[200], fpower[200];
   float sfreq = 1498.75;
 
   
-  while ((arg=getopt(argc,argv,"c:i:o:t:f:a:s:g:bdh")) != -1)
+  while ((arg=getopt(argc,argv,"c:i:o:t:f:a:s:g:p:bdh")) != -1)
     {
       switch (arg)
 	{
@@ -1051,6 +1056,22 @@ int main (int argc, char *argv[]) {
 	      usage();
 	      return EXIT_FAILURE;
 	    }
+	case 'p':
+	  if (optarg)
+            {
+	      syslog(LOG_INFO, "writing power file %s",optarg);
+	      if (sscanf (optarg, "%s", &fpower) != 1) {
+		syslog(LOG_ERR, "could not read power file name from %s\n", optarg);
+		return EXIT_FAILURE;
+	      }
+	      break;
+	    }
+	  else
+	    {
+	      syslog(LOG_ERR,"-p flag requires argument");
+	      usage();
+	      return EXIT_FAILURE;
+	    }
 	case 's':
 	  if (optarg)
             {
@@ -1105,7 +1126,7 @@ int main (int argc, char *argv[]) {
   initialize(&d,bf);
 
   // set up for beamformer
-  FILE *ff;
+  FILE *ff, *fp;
   int iii;
   if (bf) {
 
@@ -1114,9 +1135,11 @@ int main (int argc, char *argv[]) {
       exit(1);
     }
     d.nflags=0;
+    iii = 0;
     while (!feof(ff)) {
       fscanf(ff,"%d\n",&d.flagants[iii]);
       d.nflags++;
+      iii++;
     }
     fclose(ff);
 
@@ -1134,6 +1157,9 @@ int main (int argc, char *argv[]) {
     // calculate weights
     d.obsdec = mydec;
     calc_weights(&d);
+
+    // open power
+    fp = fopen(fpower,"w");
     
   }
 
@@ -1321,7 +1347,12 @@ int main (int argc, char *argv[]) {
       if (DEBUG) syslog(LOG_INFO,"run beamformer");
       dbeamformer(&d);
       if (DEBUG) syslog(LOG_INFO,"copy to host");
-      cudaMemcpy(output_buffer,d.d_bigpower,block_out,cudaMemcpyDeviceToHost);
+      cudaMemcpy(output_buffer,d.d_bigpower,block_out,cudaMemcpyDeviceToHost);      
+
+      // deal with power output
+      for (int i=0;i<NBEAMS;i++)
+	fprintf(fp,"%g\n",d.h_chscf[i]);
+      
     }
     //end = clock();
     //time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
