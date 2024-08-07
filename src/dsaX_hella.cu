@@ -429,6 +429,7 @@ typedef struct pinfo {
   std::string coincidencer_host;
   char out_path[500]; // path or IP
   int BEAM_OFFSET;
+  int BEAM0;
   
   // derived params
   int NTIME; // gulp that includes rewind
@@ -485,6 +486,25 @@ typedef struct pinfo {
   
 } pinfo;
 
+int get_gpu_id(FILE *fconf) {
+
+  char * line = NULL;
+  ssize_t read;
+  size_t len = 0;
+  char c1[20], c2[500];
+
+  while (!feof(fconf)) {
+
+    read = getline(&line, &len, fconf);
+    sscanf(line,"%s %s",c1,c2);
+    if (strcmp(c1,"GPU")==0) {
+      rewind(fconf);
+      return atoi(c2);
+    }
+
+  }
+
+}
 
 // function to initialize everything based on a config file
 void initialize(FILE *fconf, pinfo * p) {
@@ -514,8 +534,10 @@ void initialize(FILE *fconf, pinfo * p) {
       printf("Using output format %d\n",p->out_format);
     }
     if (strcmp(c1,"HOST")==0) {
-      //strcpy(p->coincidencer_host,(std::string)(c2));
       p->coincidencer_host = c2;
+    }
+    if (strcmp(c1,"BEAM0")==0) {
+      p->BEAM0 = atoi(c2);
     }
     if (strcmp(c1,"PORT")==0) {
       p->coincidencer_port = atoi(c2);
@@ -723,6 +745,8 @@ void help() {
   printf("OUTPUTPATH <path to output file>\n");
   printf("HOST <ip of T2 host>\n");
   printf("PORT <T2 port>\n");
+  printf("GPU <GPU ID 0 or 1>\n");
+  printf("BEAM0 <first beam in output>\n");
   printf("SCRUNCH <number of scrunches>\n");
   printf("<time scrunch> <frequency scrunch> <flagging threshold> <number of iterations>\n");
   printf("repeat the above as many times as you like for different parameters\n");
@@ -1845,7 +1869,7 @@ void output_peaks(pinfo *p, int samp) {
       fprintf(fout,"A %g %d %g %d %d %g %d\n",p->peaks[i],p->samp[i]+samp,262.144e-6*(p->samp[i]+samp),p->width[i],p->dm_idx[i],p->DMs[p->dm_idx[i]],bm);
     else
     fprintf(fout,"B %g %d %g %d %d %g %d\n",p->peaks[i],p->samp[i]+samp,262.144e-6*(p->samp[i]+samp),p->width[i],p->dm_idx[i],p->DMs[p->dm_idx[i]],bm);*/
-      fprintf(fout,"%g %d %d %g %d %d %g %d\n",p->out_peaks[i],p->out_samp[i]+samp,p->out_samp[i]+samp,262.144e-6*(p->out_samp[i]+samp)/86400.,p->out_width[i],p->out_dm_idx[i],p->DMs[p->out_dm_idx[i]],p->out_beam[i]);
+      fprintf(fout,"%g %d %d %g %d %d %g %d\n",p->out_peaks[i],p->out_samp[i]+samp,p->out_samp[i]+samp,262.144e-6*(p->out_samp[i]+samp)/86400.,p->out_width[i],p->out_dm_idx[i],p->DMs[p->out_dm_idx[i]],p->out_beam[i]+p->BEAM0);
 
     }
     fclose(fout);
@@ -1874,7 +1898,7 @@ void output_peaks(pinfo *p, int samp) {
 	    << p->out_width[i] << " "
 	    << p->out_dm_idx[i] << " "
 	    << p->DMs[p->out_dm_idx[i]] << " "
-	    << p->out_beam[i] << std::endl;
+	    << p->out_beam[i]+p->BEAM0 << std::endl;
 	
 	client_socket << oss.str();
 	oss.flush();
@@ -1940,7 +1964,13 @@ int main(int argc, char *argv[]) {
     }
 
   }
-   
+
+  // set GPU ID
+  cudaSetDevice(get_gpu_id(fconf));
+  int currentDevice;
+  cudaGetDevice(&currentDevice);
+  printf("Using GPU ID %d\n",currentDevice);
+  
   // set up pipeline, allocate appropriate mem
   pinfo p;
   initialize(fconf,&p);  
