@@ -825,6 +825,9 @@ float calculateStdDev(half * d_data, int width, int height, int stride) {
   stdDev /= 1.*new_width*height;
   stdDev = sqrt(stdDev);
 
+  cudaFree(d_sums);
+  cudaFree(d_qsums);
+  
   return stdDev;
   
   
@@ -1022,6 +1025,8 @@ void npp_convolve_handler(half * data, half * output, float scfac, int xw, int y
 
   nppiFilterBorder32f_16f_C1R((Npp16f *)data,stride*2,oSrcSize,oSrcOffset,(Npp16f *)output,stride*2,oSrcSize,pKernel,pKernelSize,oAnchor,NPP_BORDER_REPLICATE);
 
+  cudaFree(pKernel);
+  
 }
 
 
@@ -1228,6 +1233,8 @@ void transpose_input_handler(unsigned char * d_data, half * batch, int width, in
     cudaMemcpy2D(batch+bm*NCHAN*stride,stride*sizeof(half),tmpBuffer,width*sizeof(half),width*sizeof(half),NCHAN,cudaMemcpyDeviceToDevice);
   }
 
+  cudaFree(tmpBuffer);
+
 }
 
 void transpose_output_handler(unsigned char * d_data, half * batch, int width, int stride) {
@@ -1242,6 +1249,8 @@ void transpose_output_handler(unsigned char * d_data, half * batch, int width, i
     transpose_output<<<dimGridOut,dimBlockOut>>>(d_data+bm*NCHAN*width,tmpBuffer,width);
   }
 
+  cudaFree(tmpBuffer);
+  
 }
 
 // kernel to sort out time series
@@ -1354,6 +1363,8 @@ void bandpass_correct(half * data, int width, int stride) {
   // correct bandpass in data
   divide_by_bp<<<NBATCH*NCHAN*width/32,32>>>(data,d_bandpass,width,stride);
 
+  cudaFree(d_bandpass);
+  
 }
 
 // function to ts-correct data
@@ -1387,6 +1398,8 @@ void remove_tf_baseline(half * data, int width, int stride) {
   // divide by smoothed data
   divide_by_array<<<NBATCH*NCHAN*width/32,32>>>(data,d_smooth,width,stride);  
 
+  cudaFree(d_smooth);
+  
 }
 
 // function to normalize data
@@ -1468,6 +1481,8 @@ void apply_scrunch(pinfo * p, half * data, half * mask, half * d_smooth, float *
     p->t6 += (float)(end - begin) / CLOCKS_PER_SEC;
 
   }
+
+  cudaFree(d_mask);
   
 }
 
@@ -1693,6 +1708,8 @@ void smooth(pinfo *p, int scale) {
       
     }
   }
+
+  cudaFree(pKernel);
   
 }
 
@@ -2177,7 +2194,7 @@ int main(int argc, char *argv[]) {
     if (p.inp_format==0)
       ipcio_close_block_read (hdu_in->data_block, bytes_read);
 
-    printf("Finished beam %d of %d with giants %d\n",bm,NBEAMS,p.out_npeaks);
+    printf("Beamstats %d giants %d\n",bm,p.out_npeaks);
     printf("processed %g s in read %g flag %g dedisp %g smooth %g peak %g output %g [%g]\n",(p.ntime_dd)*2.62144e-4,readt,flagt,dedispt,smootht,peakt,outputt,readt+flagt+dedispt+smootht+peakt+outputt);
     printf("Flagging: %g %g %g %g %g %g %g %g\n",p.t1,p.t2,p.t3,p.t4,p.t5,p.t6,p.t7,p.t8);
     readt = 0.;

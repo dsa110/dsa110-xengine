@@ -184,12 +184,24 @@ def get_srch_nodes():
         result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep Blockcts_full | tail -n 1 | awk '{print $12}'", shell=True, stderr=subprocess.STDOUT)
         arr = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log.log | grep final_space_searched | tail -n 1 | awk '{print $2}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log_3.log | grep Beamstats | tail -n 1 | awk '{print $2}'", shell=True, stderr=subprocess.STDOUT)
         arr2 = result.decode("utf-8")
+
+        result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log_3.log | grep Beamstats | tail -n 1 | awk '{print $4}'", shell=True, stderr=subprocess.STDOUT)
+        arr3 = result.decode("utf-8")
+
+        result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log_4.log | grep Beamstats | tail -n 1 | awk '{print $2}'", shell=True, stderr=subprocess.STDOUT)
+        arr4 = result.decode("utf-8")
+
+        result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log_4.log | grep Beamstats | tail -n 1 | awk '{print $4}'", shell=True, stderr=subprocess.STDOUT)
+        arr5 = result.decode("utf-8")
         
-        oarr = np.zeros(2)
+        oarr = np.zeros(5)
         oarr[0] = float(arr)
         oarr[1] = float(arr2)
+        oarr[2] = float(arr3)
+        oarr[3] = float(arr4)
+        oarr[4] = float(arr5)
         
     except:
         return -1
@@ -246,10 +258,16 @@ def get_monitor_dict(params, corr_num, my_ds):
     srch_nodes = get_srch_nodes()
     if srch_nodes==-1:
         mon_dict['full_blockct'] = 0.0
-        mon_dict['DM_space_searched'] = 0.0
+        mon_dict['beams_searched_0'] = 0.0
+        mon_dict['beams_searched_1'] = 0.0
+        mon_dict['giants_0'] = 0.0
+        mon_dict['giants_1'] = 0.0
     else:
         mon_dict['full_blockct'] = srch_nodes[0]
-        mon_dict['DM_space_searched'] = srch_nodes[1]
+        mon_dict['beams_searched_0'] = srch_nodes[1]
+        mon_dict['beams_searched_1'] = srch_nodes[3]
+        mon_dict['giants_0'] = srch_nodes[2]
+        mon_dict['giants_1'] = srch_nodes[4]
     nfils = get_nfils()
     if nfils==-1:
         mon_dict['nfils_written'] = 0.0
@@ -354,6 +372,7 @@ def process(params, cmd, val, my_ds):
             sleep(0.5)
 
         # deal with processes
+        iii = 0
         for rout in params['routines']:
             print(rout)
             if rout.get('hostargs') is None:
@@ -362,8 +381,9 @@ def process(params, cmd, val, my_ds):
                 cmdstr = rout['cmd']+' '+rout['args']+' '+rout.get('hostargs')[socket.gethostname()]
             my_log.debug('running: '+cmdstr)
             my_log.info('Starting '+rout['name'])
-            log = open('/home/ubuntu/tmp/log.log','w')
+            log = open(f"/home/ubuntu/tmp/log_{iii}.log",'w')
             proc = subprocess.Popen(cmdstr, shell = True, stdout=log, stderr=log)
+            iii += 1
             sleep(0.5)
 
         #zero out utc_start
@@ -458,14 +478,14 @@ def corr_run(args):
             try:
                 my_ds.put_dict(key, md)
                 get_rms_into_etcd(args.corr_num)
-                if args.instance=='search':
-                    try:
-                        my_ds.put_dict('/mon/T1/'+str(args.corr_num-16),
-                                       {'DM_space_searched':md['DM_space_searched'],
-                                        't1_num': args.corr_num-16,
-                                        'time': dsa_functions36.current_mjd()})
-                    except:
-                        my_log.error('COULD NOT write to /mon/t1/')
+#                if args.instance=='search':
+#                    try:
+#                        #my_ds.put_dict('/mon/T1/'+str(args.corr_num-16),
+#                        #               {'DM_space_searched':md['DM_space_searched'],
+#                        #                't1_num': args.corr_num-16,
+#                                        'time': dsa_functions36.current_mjd()})
+#                    except:
+#                        my_log.error('COULD NOT write to /mon/t1/')
             except:
                 my_log.error('COULD NOT CONNECT TO ETCD')
         key = '/mon/service/corr/' + str(args.corr_num)
