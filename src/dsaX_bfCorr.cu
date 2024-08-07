@@ -41,6 +41,9 @@ using std::endl;
 // required to prevent overflow in corr matrix multiply
 #define halfFac 4
 
+// cycle on which total powers are recorded
+#define power_cycle 8
+
 // beam sep
 #define sep 1.0 // arcmin
 
@@ -678,7 +681,7 @@ __global__ void sum_beam(unsigned char * input, float * output) {
 
   __syncthreads();
 
-  if (tid==0) output[bid] = psum[0];
+  if (tid==0) output[bid] = psum[0]/512./48.;
   
 }
 
@@ -1319,6 +1322,10 @@ int main (int argc, char *argv[]) {
   char * output_buffer;
   output_buffer = (char *)malloc(block_out);
   uint64_t written, block_id;
+
+  // output powers
+  float output_power[NBEAMS];
+  int iPower = 0;
   
   // get things started
   bool observation_complete=0;
@@ -1330,6 +1337,11 @@ int main (int argc, char *argv[]) {
   
   while (!observation_complete) {
 
+    // zero out powers
+    if (iPower==0) {
+      for (int i=0;i<NBEAMS;i++) output_power[i] = 0.;
+    }
+    
     if (DEBUG) syslog(LOG_INFO,"reading block");    
     
     // open block
@@ -1351,7 +1363,14 @@ int main (int argc, char *argv[]) {
 
       // deal with power output
       for (int i=0;i<NBEAMS;i++)
-	fprintf(fp,"%g\n",d.h_chscf[i]);
+	output_power[i] += d.h_chscf[i]/(1.*power_cycle);
+	//fprintf(fp,"%g\n",d.h_chscf[i]);
+
+      if (iPower == power_cycle) {
+	for (int i=0;i<NBEAMS;i++)
+	  fprintf(fp,"%g\n",output_power[i]);
+	iPower = 0;
+      }
       
     }
     //end = clock();

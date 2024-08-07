@@ -385,7 +385,7 @@ const ClientSocket& ClientSocket::operator >> ( std::string& s ) const
 #define MAX_DM 2000
 #define TOL 1.3
 #define MAX_BOX 15
-#define MAX_GIANTS 1000000
+#define MAX_GIANTS 100000
 #define DADA_BLOCK_KEY 0x0000dada // for capture program.
 
 int finished = 0;
