@@ -1366,6 +1366,7 @@ int main (int argc, char *argv[]) {
 	output_power[i] += d.h_chscf[i]/(1.*power_cycle);
 	//fprintf(fp,"%g\n",d.h_chscf[i]);
 
+      iPower++;
       if (iPower == power_cycle) {
 	for (int i=0;i<NBEAMS;i++)
 	  fprintf(fp,"%g\n",output_power[i]);
