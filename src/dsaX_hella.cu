@@ -2071,6 +2071,7 @@ int main(int argc, char *argv[]) {
   //unsigned char * hodata = (unsigned char *)malloc(sizeof(unsigned char)*p.NTIME*NCHAN);
   float * hodata = (float *)malloc(sizeof(float)*p.ntime_out*(p.ndms-2));
   FILE *ftest;
+  int tot_flags = 0;
   
   while (finished==0) {
 
@@ -2121,6 +2122,14 @@ int main(int argc, char *argv[]) {
       begin = clock();
       printf("Flagging\n");
       fastflagger(&p);
+      // deal with flags
+      for (int j=0;j<NBATCH;j++) {
+	for (int i=0;i<NCHAN;i++) {
+	  //beamflags[bm] += (int)(p.h_flagSpec[j*NCHAN+i]);
+	  specflags[i] += (int)(p.h_flagSpec[j*NCHAN+i]);
+	  tot_flags += (int)(p.h_flagSpec[j*NCHAN+i]);
+	}
+      }
       end = clock();
       flagt += (float)(end - begin) / CLOCKS_PER_SEC;
 
@@ -2147,13 +2156,6 @@ int main(int argc, char *argv[]) {
 	//printf("rest\n");
 	begin = clock();
 	find_peaks(&p,bm);
-	// deal with flags
-	for (int j=0;j<NBATCH;j++) {
-	  for (int i=0;i<NCHAN;i++) {
-	    //beamflags[bm] += (int)(p.h_flagSpec[j*NCHAN+i]);
-	    specflags[i] += (int)(p.h_flagSpec[j*NCHAN+i]);
-	  }
-	}
 	end = clock();
 	peakt += (float)(end - begin) / CLOCKS_PER_SEC;
       
@@ -2194,7 +2196,8 @@ int main(int argc, char *argv[]) {
     if (p.inp_format==0)
       ipcio_close_block_read (hdu_in->data_block, bytes_read);
 
-    printf("Beamstats %d giants %d\n",bm,p.out_npeaks);
+    printf("Beamstats %d giants %d %d\n",bm,p.out_npeaks,tot_flags);
+    tot_flags = 0;
     printf("processed %g s in read %g flag %g dedisp %g smooth %g peak %g output %g [%g]\n",(p.ntime_dd)*2.62144e-4,readt,flagt,dedispt,smootht,peakt,outputt,readt+flagt+dedispt+smootht+peakt+outputt);
     printf("Flagging: %g %g %g %g %g %g %g %g\n",p.t1,p.t2,p.t3,p.t4,p.t5,p.t6,p.t7,p.t8);
     readt = 0.;

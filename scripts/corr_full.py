@@ -195,13 +195,21 @@ def get_srch_nodes():
 
         result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log_4.log | grep Beamstats | tail -n 1 | awk '{print $4}'", shell=True, stderr=subprocess.STDOUT)
         arr5 = result.decode("utf-8")
+
+        result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log_3.log | grep Beamstats | tail -n 1 | awk '{print $5}'", shell=True, stderr=subprocess.STDOUT)
+        arr6 = result.decode("utf-8")
+
+        result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log_4.log | grep Beamstats | tail -n 1 | awk '{print $5}'", shell=True, stderr=subprocess.STDOUT)
+        arr7 = result.decode("utf-8")
         
-        oarr = np.zeros(5)
+        oarr = np.zeros(7)
         oarr[0] = float(arr)
         oarr[1] = float(arr2)
         oarr[2] = float(arr3)
         oarr[3] = float(arr4)
         oarr[4] = float(arr5)
+        oarr[5] = float(arr6)
+        oarr[6] = float(arr7)
         
     except:
         return -1
@@ -262,12 +270,17 @@ def get_monitor_dict(params, corr_num, my_ds):
         mon_dict['beams_searched_1'] = 0.0
         mon_dict['giants_0'] = 0.0
         mon_dict['giants_1'] = 0.0
+        mon_dict['flags_0'] = 0.0
+        mon_dict['flags_1'] = 0.0
     else:
         mon_dict['full_blockct'] = srch_nodes[0]
         mon_dict['beams_searched_0'] = srch_nodes[1]
         mon_dict['beams_searched_1'] = srch_nodes[3]
         mon_dict['giants_0'] = srch_nodes[2]
         mon_dict['giants_1'] = srch_nodes[4]
+        mon_dict['flags_0'] = srch_nodes[5]
+        mon_dict['flags_1'] = srch_nodes[6]
+
     nfils = get_nfils()
     if nfils==-1:
         mon_dict['nfils_written'] = 0.0
