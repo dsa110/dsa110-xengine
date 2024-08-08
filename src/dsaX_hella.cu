@@ -827,6 +827,8 @@ float calculateStdDev(half * d_data, int width, int height, int stride) {
 
   cudaFree(d_sums);
   cudaFree(d_qsums);
+  free(sums);
+  free(qsums);
   
   return stdDev;
   
@@ -961,6 +963,9 @@ void medFilterBandpass(float * d_bandpass) {
   cudaMemcpy(hbp,d_bandpass,sizeof(float)*NBATCH*NCHAN,cudaMemcpyDeviceToHost);
   medianFilter(hbp,mhbp,NBATCH*NCHAN,NMEDFILT);
   cudaMemcpy(d_bandpass,mhbp,sizeof(float)*NBATCH*NCHAN,cudaMemcpyHostToDevice);
+
+  free(hbp);
+  free(mhbp);
   
 }
 
@@ -972,6 +977,9 @@ void medFilterTs(float * d_ts, int width) {
   cudaMemcpy(hts,d_ts,sizeof(float)*NBATCH*width,cudaMemcpyDeviceToHost);
   medianFilter(hts,mhts,NBATCH*width,NTSMED);
   cudaMemcpy(d_ts,mhts,sizeof(float)*NBATCH*width,cudaMemcpyHostToDevice);
+
+  free(hts);
+  free(mhts);
   
 }
 
@@ -1026,6 +1034,7 @@ void npp_convolve_handler(half * data, half * output, float scfac, int xw, int y
   nppiFilterBorder32f_16f_C1R((Npp16f *)data,stride*2,oSrcSize,oSrcOffset,(Npp16f *)output,stride*2,oSrcSize,pKernel,pKernelSize,oAnchor,NPP_BORDER_REPLICATE);
 
   cudaFree(pKernel);
+  free(h_kernel);
   
 }
 
@@ -1710,6 +1719,7 @@ void smooth(pinfo *p, int scale) {
   }
 
   cudaFree(pKernel);
+  free(h_kernel);
   
 }
 
