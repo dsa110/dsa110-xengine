@@ -1966,13 +1966,17 @@ int main(int argc, char *argv[]) {
   
   
   // parse command line
-  FILE *fconf;  
+  FILE *fconf;
+  int core = -1;
   for (int i=1;i<argc;i++) {
 
     // configuration
     if (strcmp(argv[i],"-c")==0) {
       fconf=fopen(argv[i+1],"r");
       printf("Getting config from %s\n",argv[i+1]);
+    }
+    if (strcmp(argv[i],"-i")==0) {
+      core = atoi(argv[i+1]);
     }
     // help
     if (strcmp(argv[i],"-h")==0) {
@@ -1987,6 +1991,15 @@ int main(int argc, char *argv[]) {
   int currentDevice;
   cudaGetDevice(&currentDevice);
   printf("Using GPU ID %d\n",currentDevice);
+
+  // Bind to cpu core
+  if (core >= 0)
+    {
+      printf("binding to core %d\n", core);
+      if (dada_bind_thread_to_core(core) < 0)
+	printf("failed to bind to core %d\n", core);
+    }
+  
   
   // set up pipeline, allocate appropriate mem
   pinfo p;
