@@ -1718,8 +1718,8 @@ void smooth(pinfo *p, int scale) {
     }
   }
 
-  cudaFree(pKernel);
-  free(h_kernel);
+  //cudaFree(pKernel);
+  //free(h_kernel);
   
 }
 

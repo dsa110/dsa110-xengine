@@ -21,6 +21,12 @@ test_write.o: test_write.c $(CDEPS1)
 test_write: test_write.o
 	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
 
+dsaX_injector.o: dsaX_injector.c $(CDEPS1)
+	$(CC) -c -o $@ $< $(CFLAGS1)
+
+dsaX_injector: dsaX_injector.o
+	$(CC) -o $@ $^ $(CFLAGS1) $(LIBS)
+
 test_read.o: test_read.c $(CDEPS1)
 	$(CC) -c -o $@ $< $(CFLAGS1)
 
@@ -203,9 +209,9 @@ dsaX_beamformer_offline: dsaX_beamformer_offline.cu
 .PHONY: clean all
 
 clean:
-	rm -f *.o *~ dsaX_beamformer dsaX_beamformer_passon dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle fil2dada gpu_flagger dumpfil dsaX_simplesplit dsaX_store dsaX_trigger dsaX_beamformer_offline dsaX_splice dsaX_filTrigger cuda_correlator dsaX_copydb dsaX_bfCorr dsaX_merge dsaX_hella
+	rm -f *.o *~ dsaX_beamformer dsaX_beamformer_passon dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle fil2dada gpu_flagger dumpfil dsaX_simplesplit dsaX_store dsaX_trigger dsaX_beamformer_offline dsaX_splice dsaX_filTrigger cuda_correlator dsaX_copydb dsaX_bfCorr dsaX_merge dsaX_hella dsaX_injector
 
-all: dsaX_beamformer dsaX_beamformer_passon dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_capture_thread dsaX_capture_manythread dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle fil2dada gpu_flagger dumpfil dsaX_simplesplit dsaX_store dsaX_trigger dsaX_filTrigger dsaX_beamformer_offline dsaX_splice dsaX_splitup cuda_correlator dsaX_copydb dsaX_bfCorr dsaX_merge dsaX_hella
+all: dsaX_beamformer dsaX_beamformer_passon dsaX_xgpu dsaX_reorder_raw dsaX_writeFil dsaX_writevis dsaX_fake dsaX_capture dsaX_capture_thread dsaX_capture_manythread dsaX_dbnic dsaX_nicdb dsaX_split dsaX_wrangle fil2dada gpu_flagger dumpfil dsaX_simplesplit dsaX_store dsaX_trigger dsaX_filTrigger dsaX_beamformer_offline dsaX_splice dsaX_splitup cuda_correlator dsaX_copydb dsaX_bfCorr dsaX_merge dsaX_hella dsaX_injector
 
 
 

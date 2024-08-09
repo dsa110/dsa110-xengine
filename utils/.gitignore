@@ -2,5 +2,6 @@ antennas.out
 gen_antennas.py
 check_bfCorr.ipynb
 flagants.dat
+pip.conf
 *~
 .ipynb_checkpoints/
