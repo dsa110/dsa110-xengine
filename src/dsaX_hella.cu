@@ -921,10 +921,11 @@ float findMedian(float arr[], int n) {
 }
 
 // Function to apply median filter
-void medianFilter(float *input, float *output, int size, int windowSize) {
+float medianFilter(float *input, float *output, int size, int windowSize) {
+  
     if (windowSize % 2 == 0) {
         printf("Error: Window size must be odd.\n");
-        return; 
+        return 0.; 
     }
 
     int halfWindowSize = windowSize / 2;
@@ -951,21 +952,30 @@ void medianFilter(float *input, float *output, int size, int windowSize) {
     // edge values
     for (int i=0;i<halfWindowSize;i++) output[i] = output[halfWindowSize];
     for (int i=size-halfWindowSize;i<size;i++) output[i] = output[size-halfWindowSize-1];
-    
+
+    // return mean
+    float mn = 0.;
+    for (int i=0;i<size;i++)
+      mn += output[i];
+    mn /= 1.*size;
+
+    return mn;
     
 }
 
 // function to orchestrate host median filtering of bandpass
-void medFilterBandpass(float * d_bandpass) {
+float medFilterBandpass(float * d_bandpass) {
 
   float * hbp = (float *)malloc(sizeof(float)*NBATCH*NCHAN);
   float * mhbp = (float *)malloc(sizeof(float)*NBATCH*NCHAN);
   cudaMemcpy(hbp,d_bandpass,sizeof(float)*NBATCH*NCHAN,cudaMemcpyDeviceToHost);
-  medianFilter(hbp,mhbp,NBATCH*NCHAN,NMEDFILT);
+  float mn_bp = medianFilter(hbp,mhbp,NBATCH*NCHAN,NMEDFILT);
   cudaMemcpy(d_bandpass,mhbp,sizeof(float)*NBATCH*NCHAN,cudaMemcpyHostToDevice);
 
   free(hbp);
   free(mhbp);
+
+  return mn_bp;
   
 }
 
@@ -975,7 +985,7 @@ void medFilterTs(float * d_ts, int width) {
   float * hts = (float *)malloc(sizeof(float)*NBATCH*width);
   float * mhts = (float *)malloc(sizeof(float)*NBATCH*width);
   cudaMemcpy(hts,d_ts,sizeof(float)*NBATCH*width,cudaMemcpyDeviceToHost);
-  medianFilter(hts,mhts,NBATCH*width,NTSMED);
+  float mn_ts = medianFilter(hts,mhts,NBATCH*width,NTSMED);
   cudaMemcpy(d_ts,mhts,sizeof(float)*NBATCH*width,cudaMemcpyHostToDevice);
 
   free(hts);
@@ -1355,7 +1365,7 @@ __global__ void measure_ts(half * data, float * ts, int width, int stride) {
 }
 
 // function to bandpass-correct data
-void bandpass_correct(half * data, int width, int stride) {
+float bandpass_correct(half * data, int width, int stride) {
 
   // allocate bandpass
   float * d_bandpass;
@@ -1367,12 +1377,14 @@ void bandpass_correct(half * data, int width, int stride) {
   cudaDeviceSynchronize();
     
   // median filter bandpass
-  medFilterBandpass(d_bandpass);
+  float mn_bp = medFilterBandpass(d_bandpass);
   
   // correct bandpass in data
   divide_by_bp<<<NBATCH*NCHAN*width/32,32>>>(data,d_bandpass,width,stride);
 
   cudaFree(d_bandpass);
+
+  return mn_bp;
   
 }
 
@@ -1424,7 +1436,7 @@ void normalize_data(half * data, int width, int stride) {
 }
 
 // function to apply a single scrunch to the data
-void apply_scrunch(pinfo * p, half * data, half * mask, half * d_smooth, float * d_ts, int width, int stride, int tscrunch, int fscrunch, float thresh, int flag, int ts, float * d_flagSpec) {
+float apply_scrunch(pinfo * p, half * data, half * mask, half * d_smooth, float * d_ts, int width, int stride, int tscrunch, int fscrunch, float thresh, int flag, int ts, float * d_flagSpec) {
 
   float begin, end;
   float * d_mask;
@@ -1433,7 +1445,7 @@ void apply_scrunch(pinfo * p, half * data, half * mask, half * d_smooth, float *
   // bandpass
   //printf("bandpass\n");
   begin = clock();
-  bandpass_correct(data,width,stride);
+  float mn_bp = bandpass_correct(data,width,stride);
   cudaDeviceSynchronize();
   end = clock();
   p->t1 += (float)(end - begin) / CLOCKS_PER_SEC;
@@ -1492,6 +1504,8 @@ void apply_scrunch(pinfo * p, half * data, half * mask, half * d_smooth, float *
   }
 
   cudaFree(d_mask);
+
+  return mn_bp;
   
 }
 
@@ -1506,7 +1520,10 @@ void fastflagger(pinfo * p) {
   // setup
   int nBatches = (int)(NBEAMS / NBATCH);
   cudaMemset(p->d_flagSpec,0,4*NBATCH*NCHAN);
-    
+  float mn_bp, tmp;
+
+  printf("fastflagger ");
+  
   // loop over batches
   for (int batch = 0; batch < nBatches; batch++) {
   
@@ -1522,10 +1539,13 @@ void fastflagger(pinfo * p) {
     // loop over scrunches
     for (int scrnch=0;scrnch<p->nscrunches;scrnch++) {
       //printf("scrunch %d...",scrnch);
-      apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, p->scrunches[scrnch].tscrunch,p->scrunches[scrnch].fscrunch, p->scrunches[scrnch].thresh,1,0,p->d_flagSpec);
+      if (scrnch==0)
+	mn_bp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, p->scrunches[scrnch].tscrunch,p->scrunches[scrnch].fscrunch, p->scrunches[scrnch].thresh,1,0,p->d_flagSpec);
+      else
+	tmp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, p->scrunches[scrnch].tscrunch,p->scrunches[scrnch].fscrunch, p->scrunches[scrnch].thresh,1,0,p->d_flagSpec);
       cudaDeviceSynchronize();
     }
-    apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, 8, 8, 100., 0, 1, p->d_flagSpec);
+    tmp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, 8, 8, 100., 0, 1, p->d_flagSpec);
     //    printf("\n");
 
     cudaDeviceSynchronize();
@@ -1541,7 +1561,10 @@ void fastflagger(pinfo * p) {
     
     //printf("done\n");
 
-  }    
+    printf("%g ",mn_bp);
+    
+  }
+  printf("\n");
   
   
 }

@@ -201,8 +201,8 @@ def get_srch_nodes():
 
         result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log_4.log | grep Beamstats | tail -n 1 | awk '{print $5}'", shell=True, stderr=subprocess.STDOUT)
         arr7 = result.decode("utf-8")
-        
-        oarr = np.zeros(7)
+
+        oarr = np.zeros(39)
         oarr[0] = float(arr)
         oarr[1] = float(arr2)
         oarr[2] = float(arr3)
@@ -210,6 +210,15 @@ def get_srch_nodes():
         oarr[4] = float(arr5)
         oarr[5] = float(arr6)
         oarr[6] = float(arr7)
+
+        for ii in np.arange(1,18):
+        
+            result = subprocess.check_output(f"tail -n 1000 /home/ubuntu/tmp/log_3.log | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
+            oarr[2*(ii-1)+7] = float(result.decode("utf-8"))
+
+            result = subprocess.check_output(f"tail -n 1000 /home/ubuntu/tmp/log_4.log | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
+            oarr[2*(ii-1)+1+7] = result.decode("utf-8")
+        
         
     except:
         return -1
@@ -280,6 +289,14 @@ def get_monitor_dict(params, corr_num, my_ds):
         mon_dict['giants_1'] = srch_nodes[4]
         mon_dict['flags_0'] = srch_nodes[5]
         mon_dict['flags_1'] = srch_nodes[6]
+        mon_dict['bp_0_0'] = srch_nodes[7]
+        mon_dict['bp_1_0'] = srch_nodes[8]
+        mon_dict['bp_0_1'] = srch_nodes[15]
+        mon_dict['bp_1_1'] = srch_nodes[16]
+        mon_dict['bp_0_2'] = srch_nodes[23]
+        mon_dict['bp_1_2'] = srch_nodes[24]
+        mon_dict['bp_0_3'] = srch_nodes[31]
+        mon_dict['bp_1_3'] = srch_nodes[32]
 
     nfils = get_nfils()
     if nfils==-1:
