@@ -30,8 +30,6 @@ Will ignore messages until data recording is over
 #include "ascii_header.h"
 #include "dsaX_capture.h"
 #include "dsaX_def.h"
-#include "fitsio.h"
-#include "xgpu.h"
 
 /* global variables */
 int quit_threads = 0;
@@ -43,48 +41,17 @@ char srcnam[1024];
 float reclen;
 int DEBUG = 0;
 
-// assumes that only first 78 baselines are written and 384 channels and 2 pols
-const int n = 9216;
-float summed_vis[9216];
-const int n_all = 3194880;
-
-// for extracting data
-// assumes TRIANGULAR_ORDER for mat (f, baseline, pol, ri)
-void simple_extract(Complex *mat, float *output);
-
-void simple_extract(Complex *mat, float *output) {
-
-  int in_idx, out_idx;
-  for (int bctr=0;bctr<2080;bctr++) {
-    for (int pol1=0;pol1<2;pol1++) {
-
-      for (int f=0;f<384;f++) {
-
-	out_idx = 2*((bctr*384+f)*2+pol1);
-	in_idx = (2*f*2080+bctr)*4+pol1*3;
-	output[out_idx] = 0.5*(mat[in_idx].real + mat[in_idx+8320].real);
-	output[out_idx+1] = 0.5*(mat[in_idx].imag + mat[in_idx+8320].imag);
-
-      }
-    }
-  }
-
-}
-
-
-
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * in);
 
 void usage()
 {
   fprintf (stdout,
-	   "dsaX_image [options]\n"
+	   "dsaX_writevis [options]\n"
 	   " -c core   bind process to CPU core\n"
 	   " -d debug [default no]\n"
 	   " -k in_key [default XGPU_BLOCK_KEY]\n"
-	   " -f filename base [default test.fits]\n"
-	   " -o freq of chan 1 [default 1494.84375]\n"
+	   " -f filename base [default alltest.out]\n"
 	   " -i IP to listen to [no default]\n"
 	   " -h        print usage\n");
 }
@@ -196,12 +163,11 @@ int main (int argc, char *argv[]) {
   // command line
   int arg = 0;
   int core = -1;
-  float fch1 = 1500.0;
   int nchans = 384;
   char fnam[300], foutnam[400];
   sprintf(fnam,"/home/ubuntu/alltest");
   
-  while ((arg=getopt(argc,argv,"c:f:o:i:k:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:i:k:dh")) != -1)
     {
       switch (arg)
 	{
@@ -236,9 +202,6 @@ int main (int argc, char *argv[]) {
 	  break;
 	case 'd':
 	  DEBUG=1;
-	  break;
-	case 'o':
-	  fch1 = atof(optarg);
 	  break;
 	case 'i':
 	  strcpy(iP,optarg);
@@ -308,9 +271,7 @@ int main (int argc, char *argv[]) {
 
   // set up
   int fctr = 0, integration = 0;
-  fitsfile *fptr;
-  int rownum = 1;
-  int fwrite = 0;
+  int fiwrite = 0;
   int status=0;
   float mytsamp = 4096*4*8.192e-6;
   int NINTS;
@@ -319,10 +280,10 @@ int main (int argc, char *argv[]) {
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
   uint64_t bytes_read = 0, block_id;
   char *block;
-  float *data = (float *)malloc(sizeof(float)*n_all);
+  float *data;// = (float *)malloc(sizeof(float)*7151616);
   int si1, si2;
   int nblocks = 0;
-  Complex * cblock; 
+  FILE *fout;
   
   // start things
 
@@ -332,72 +293,38 @@ int main (int argc, char *argv[]) {
 
     // read block
     block = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
-    cblock = (Complex *)(block);
-
-    if (DEBUG) {
-      if (nblocks==20) {
-	for (int i=100;i<200;i++) {
-	  syslog(LOG_DEBUG,"MAT %d %f %f",i,(float)(cblock[i].real),(float)(cblock[i].imag));
-	}
-      }
-    }
+    data = (float *)(block);
     
     // DO STUFF - from block to summed_vis
-
-    if (DEBUG) syslog(LOG_DEBUG,"extracting...");
-    simple_extract((Complex *)(block), data);
-    for (int i=0;i<n;i++) summed_vis[i] = data[i];
-    if (DEBUG) syslog(LOG_DEBUG,"extracted!");
     
     // check for dump_pending
     if (dump_pending) {
 
       // if file writing hasn't started
-      if (fwrite==0) {
+      if (fiwrite==0) {
 
 	syslog(LOG_INFO, "dsaX_writevis: beginning file write for SRC %s for %f s",srcnam,reclen);
 	status=0;
 	
 	NINTS = (int)(floor(reclen/mytsamp));
-	sprintf(foutnam,"%s_%s_%d.fits",fnam,srcnam,fctr);
+	sprintf(foutnam,"%s_%s_%d.out",fnam,srcnam,fctr);
 	syslog(LOG_INFO, "main: opening new file %s",foutnam);
-	rownum=1;
-	
-	char *ttype[] = {"VIS"};
-	char *tform[] = {"9216E"}; // assumes classic npts
-	char *tunit[] = {"\0"};
-	char *wsrcnam = srcnam;
-	
-	char extname[] = "DATA";
-	fits_create_file(&fptr, foutnam, &status);
-	if (status) syslog(LOG_ERR, "create_file FITS error %d",status);
-	fits_create_tbl(fptr, BINARY_TBL, 0, 1, ttype, tform, tunit, extname, &status);
-	fits_write_key(fptr, TFLOAT, "TSAMP", &mytsamp, "Sample time (s)", &status);
-	fits_write_key(fptr, TFLOAT, "FCH1", &fch1, "Frequency (MHz)", &status);
-	fits_write_key(fptr, TINT, "NCHAN", &nchans, "Channels", &status);
-	fits_write_key(fptr, TSTRING, "Source", &wsrcnam[0], "Source", &status);	  
-	fits_write_key(fptr, TINT, "NBLOCKS", &nblocks, "Ints", &status);
-	if (status) syslog(LOG_ERR, "fits_write FITS error %d",status);
-	fits_close_file(fptr, &status);
+	fout=fopen(foutnam,"wb");
 
-	fwrite=1;
+	fiwrite=1;
 	
       }
 
       // write data to file
-      fits_open_table(&fptr, foutnam, READWRITE, &status);
-      fits_write_col(fptr, TFLOAT, 1, rownum, 1, n, summed_vis, &status);
-      rownum += 1;
-      fits_update_key(fptr, TINT, "NAXIS2", &rownum, "", &status);
-      fits_close_file(fptr, &status);
+      fwrite(data,sizeof(float),7151616,fout);      
       integration++;
-      if (status) syslog(LOG_ERR, "fits_write FITS error %d",status);	
+      
       // check if file writing is done
       if (integration==NINTS) {
 	integration=0;
 	syslog(LOG_INFO, "dsaX_writevis: completed file %d",fctr);
 	fctr++;
-	fwrite=0;
+	fiwrite=0;
 	dump_pending=0;
       }
 
@@ -422,7 +349,6 @@ int main (int argc, char *argv[]) {
   void* result=0;
   pthread_join (control_thread_id, &result);
 
-  free(data);
   dsaX_dbgpu_cleanup(hdu_in);
  
 }
