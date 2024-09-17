@@ -346,7 +346,7 @@ def process(params, cmd, val, my_ds):
         my_log.info('Successfully issued record (I think)')
 
     # to inject pulse
-    # val is e.g. <beam>-<path>-
+    # val is e.g. <beam>-<path>-<scfac>-
     if cmd=='inject':
         cmdstr = 'echo '+val+' | nc -4u -w1 127.0.0.1 11228 &'
         my_log.info('running: '+cmdstr)

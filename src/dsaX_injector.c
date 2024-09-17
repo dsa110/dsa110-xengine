@@ -59,6 +59,7 @@ char iP[100];
 char footer_buf[1024];
 char flnam[1024];
 int dumpbm;
+float scfac = 1.0;
 
 // structure for pulse injection
 typedef struct {
@@ -115,16 +116,19 @@ void control_thread (dsaX_pulse_t * ctx) {
     strcpy(tbuf,buffer);
     trignum++;
 
-    // interpret buffer string    
+    // interpret buffer string
     char * rest = buffer;
-    int tmp_dumpbm = (float)(strtof(strtok(rest, "-"),&endptr));
+    int tmp_dumpbm = (int)(strtof(strtok(rest, "-"),&endptr));
     if (tmp_dumpbm<0 || tmp_dumpbm>127) tmp_dumpbm=64;
     char * tmp_flnam = strtok(NULL, "-");
+    float tmp_snr = (float)(strtof(strtok(NULL, "-"),&endptr));    
+
     
     if (!dump_pending) {
       strcpy(flnam,tmp_flnam);
       dumpbm = tmp_dumpbm;
-      syslog(LOG_INFO, "control_thread: received command to add pulse %s to beam %d",flnam,dumpbm);
+      scfac = tmp_snr;
+      syslog(LOG_INFO, "control_thread: received command to add pulse %s to beam %d with scfac %g",flnam,dumpbm,scfac);
       if (!(fin=fopen(flnam,"rb"))) {
 	syslog(LOG_INFO,"cannot open %s",flnam);
       }
@@ -168,7 +172,7 @@ void control_thread (dsaX_pulse_t * ctx) {
 }
 
 // to actually add pulse to data
-void inject_pulse(unsigned char * data, float * pulse, int bm, float scfac) {
+void inject_pulse(unsigned char * data, float * pulse, int bm) {
 
   int i0 = bm*NTIMES_P*NCHAN_P;
   float val;
@@ -217,9 +221,8 @@ int main(int argc, char**argv)
   // command line arguments
   int core = -1;
   int arg = 0;
-  float scfac = 1.;
   
-  while ((arg=getopt(argc,argv,"c:i:o:s:k:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:i:o:k:dh")) != -1)
     {
       switch (arg)
 	{
@@ -235,18 +238,6 @@ int main(int argc, char**argv)
 	  else
 	    {
 	      syslog(LOG_ERR,"-c flag requires argument");
-	      usage();
-	      return EXIT_FAILURE;
-	    }
-	case 's':
-	  if (optarg)
-	    {
-	      scfac = atof(optarg);
-	      break;
-	    }
-	  else
-	    {
-	      syslog(LOG_ERR,"-s flag requires argument");
 	      usage();
 	      return EXIT_FAILURE;
 	    }
@@ -402,7 +393,7 @@ int main(int argc, char**argv)
       syslog(LOG_INFO, "adding pulse %s to beam %d", flnam, dumpbm);
 
       // add pulse
-      inject_pulse(h_data,udpdb.block,dumpbm,scfac);
+      inject_pulse(h_data,udpdb.block,dumpbm);
       //fwrite(h_data,1,BUF_SIZE,fout);
  
       syslog(LOG_INFO, "added %s to beam %d", flnam, dumpbm);
