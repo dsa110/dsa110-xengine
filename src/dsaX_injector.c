@@ -1,4 +1,7 @@
 // -*- c++ -*-
+#define __USE_GNU
+#define _GNU_SOURCE
+#include <sched.h>
 #include <time.h>
 #include <sys/socket.h>
 #include <math.h>
@@ -68,6 +71,62 @@ typedef struct {
   float * block;
 
 } dsaX_pulse_t;
+
+// data to pass to threads
+struct tdata {
+  unsigned char * data;
+  float * pulse;
+  int n_threads;
+  int thread_id;
+};
+int cores[4] = {13,14,15,16};
+
+// thread to add pulse to data
+void * massage (void *args) {
+
+  struct tdata *d = args;
+  int thread_id = d->thread_id;
+
+  // set affinity
+  const pthread_t pid = pthread_self();
+  const int core_id = cores[thread_id];
+  cpu_set_t cpuset;
+  CPU_ZERO(&cpuset);
+  CPU_SET(core_id, &cpuset);
+  const int set_result = pthread_setaffinity_np(pid, sizeof(cpu_set_t), &cpuset);
+  if (set_result != 0)
+    syslog(LOG_ERR,"thread %d: setaffinity_np fail",thread_id);
+  const int get_affinity = pthread_getaffinity_np(pid, sizeof(cpu_set_t), &cpuset);
+  if (get_affinity != 0) 
+    syslog(LOG_ERR,"thread %d: getaffinity_np fail",thread_id);
+  if (CPU_ISSET(core_id, &cpuset))
+    if (DEBUG) syslog(LOG_DEBUG,"thread %d: successfully set thread",thread_id);
+
+  // extract from input
+  unsigned char *in = (char *)d->data;
+  float * pulse = d->pulse;
+  int n_threads = d->n_threads;  
+
+  // do partial addition
+  
+  float val;
+  
+  for (int i=(thread_id*NTIMES_P/n_threads);i<((thread_id+1)*NTIMES_P/n_threads);i++) {
+    for (int j=0;j<NCHAN_P;j++) {
+
+      val = (float)(in[i*NCHAN_P+j]) + scfac*pulse[i*NCHAN_P+j];
+      in[i*NCHAN_P+j] = (unsigned char)(round(val));
+      
+    }
+  }
+
+  /* return 0 */
+  int thread_result = 0;
+  pthread_exit((void *) &thread_result);
+
+
+
+}
 
 
 // Thread to control the adding of filterbanks
@@ -372,6 +431,14 @@ int main(int argc, char**argv)
     syslog(LOG_ERR, "Error creating control_thread: %s", strerror(rval));
     return -1;
   }
+
+  // set up threads
+  struct tdata args[4];
+  pthread_t threads[4];
+  pthread_attr_t attr;
+  pthread_attr_init(&attr);
+  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+  void* result=0;
   
   //FILE *fout;
   //fout=fopen("tmp.tmp","wb");
@@ -393,9 +460,34 @@ int main(int argc, char**argv)
       syslog(LOG_INFO, "adding pulse %s to beam %d", flnam, dumpbm);
 
       // add pulse
-      inject_pulse(h_data,udpdb.block,dumpbm);
+      //inject_pulse(h_data,udpdb.block,dumpbm);
       //fwrite(h_data,1,BUF_SIZE,fout);
- 
+
+      // add pulse with four threads
+      for (int i=0;i<4;i++) {
+	args[i].data = h_data + dumpbm*NTIMES_P*NCHAN_P;
+	args[i].pulse = udpdb.block;
+	args[i].n_threads = 4;
+	args[i].thread_id = i;
+      }
+
+      syslog(LOG_INFO, "creating threads");
+      
+      for(int i=0; i<4; i++){
+	if (pthread_create(&threads[i], &attr, &massage, (void *)(&args[i]))) {
+	  syslog(LOG_ERR,"Failed to create massage thread %d\n", i);
+	}
+      }
+      
+      pthread_attr_destroy(&attr);
+      if (DEBUG) syslog(LOG_DEBUG,"threads kinda running");
+      
+      for(int i=0; i<4; i++){
+	pthread_join(threads[i], &result);
+	if (DEBUG) syslog(LOG_DEBUG,"joined thread %d",i);
+      }
+
+      
       syslog(LOG_INFO, "added %s to beam %d", flnam, dumpbm);
 	  
       dump_pending=0;
@@ -423,8 +515,8 @@ int main(int argc, char**argv)
   // close threads
   syslog(LOG_INFO, "joining control_thread");
   quit_threads = 1;
-  void* result=0;
-  pthread_join (control_thread_id, &result);
+  void* fresult=0;
+  pthread_join (control_thread_id, &fresult);
 
   return 0;    
 } 
