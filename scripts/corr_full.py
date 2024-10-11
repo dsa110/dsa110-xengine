@@ -40,7 +40,7 @@ def get_rms_into_etcd(corr_num):
         
         while full < 128:
                         
-            result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log.log | grep ANTPOL_RMS | tail -n "+str(i)+" | head -n 1 | awk '{print $2,$3,$4}'", shell=True, stderr=subprocess.STDOUT)
+            result = subprocess.check_output("tail -n 1000 /home/ubuntu/data/tmp/log.log | grep ANTPOL_RMS | tail -n "+str(i)+" | head -n 1 | awk '{print $2,$3,$4}'", shell=True, stderr=subprocess.STDOUT)
             arr = result.decode("utf-8").split(' ')
             idx = 2*int(arr[0]) + int(arr[1])
             if oarr[idx] == 0:
@@ -184,22 +184,22 @@ def get_srch_nodes():
         result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep Blockcts_full | tail -n 1 | awk '{print $12}'", shell=True, stderr=subprocess.STDOUT)
         arr = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log_3.log | grep Beamstats | tail -n 1 | awk '{print $2}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 1000 /home/ubuntu/data/tmp/log_3.log | grep Beamstats | tail -n 1 | awk '{print $2}'", shell=True, stderr=subprocess.STDOUT)
         arr2 = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log_3.log | grep Beamstats | tail -n 1 | awk '{print $4}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 1000 /home/ubuntu/data/tmp/log_3.log | grep Beamstats | tail -n 1 | awk '{print $4}'", shell=True, stderr=subprocess.STDOUT)
         arr3 = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log_4.log | grep Beamstats | tail -n 1 | awk '{print $2}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 1000 /home/ubuntu/data/tmp/log_4.log | grep Beamstats | tail -n 1 | awk '{print $2}'", shell=True, stderr=subprocess.STDOUT)
         arr4 = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log_4.log | grep Beamstats | tail -n 1 | awk '{print $4}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 1000 /home/ubuntu/data/tmp/log_4.log | grep Beamstats | tail -n 1 | awk '{print $4}'", shell=True, stderr=subprocess.STDOUT)
         arr5 = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log_3.log | grep Beamstats | tail -n 1 | awk '{print $5}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 1000 /home/ubuntu/data/tmp/log_3.log | grep Beamstats | tail -n 1 | awk '{print $5}'", shell=True, stderr=subprocess.STDOUT)
         arr6 = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /home/ubuntu/tmp/log_4.log | grep Beamstats | tail -n 1 | awk '{print $5}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 1000 /home/ubuntu/data/tmp/log_4.log | grep Beamstats | tail -n 1 | awk '{print $5}'", shell=True, stderr=subprocess.STDOUT)
         arr7 = result.decode("utf-8")
 
         oarr = np.zeros(15)
@@ -213,10 +213,10 @@ def get_srch_nodes():
 
         for ii in np.arange(2,6):
         
-            result = subprocess.check_output(f"tail -n 1000 /home/ubuntu/tmp/log_3.log | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
+            result = subprocess.check_output(f"tail -n 1000 /home/ubuntu/data/tmp/log_3.log | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
             oarr[2*(ii-2)+7] = float(result.decode("utf-8"))
 
-            result = subprocess.check_output(f"tail -n 1000 /home/ubuntu/tmp/log_4.log | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
+            result = subprocess.check_output(f"tail -n 1000 /home/ubuntu/data/tmp/log_4.log | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
             oarr[2*(ii-2)+1+7] = result.decode("utf-8")
         
         
@@ -370,7 +370,7 @@ def process(params, cmd, val, my_ds):
         sleep(0.5)        
 
         ret_time = my_ds.get_dict('/mon/snap/1/armed_mjd')['armed_mjd']+float(my_ds.get_dict('/mon/snap/1/utc_start')['utc_start'])*4.*8.192e-6/86400.
-        f = open("/home/ubuntu/tmp/mjd.dat","w")
+        f = open("/home/ubuntu/data/tmp/mjd.dat","w")
         f.write(str(ret_time))
         f.close()
         
@@ -411,7 +411,7 @@ def process(params, cmd, val, my_ds):
                 cmdstr = rout['cmd']+' '+rout['args']+' '+rout.get('hostargs')[socket.gethostname()]
             my_log.debug('running: '+cmdstr)
             my_log.info('Starting '+rout['name'])
-            log = open(f"/home/ubuntu/tmp/log_{iii}.log",'w')
+            log = open(f"/home/ubuntu/data/tmp/log_{iii}.log",'w')
             proc = subprocess.Popen(cmdstr, shell = True, stdout=log, stderr=log)
             iii += 1
             sleep(0.5)
