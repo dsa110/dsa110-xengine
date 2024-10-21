@@ -431,17 +431,17 @@ int main (int argc, char *argv[]) {
       // write data to file
       syslog(LOG_INFO,"writing");
 
-      
-      for (int i=0;i<128;i++) {
-	for (int j=0;j<16384/sumi;j++) {
-	  for (int k=0;k<sumi;k++) {
-	    for (int l=0;l<768;l++) {
-	      hoblock[i*16384*768/sumi + j*768 + l] += 1.*((unsigned char *)(block))[i*16384*768 + (j*sumi+k)*768 + l];
+      if (sumi!=1) {
+	for (int i=0;i<128;i++) {
+	  for (int j=0;j<16384/sumi;j++) {
+	    for (int k=0;k<sumi;k++) {
+	      for (int l=0;l<768;l++) {
+		hoblock[i*16384*768/sumi + j*768 + l] += 1.*((unsigned char *)(block))[i*16384*768 + (j*sumi+k)*768 + l];
+	      }
 	    }
 	  }
 	}
       }
-	      
       
       if (sumi==1) fwrite((unsigned char *)(block),sizeof(unsigned char),block_size,output);
       else {
