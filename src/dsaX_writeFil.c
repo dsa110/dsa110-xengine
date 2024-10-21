@@ -3,19 +3,26 @@ to store some data for a fixed amount of time.
 Message format: length(s)-NAME
 Will ignore messages until data recording is over
 */
-
+#define __USE_GNU
+#define _GNU_SOURCE
+#include <sched.h>
+#include <time.h>
+#include <sys/socket.h>
+#include <math.h>
+#include <pthread.h>
+#include <sys/types.h>
+#include <sys/syscall.h>
+#include <sys/mman.h>
+#include <sched.h>
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
 #include <unistd.h>
 #include <netdb.h>
-#include <sys/socket.h>
-#include <sys/types.h>
 #include <netinet/in.h>
-#include <time.h>
-#include <arpa/inet.h>
-#include <sys/syscall.h>
+#include <sys/socket.h>
 #include <syslog.h>
 
 #include "sock.h"
@@ -33,7 +40,6 @@ Will ignore messages until data recording is over
 
 #include <src/sigproc.h>
 #include <src/header.h>
-
 
 FILE *output;
 
@@ -122,6 +128,59 @@ void dsaX_dbgpu_cleanup (dada_hdu_t * in) {
   dada_hdu_destroy (in);
 
 }
+
+// data to pass to threads
+struct tdata {
+  unsigned char * data;
+  uint64_t block_size;
+  char * filename;
+  int n_threads;
+  int thread_id;
+};
+int cores[4] = {31,32,33,34};
+int NTHREADS = 4;
+
+// thread to write out filterbank
+void * massage (void *args) {
+
+  struct tdata *d = args;
+  int thread_id = d->thread_id;
+
+  // set affinity
+  const pthread_t pid = pthread_self();
+  const int core_id = cores[thread_id];
+  cpu_set_t cpuset;
+  CPU_ZERO(&cpuset);
+  CPU_SET(core_id, &cpuset);
+  const int set_result = pthread_setaffinity_np(pid, sizeof(cpu_set_t), &cpuset);
+  if (set_result != 0)
+    syslog(LOG_ERR,"thread %d: setaffinity_np fail",thread_id);
+  const int get_affinity = pthread_getaffinity_np(pid, sizeof(cpu_set_t), &cpuset);
+  if (get_affinity != 0) 
+    syslog(LOG_ERR,"thread %d: getaffinity_np fail",thread_id);
+  if (CPU_ISSET(core_id, &cpuset))
+    if (DEBUG) syslog(LOG_DEBUG,"thread %d: successfully set thread",thread_id);
+
+  char myname[400];
+  sprintf(myname,"%s_%d.fil",d->filename,thread_id);
+
+  // DO STUFF
+  syslog(LOG_INFO,"thread %d: writing to %s",thread_id,myname);
+  FILE *moutput;
+  moutput = fopen(myname,"ab");
+  fwrite(d->data,sizeof(unsigned char),d->block_size,moutput);
+  fclose(moutput);
+  syslog(LOG_INFO,"thread %d: written",thread_id);
+  
+  /* return 0 */
+  int thread_result = 0;
+  pthread_exit((void *) &thread_result);
+
+
+
+}
+
+
 
 // Thread to control the dumping of data
 
@@ -221,7 +280,7 @@ int main (int argc, char *argv[]) {
   int arg = 0;
   int core = -1;
   float fch1 = 1498.75;
-  char fnam[300], foutnam[400];
+  char fnam[300], foutnam[400], myoutnam[400];
   sprintf(fnam,"/home/dsa/alltest");
 
   // for getting MJD
@@ -341,6 +400,14 @@ int main (int argc, char *argv[]) {
     return -1;
   }
 
+  // set up threads
+  struct tdata args[4];
+  pthread_t threads[4];
+  pthread_attr_t attr;
+  pthread_attr_init(&attr);
+  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+  void* result=0;
+
   // set up
   int fctr = 0, integration = 0;
   char tstamp[100];
@@ -354,7 +421,7 @@ int main (int argc, char *argv[]) {
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
   uint64_t bytes_read = 0, block_id;
   char *block;
-  float *hoblock = (float *)malloc(sizeof(float)*128*768*16384/sumi);  
+  //float *hoblock = (float *)malloc(sizeof(float)*128*768*16384/sumi);  
   
   // start things
 
@@ -367,7 +434,7 @@ int main (int argc, char *argv[]) {
     block = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
     if (DEBUG) for (int i=0;i<48;i++) syslog(LOG_INFO,"%hu",((unsigned char *)(block))[i]);
 
-    for (int i=0;i<128*768*16384/sumi;i++) hoblock[i] = 0.;
+    //for (int i=0;i<128*768*16384/sumi;i++) hoblock[i] = 0.;
     
     // for writing sum
     /*    for (int i=0;i<256*48;i++) oblock[i] = 0.;
@@ -384,16 +451,7 @@ int main (int argc, char *argv[]) {
       if (dfwrite==0) {
 
 	syslog(LOG_INFO, "beginning file write for SRC %s for %f s",srcnam,reclen);
-	
 	NINTS = (int)(floor(reclen/(mytsamp*16384.)));
-	//NINTS = (int)(floor(reclen/(0.134217728)));
-	sprintf(foutnam,"%s_%s_%d_%d.fil",fnam,srcnam,fctr,nblocks);
-	syslog(LOG_INFO, "main: opening new file %s",foutnam);
-
-	if (!(output = fopen(foutnam,"wb"))) {
-	  printf("Couldn't open output file\n");
-	  return 0;	  
-	}
 
 	if (get_mjd==1) {
 	  if (!(fmjd = fopen("/home/ubuntu/tmp/mjd.dat","r"))) {
@@ -403,57 +461,75 @@ int main (int argc, char *argv[]) {
 	  mjd += nblocks*4.294967296/86400.;
 	  fclose(fmjd);
 	}
-	  
 
-	send_string("HEADER_START");
-	send_string("source_name");
-	send_string(srcnam);
-	send_int("machine_id",1);
-	send_int("telescope_id",82);
-	send_int("data_type",1); // filterbank data
-	send_double("fch1",1498.75); // THIS IS CHANNEL 0 :)
-	send_double("foff",-0.244140625);
-	send_int("nchans",768);
-	if (sumi==1) send_int("nbits",8);
-	else send_int("nbits",32);	
-	send_double("tstart",mjd);
-	send_double("tsamp",8.192e-6*8.*4.*sumi);
-	send_int("nifs",1);
-	send_string("HEADER_END");
+	// set up each file
+
+	for (int ith=0;ith<NTHREADS;ith++) {
 	
-	syslog(LOG_INFO, "main: opened new file %s",foutnam);
+	  sprintf(foutnam,"%s_%s_%d_%d_",fnam,srcnam,fctr,nblocks,ith);
+	  syslog(LOG_INFO, "main: opening new file like %s",foutnam);
+
+	  args[ith].block_size = block_size / 4;
+	  args[ith].filename = foutnam;
+	  args[ith].n_threads = 4;
+	  args[ith].thread_id = ith;
+
+	  sprintf(myoutnam,"%s_%d.fil",foutnam,ith);
+	  if (!(output = fopen(myoutnam,"wb"))) {
+	    printf("Couldn't open output file\n");
+	    return 0;	  
+	  }
+
+	  send_string("HEADER_START");
+	  send_string("source_name");
+	  send_string(srcnam);
+	  send_int("machine_id",1);
+	  send_int("telescope_id",82);
+	  send_int("data_type",1); // filterbank data
+	  send_double("fch1",1498.75); // THIS IS CHANNEL 0 :)
+	  send_double("foff",-0.244140625);
+	  send_int("nchans",768);
+	  send_int("nbits",8);
+	  send_double("tstart",mjd);
+	  send_double("tsamp",8.192e-6*8.*4.);
+	  send_int("nifs",1);
+	  send_string("HEADER_END");
+	  
+	  syslog(LOG_INFO, "main: opened new file %s",foutnam);
+
+	  fclose(output);
+
+	}
 		
 	dfwrite=1;
 
-	
-      }      
+      }
       
       // write data to file
       syslog(LOG_INFO,"writing");
 
-      if (sumi!=1) {
-	for (int i=0;i<128;i++) {
-	  for (int j=0;j<16384/sumi;j++) {
-	    for (int k=0;k<sumi;k++) {
-	      for (int l=0;l<768;l++) {
-		hoblock[i*16384*768/sumi + j*768 + l] += 1.*((unsigned char *)(block))[i*16384*768 + (j*sumi+k)*768 + l];
-	      }
-	    }
-	  }
+      syslog(LOG_INFO, "creating threads");
+      
+      for(int i=0; i<4; i++){
+	args[i].data = (unsigned char *)(block) + i*32*16384*768;
+	if (pthread_create(&threads[i], &attr, &massage, (void *)(&args[i]))) {
+	  syslog(LOG_ERR,"Failed to create massage thread %d\n", i);
 	}
       }
       
-      if (sumi==1) fwrite((unsigned char *)(block),sizeof(unsigned char),block_size,output);
-      else {
-	if (onebeam==1) fwrite(hoblock + block_size/sumi/2,sizeof(float),block_size/sumi/128,output);
-	else fwrite(hoblock,sizeof(float),block_size/sumi,output);
+      pthread_attr_destroy(&attr);
+      if (DEBUG) syslog(LOG_DEBUG,"threads kinda running");
+      
+      for(int i=0; i<4; i++){
+	pthread_join(threads[i], &result);
+	if (DEBUG) syslog(LOG_DEBUG,"joined thread %d",i);
       }
-      //fwrite(oblock,sizeof(float),256*48,output);
+
+      
 
       integration++;
       // check if file writing is done
       if (integration==NINTS) {
-	fclose(output);
 	integration=0;
 	syslog(LOG_INFO, "dsaX_writespec: completed file %d",fctr);
 	fctr++;
@@ -477,10 +553,8 @@ int main (int argc, char *argv[]) {
   // close control thread
   syslog(LOG_INFO, "joining control_thread");
   quit_threads = 1;
-  void* result=0;
   pthread_join (control_thread_id, &result);
 
-  free(hoblock);
   dsaX_dbgpu_cleanup(hdu_in);
  
 }
