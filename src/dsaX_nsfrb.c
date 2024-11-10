@@ -177,9 +177,6 @@ int main (int argc, char *argv[]) {
   FILE *fsin;
   // fstable has shape (25, 4656, 48, 8, 2, 2)
   float *fstable = (float *)malloc(sizeof(float)*25*4656*48*8*2*2);
-  fsin=fopen(fsnam,"rb");
-  fread(fstable,sizeof(float),25*4656*48*8*2*2,fsin);
-  fclose(fsin);
   
   // set up
   int fctr = 0, integration = 0, cyclectr = 0;
@@ -195,6 +192,7 @@ int main (int argc, char *argv[]) {
   float *data = (float *)malloc(sizeof(float)*25*4656*(384/nfq)*2*2);
   memset(data, 0, 25*4656*(384/nfq)*2*2);
   int inidx, fsidx, outidx;
+  int read_fstable = 0;
 
   // start things
   syslog(LOG_INFO, "starting observation");
@@ -204,6 +202,15 @@ int main (int argc, char *argv[]) {
     // read block
     block = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
     fblock = (float *)(block);
+
+    // read fstable if first integration
+    if (read_fstable==0) {
+      fsin=fopen(fsnam,"rb");
+      fread(fstable,sizeof(float),25*4656*48*8*2*2,fsin);
+      fclose(fsin);
+      read_fstable=1;
+    }
+
     
     // DO STUFF - from data to summed_vis
 
