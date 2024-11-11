@@ -61,24 +61,21 @@ typedef struct dmem {
   // giant array for r and i: [NCHAN_PER_PACKET, 2 pol, NANTS_PROCESS, NPACKETS_PER_BLOCK * 2 times]
   half * d_r, * d_i;
   // arrays for matrix multiply output: input [NANTS_PROCESS, NANTS_PROCESS]
-  half * d_outr, *d_outi, *d_htx, *d_tx_outr, *d_tx_outi;
+  half * d_outr, *d_outi, *d_tx_outr, *d_tx_outi;
   // giant output array: [NBASE, NCHAN_PER_PACKET, 2 pol, 2 complex]
   float * d_output;
   
   // beamformer pointers
   char * d_big_input;
-  half * d_bar, * d_bai, * d_bbr, * d_bbi;
-  half * d_ibsum;
-  half * weights_a_r, * weights_a_i, * weights_b_r, * weights_b_i; 
-  half * d_bigbeam_a_r, * d_bigbeam_a_i, * d_bigbeam_b_r, * d_bigbeam_b_i; 
-  unsigned char * d_bigpower; 
+  half * d_br, * d_bi;
+  half * weights_r, * weights_i; //weights: [arm, tactp, b]
+  half * d_bigbeam_r, * d_bigbeam_i; //output: [tc, b]
+  unsigned char * d_bigpower; //output: [b, tc]
   float * d_scf; // scale factor per beam
   float * d_chscf, * h_chscf;
   float * h_winp;
   int * flagants, nflags;
-  int * d_flagants;
   float * h_freqs, * d_freqs;
-  int subtract_ib;
 
   // timing
   float cp, prep, cubl, outp;
@@ -121,7 +118,7 @@ int dada_cuda_dbregister (dada_hdu_t * hdu)
 
 
 // allocate device memory
-void initialize(dmem * d, int bf, int subtract_ib) {
+void initialize(dmem * d, int bf) {
   
   // for correlator
   if (bf==0) {
@@ -141,6 +138,7 @@ void initialize(dmem * d, int bf, int subtract_ib) {
     d->prep = 0.;
     d->outp = 0.;
     d->cubl = 0.;
+
     
   }
 
@@ -148,23 +146,16 @@ void initialize(dmem * d, int bf, int subtract_ib) {
   if (bf==1) {
     cudaMalloc((void **)(&d->d_input), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS/2)*NCHAN_PER_PACKET*2*2);
     cudaMalloc((void **)(&d->d_big_input), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS)*NCHAN_PER_PACKET*2*2);
-    cudaMalloc((void **)(&d->d_htx), sizeof(half)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2);
-    cudaMalloc((void **)(&d->d_ibsum), sizeof(half)*(NCHAN_PER_PACKET/8)*8*2*NPACKETS_PER_BLOCK);
-    cudaMalloc((void **)(&d->d_bar), sizeof(half)*(NCHAN_PER_PACKET/8)*8*2*NPACKETS_PER_BLOCK*(NANTS/2));
-    cudaMalloc((void **)(&d->d_bai), sizeof(half)*(NCHAN_PER_PACKET/8)*8*2*NPACKETS_PER_BLOCK*(NANTS/2));
-    cudaMalloc((void **)(&d->d_bbr), sizeof(half)*(NCHAN_PER_PACKET/8)*8*2*NPACKETS_PER_BLOCK*(NANTS/2));
-    cudaMalloc((void **)(&d->d_bbi), sizeof(half)*(NCHAN_PER_PACKET/8)*8*2*NPACKETS_PER_BLOCK*(NANTS/2));
-    cudaMalloc((void **)(&d->weights_a_r), sizeof(half)*2*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*(NANTS/2));
-    cudaMalloc((void **)(&d->weights_a_i), sizeof(half)*2*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*(NANTS/2));
-    cudaMalloc((void **)(&d->weights_b_r), sizeof(half)*2*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*(NANTS/2));
-    cudaMalloc((void **)(&d->weights_b_i), sizeof(half)*2*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*(NANTS/2));
-    cudaMalloc((void **)(&d->d_bigbeam_a_r), sizeof(half)*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2*NPACKETS_PER_BLOCK);
-    cudaMalloc((void **)(&d->d_bigbeam_a_i), sizeof(half)*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2*NPACKETS_PER_BLOCK);
-    cudaMalloc((void **)(&d->d_bigbeam_b_r), sizeof(half)*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2*NPACKETS_PER_BLOCK);
-    cudaMalloc((void **)(&d->d_bigbeam_b_i), sizeof(half)*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2*NPACKETS_PER_BLOCK);
+    cudaMalloc((void **)(&d->d_tx), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS/2)*NCHAN_PER_PACKET*2*2);
+    cudaMalloc((void **)(&d->d_br), sizeof(half)*NCHAN_PER_PACKET*2*(NANTS/2)*(NPACKETS_PER_BLOCK)*2);
+    cudaMalloc((void **)(&d->d_bi), sizeof(half)*NCHAN_PER_PACKET*2*(NANTS/2)*(NPACKETS_PER_BLOCK)*2);
+    cudaMalloc((void **)(&d->weights_r), sizeof(half)*2*4*(NANTS/2)*8*2*2*(NBEAMS/2)*(NCHAN_PER_PACKET/8));
+    cudaMalloc((void **)(&d->weights_i), sizeof(half)*2*4*(NANTS/2)*8*2*2*(NBEAMS/2)*(NCHAN_PER_PACKET/8));
+    cudaMalloc((void **)(&d->d_bigbeam_r), sizeof(half)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2));
+    cudaMalloc((void **)(&d->d_bigbeam_i), sizeof(half)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2));
     cudaMalloc((void **)(&d->d_bigpower), sizeof(unsigned char)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS));
+    //cudaMalloc((void **)(&d->d_scf), sizeof(float)*(NBEAMS/2)); // beam scale factor
     cudaMalloc((void **)(&d->d_chscf), sizeof(float)*NBEAMS); // beam scale factor
-    cudaMalloc((void **)(&d->d_flagants), sizeof(int)*NANTS); // flag ants
     d->h_chscf = (float *)malloc(sizeof(float)*NBEAMS);
     
     // input weights: first is [NANTS, E/N], then [NANTS, 48, 2pol, R/I]
@@ -180,9 +171,6 @@ void initialize(dmem * d, int bf, int subtract_ib) {
     d->cubl = 0.;
     
   }
-
-  // subtract_ib
-  d->subtract_ib = subtract_ib;
   
 }
 
@@ -203,20 +191,13 @@ void deallocate(dmem * d, int bf) {
     cudaFreeHost(d->h_pinned_input);
   }
   if (bf==1) {
-    cudaFree(d->d_htx);
-    cudaFree(d->d_ibsum);
-    cudaFree(d->d_bar);
-    cudaFree(d->d_bai);
-    cudaFree(d->d_bbr);
-    cudaFree(d->d_bbi);
-    cudaFree(d->weights_a_r);
-    cudaFree(d->weights_a_i);
-    cudaFree(d->weights_b_r);
-    cudaFree(d->weights_b_i);
-    cudaFree(d->d_bigbeam_a_r);
-    cudaFree(d->d_bigbeam_a_i);
-    cudaFree(d->d_bigbeam_b_r);
-    cudaFree(d->d_bigbeam_b_i);
+    cudaFree(d->d_tx);
+    cudaFree(d->d_br);
+    cudaFree(d->d_bi);
+    cudaFree(d->weights_r);
+    cudaFree(d->weights_i);
+    cudaFree(d->d_bigbeam_r);
+    cudaFree(d->d_bigbeam_i);
     cudaFree(d->d_bigpower);
     //cudaFree(d->d_scf);
     cudaFree(d->d_chscf);
@@ -264,8 +245,7 @@ fprintf (stdout,
 	 " -a calib file\n"
 	 " -s start frequency (assumes -0.244140625MHz BW)\n"
 	 " -g observing DEC in degrees (default 71.66)\n"
-	 " -p full path of beam powers file (default powers.out)\n"
-	 " -k subtract incoherent beam\n");
+	 " -p full path of beam powers file (default powers.out)\n");
 }
 
 // kernel to fluff input
@@ -593,156 +573,84 @@ void dcorrelator(dmem * d) {
   
 }
 
-// kernels to reorder and fluff data for beamformer
-// initial data is [NPACKETS_PER_BLOCK, (NANTS/2), NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex]
+// kernels to reorder and fluff input data for beamformer
+// initial data is [NPACKETS_PER_BLOCK, (NANTS/2), NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex]            
+// want [NCHAN_PER_PACKET/8, NPACKETS_PER_BLOCK/4, 4tim, (NANTS/2), 8chan, 2 times, 2 pol, 4-bit complex]      // run as 16x16 tiled transpose with 32-byte words 
+// launch with dim3 dimBlock(16, 8) and dim3 dimGrid(Width/16, Height/16)
+// here, width=NCHAN_PER_PACKET/8 is the dimension of the fastest input index
+// dim3 dimBlock1(16, 8), dimGrid1(NCHAN_PER_PACKET/8/16, (NPACKETS_PER_BLOCK)*(NANTS/2)/16);
+__global__ void transpose_input_bf(double * idata, double * odata) {
 
-/* TRANSPOSE AND SCALE INPUT
- - Input is [NPACKETS_PER_BLOCK, NANTS/2, NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex]
- - want [NCHAN_PER_PACKET/8, 8chan, 2 times, NPACKETS_PER_BLOCK, NANTS/2] per pol and complexity
- - Do a 2-byte transpose, then fluff out data into four outputs
-*/
-// assume breakdown into tiles of 32x32, and run with 32x8 threads per block
-// launch with dim3 dimBlock(32, 8) and dim3 dimGrid(Width/32, Height/32)
-// here, width=NCHAN_PER_PACKET*2, height=(NPACKETS_PER_BLOCK)*(NANTS/2)
-__global__ void transpose_fluff_bf(unsigned short * idata, half * dra, half * dia, half * drb, half * dib) {
-
-  // start with transpose
+  __shared__ double tile[16][17][4];
   
-  __shared__ unsigned short tile[32][33];
-  
-  int x = blockIdx.x * 32 + threadIdx.x;
-  int y = blockIdx.y * 32 + threadIdx.y;
-  int width = gridDim.x * 32;
+  int x = blockIdx.x * 16 + threadIdx.x;
+  int y = blockIdx.y * 16 + threadIdx.y;
+  int width = gridDim.x * 16;
 
-  for (int j = 0; j < 32; j += 8) 
-    tile[threadIdx.y+j][threadIdx.x] = idata[(y+j)*width + x];
+  for (int j = 0; j < 16; j += 8) {
+    tile[threadIdx.y+j][threadIdx.x][0] = idata[4*((y+j)*width + x)];
+    tile[threadIdx.y+j][threadIdx.x][1] = idata[4*((y+j)*width + x)+1];
+    tile[threadIdx.y+j][threadIdx.x][2] = idata[4*((y+j)*width + x)+2];
+    tile[threadIdx.y+j][threadIdx.x][3] = idata[4*((y+j)*width + x)+3];
+  }
   
   __syncthreads();
 
-  x = blockIdx.y * 32 + threadIdx.x;  // transpose block offset
-  y = blockIdx.x * 32 + threadIdx.y;
-  width = gridDim.y * 32;
+  x = blockIdx.y * 16 + threadIdx.x;  // transpose block offset
+  y = blockIdx.x * 16 + threadIdx.y;
+  width = gridDim.y * 16;
 
-  int oidx;
-  unsigned short oval;
-  unsigned char tmp;
-  
-  for (int j = 0; j < 32; j += 8) {
-    //odata[(y+j)*width + x] = tile[threadIdx.x][threadIdx.y + j];
-
-    // output details
-    oidx = (y+j)*width + x;
-    oval = tile[threadIdx.x][threadIdx.y + j];
-
-    // do casting to extract real/imag parts
-    tmp = oval & 0xFF;
-    dra[oidx] = __float2half(0.05*((float)((char)((tmp & (unsigned char)(15)) << 4) >> 4)));
-    dia[oidx] = __float2half(0.05*((float)((char)((tmp & (unsigned char)(240))) >> 4)));
-    
-    tmp = (oval >> 8) & 0xFF;
-    drb[oidx] = __float2half(0.05*((float)((char)((tmp & (unsigned char)(15)) << 4) >> 4)));
-    dib[oidx] = __float2half(0.05*((float)((char)((tmp & (unsigned char)(240))) >> 4)));
-        
-  }
-
-
-}
-
-/* POWER SUM AND TRANSPOSE OUTPUT
- - Input for each pol and r/i is [NCHAN_PER_PACKET/8, NBEAMS/2, 8chan, 2 times, NPACKETS_PER_BLOCK] 
- - want to form total power, and sum total powers over 4 PACKETS_PER_BLOCK
- - Then do a transpose to [NPACKETS_PER_BLOCK/4, NCHAN_PER_PACKET/8, NBEAMS/2, 8chan, 2 times]
- - if doing subtract_ib:
-  + ibsum has shape [NCHAN_PER_PACKET/8, 8chan, 2 times, NPACKETS_PER_BLOCK] 
-  + 
-*/
-// assume breakdown into tiles of 32x32, and run with 32x8 threads per block
-// launch with dim3 dimBlock(32, 8) and dim3 dimGrid(Width/32, Height/32)
-// here, width=NPACKETS_PER_BLOCK/4, height=NCHAN_PER_PACKET/8 * NBEAMS/2 * 8chan * 2times
-__global__ void power_sum_and_transpose_output(half * dra, half * drb, half * dia, half * dib, half * ibsum, int subtract_ib, half * outp) {
-
-  __shared__ half tile[32][33];
-
-  int x = blockIdx.x * 32 + threadIdx.x;
-  int y = blockIdx.y * 32 + threadIdx.y;
-  int width = gridDim.x * 32;
-
-  int iidx, iChan, iBeamSlow, iFast, idx;
-  
-  for (int j = 0; j < 32; j += 8) {
-
-    iidx = (y+j)*width + x;
-    iChan = (int)(iidx / ((NBEAMS/2)*8*2*NPACKETS_PER_BLOCK/4));
-    iBeamSlow = (int)(iidx % ((NBEAMS/2)*8*2*NPACKETS_PER_BLOCK/4));
-    iFast = (int)(iBeamSlow % (8*2*NPACKETS_PER_BLOCK/4));
-    idx = iChan*8*2*NPACKETS_PER_BLOCK/4 + iFast;
-    
-    tile[threadIdx.y+j][threadIdx.x] = 0.;
-    
-    // do power sum
-    for (int k=0;k<4;k++) {
-      tile[threadIdx.y+j][threadIdx.x] += dra[4*iidx+k]*dra[4*iidx+k] + dia[4*iidx+k]*dia[4*iidx+k] + drb[4*iidx+k]*drb[4*iidx+k] + dib[4*iidx+k]*dib[4*iidx+k];
-      if (subtract_ib)
-	tile[threadIdx.y+j][threadIdx.x] -= ibsum[4*idx+k];
-    }
-      
-  }
-    
-  __syncthreads();
-
-  x = blockIdx.y * 32 + threadIdx.x;  // transpose block offset
-  y = blockIdx.x * 32 + threadIdx.y;
-  width = gridDim.y * 32;
-
-  for (int j = 0; j < 32; j += 8) 
-    outp[(y+j)*width + x] = tile[threadIdx.x][threadIdx.y + j];        
-
-}
-
-/* SUM TRANSPOSE AND SCALE OUTPUT
- - Input is [NPACKETS_PER_BLOCK/4, NCHAN_PER_PACKET/8, NBEAMS/2, 8chan, 2 times] 
- - want to sum over 8 chan and 2 times
- - Then do a transpose to [NBEAMS, NPACKETS_PER_BLOCK/4, NCHAN_PER_PACKET/8]
-*/
-// assume breakdown into tiles of 32x32, and run with 32x8 threads per block
-// launch with dim3 dimBlock(32, 8) and dim3 dimGrid(Width/32, Height/32)
-// here, width=NBEAMS/2, height=NPACKETS_PER_BLOCK/4 * NCHAN_PER_PACKET/8
-__global__ void sum_transpose_and_scale_output(half * outp, unsigned char * odata, int subtract_ib) {
-
-  __shared__ float tile[32][33];
-
-  int x = blockIdx.x * 32 + threadIdx.x;
-  int y = blockIdx.y * 32 + threadIdx.y;
-  int width = gridDim.x * 32;
-
-  int iidx;
-  
-  for (int j = 0; j < 32; j += 8) {
-    
-    iidx = (y+j)*width + x;
-    tile[threadIdx.y+j][threadIdx.x] = 0.;
-    
-    // do sum over 8 chan and 2 times
-    for (int k=0;k<16;k++) 
-      tile[threadIdx.y+j][threadIdx.x] += __half2float(outp[16*iidx + k]);
-      
-  }
-    
-  __syncthreads();
-
-  x = blockIdx.y * 32 + threadIdx.x;  // transpose block offset
-  y = blockIdx.x * 32 + threadIdx.y;
-  width = gridDim.y * 32;
-
-  for (int j = 0; j < 32; j += 8) {
-    if (subtract_ib==0) 
-      odata[(y+j)*width + x] = (unsigned char)(tile[threadIdx.x][threadIdx.y + j]);
-    else
-      odata[(y+j)*width + x] = (unsigned char)(40.+tile[threadIdx.x][threadIdx.y + j]);
+  for (int j = 0; j < 16; j += 8) {
+    odata[4*((y+j)*width + x)] = tile[threadIdx.x][threadIdx.y + j][0];
+    odata[4*((y+j)*width + x)+1] = tile[threadIdx.x][threadIdx.y + j][1];
+    odata[4*((y+j)*width + x)+2] = tile[threadIdx.x][threadIdx.y + j][2];
+    odata[4*((y+j)*width + x)+3] = tile[threadIdx.x][threadIdx.y + j][3];
   }
 
 }
 
+// kernel to fluff input bf data
+// run with NPACKETS_PER_BLOCK*(NANTS/2)*NCHAN_PER_PACKET*2*2/128 blocks of 128 threads
+__global__ void fluff_input_bf(char * input, half * dr, half * di) {
+
+  int bidx = blockIdx.x; // assume NPACKETS_PER_BLOCK*(NANTS/2)*NCHAN_PER_PACKET*2*2/128
+  int tidx = threadIdx.x; // assume 128
+  int idx = bidx*128+tidx;
+
+  dr[idx] = __float2half(0.035*((float)((char)(((unsigned char)(input[idx]) & (unsigned char)(15)) << 4) >> 4)));
+  di[idx] = __float2half(0.035*((float)((char)(((unsigned char)(input[idx]) & (unsigned char)(240))) >> 4)));
+  
+}
+
+// transpose, add and scale kernel for bf
+// assume breakdown into tiles of 16x16, and run with 16x8 threads per block
+// launch with dim3 dimBlock(16, 8) and dim3 dimGrid((NBEAMS/2)*(NPACKETS_PER_BLOCK/4)/16, (NCHAN_PER_PACKET/8)/16)
+// scf is a per-beam scale factor to enable recasting as unsigned char
+__global__ void transpose_scale_bf(half * ir, half * ii, unsigned char * odata) {
+
+  __shared__ float tile[16][17];
+  
+  int x = blockIdx.x * 16 + threadIdx.x;
+  int y = blockIdx.y * 16 + threadIdx.y;
+  int width = gridDim.x * 16;
+  float dr, di;
+
+  for (int j = 0; j < 16; j += 8) {
+    dr = (float)(ir[(y+j)*width + x]);
+    di = (float)(ii[(y+j)*width + x]);
+    tile[threadIdx.y+j][threadIdx.x] = (dr*dr+di*di);
+  }
+
+  __syncthreads();
+
+  x = blockIdx.y * 16 + threadIdx.x;  // transpose block offset
+  y = blockIdx.x * 16 + threadIdx.y;
+  width = gridDim.y * 16;
+
+  for (int j = 0; j < 16; j += 8)
+    odata[(y+j)*width + x] = (unsigned char)(tile[threadIdx.x][threadIdx.y + j]);
+
+}
 
 // sum over all times and channels in output beam array
 // run with NBEAMS blocks of 512 threads
@@ -777,61 +685,8 @@ __global__ void sum_beam(unsigned char * input, float * output) {
   
 }
 
-
-// sum over all powers of all antennas in input voltage array, removing flagged ones
-// also sum over pols
-// input is [NCHAN_PER_PACKET/8, 8chan, 2 times, NPACKETS_PER_BLOCK, NANTS/2]
-// run with NCHAN_PER_PACKET*2*NPACKETS_PER_BLOCK blocks of 32 threads
-__global__ void sum_ib(half * dra, half * dia, half * drb, half * dib, half * dout, int * flagants) {
-
-  extern __shared__ half ppsum[32];
-  int bid = blockIdx.x;
-  int tid = threadIdx.x;
-
-  int idx = bid*48 + tid;
-  ppsum[tid] = 0.;
-  if (flagants[tid]==0)
-    ppsum[tid] = dra[idx]*dra[idx] + dia[idx]*dia[idx] + drb[idx]*drb[idx] + dib[idx]*dib[idx];
-  __syncthreads();
-
-  if (tid < 16) {
-    idx = bid*48 + tid + 32;
-    if (flagants[tid+32] = 0.)
-      ppsum[tid] += dra[idx]*dra[idx] + dia[idx]*dia[idx] + drb[idx]*drb[idx] + dib[idx]*dib[idx];
-  }
-
-  __syncthreads();
-
-  // sum over shared memory
-  if (tid < 16) { ppsum[tid] += ppsum[tid + 16]; } __syncthreads();
-  if (tid < 8) { ppsum[tid] += ppsum[tid + 8]; } __syncthreads();
-  if (tid < 4) { ppsum[tid] += ppsum[tid + 4]; } __syncthreads();
-  if (tid < 2) { ppsum[tid] += ppsum[tid + 2]; } __syncthreads();
-  if (tid < 1) { ppsum[tid] += ppsum[tid + 1]; } __syncthreads(); 
-
-  __syncthreads();
-
-  if (tid==0) dout[bid] = ppsum[0];
-  
-}
-
-
 /*
 Beamformer:
- - initial data is [NPACKETS_PER_BLOCK, NANTS, NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex] 
- - split into EW and NS antennas via cudaMemcpy: [NPACKETS_PER_BLOCK, NANTS/2, NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex]
- - want [NCHAN_PER_PACKET/8, 8chan, 2 times, NPACKETS_PER_BLOCK, NANTS/2] for each pol and r/i
- - this is a simple 2-byte transpose and a memcpy after fluffing
- - weights can now be [NCHAN_PER_PACKET/8, NBEAMS/2, NANTS/2] for each pol and r/i, and arm
-
-transpose of input gives m=8chan*2times*NPACKETS_PER_BLOCK, k = NANTS/2.
-weights already have k = NANTS/2, n=NBEAMS/2.
-output has m as fastest axis, and n as slowest axis (i.e., column major order)
-so output of batched matrix mult is [NCHAN_PER_PACKET/8, NBEAMS/2, 8chan, 2 times, NPACKETS_PER_BLOCK] 
-
- - can transform to output with two sum-and-transpose operations: [NBEAMS/2, NPACKETS_PER_BLOCK/4, NCHAN_PER_PACKET/8]. The first needs to form total power
-
-OLD SCHEME
  - initial data is [NPACKETS_PER_BLOCK, NANTS, NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex] 
  - split into EW and NS antennas via cudaMemcpy: [NPACKETS_PER_BLOCK, NANTS/2, NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex]
  - want [NCHAN_PER_PACKET/8, NPACKETS_PER_BLOCK/4, 4tim, NANTS/2, 8chan, 2 times, 2 pol, 4-bit complex]
@@ -845,13 +700,14 @@ OLD SCHEME
 void dbeamformer(dmem * d) {
 
   // gemm settings - recall column major order assumed
+  // stride over 48 chans
   cublasHandle_t cublasH = NULL;
   cublasCreate(&cublasH);
   cublasOperation_t transa = CUBLAS_OP_T;
   cublasOperation_t transb = CUBLAS_OP_N;
-  const int m = 8*2*NPACKETS_PER_BLOCK;
+  const int m = NPACKETS_PER_BLOCK/4;
   const int n = NBEAMS/2;
-  const int k = NANTS/2;
+  const int k = 4*(NANTS/2)*8*2*2;
   const half alpha = 1.;
   const half malpha = -1.;
   const int lda = k;
@@ -859,9 +715,9 @@ void dbeamformer(dmem * d) {
   const half beta0 = 0.;
   const half beta1 = 1.;
   const int ldc = m;
-  const long long int strideA = 8*2*NPACKETS_PER_BLOCK*(NANTS/2);
-  const long long int strideB = (NBEAMS/2)*(NANTS/2);
-  const long long int strideC = (NBEAMS/2)*8*2*NPACKETS_PER_BLOCK;
+  const long long int strideA = (NPACKETS_PER_BLOCK)*(NANTS/2)*8*2*2;
+  const long long int strideB = (NBEAMS/2)*4*(NANTS/2)*8*2*2;
+  const long long int strideC = (NPACKETS_PER_BLOCK/4)*NBEAMS/2;
   const int batchCount = NCHAN_PER_PACKET/8;
   long long int i1, i2, o1;
   
@@ -883,10 +739,8 @@ void dbeamformer(dmem * d) {
   for (int iArm=0;iArm<2;iArm++) {
   
     // zero out output arrays
-    cudaMemset(d->d_bigbeam_a_r,0,(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2*NPACKETS_PER_BLOCK*sizeof(half));
-    cudaMemset(d->d_bigbeam_a_i,0,(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2*NPACKETS_PER_BLOCK*sizeof(half));
-    cudaMemset(d->d_bigbeam_b_r,0,(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2*NPACKETS_PER_BLOCK*sizeof(half));
-    cudaMemset(d->d_bigbeam_b_i,0,(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2*NPACKETS_PER_BLOCK*sizeof(half));
+    cudaMemset(d->d_bigbeam_r,0,(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*sizeof(half));
+    cudaMemset(d->d_bigbeam_i,0,(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*sizeof(half));
     cudaDeviceSynchronize();
     
     // copy data to device
@@ -900,90 +754,53 @@ void dbeamformer(dmem * d) {
     
     // do reorder and fluff of data to real and imag
     begin = clock();
-    dim3 dimBlock1(32, 8), dimGrid1(NCHAN_PER_PACKET*2/32,(NPACKETS_PER_BLOCK)*(NANTS/2)/32);
-    transpose_fluff_bf<<<dimGrid1,dimBlock1>>>((unsigned short *)(d->d_input), d->d_bar, d->d_bai, d->d_bbr, d->d_bbi);
+    dim3 dimBlock1(16, 8), dimGrid1(NCHAN_PER_PACKET/8/16, (NPACKETS_PER_BLOCK)*(NANTS/2)/16);
+    transpose_input_bf<<<dimGrid1,dimBlock1>>>((double *)(d->d_input),(double *)(d->d_tx));
+    fluff_input_bf<<<NPACKETS_PER_BLOCK*(NANTS/2)*NCHAN_PER_PACKET*2*2/128,128>>>(d->d_tx,d->d_br,d->d_bi);
     end = clock();
     d->prep += (float)(end - begin) / CLOCKS_PER_SEC;
 
     // large matrix multiply to get real and imag outputs
     // set up for gemm
     cublasSetStream(cublasH, stream);
-    i2 = iArm*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*(NANTS/2); // weights offset
-    
+    i2 = iArm*4*(NANTS/2)*8*2*2*(NBEAMS/2)*(NCHAN_PER_PACKET/8); // weights offset
+          
     // run strided batched gemm
     begin = clock();
-
-    // POL A
-    
     // ac
     cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			      &alpha,d->d_bar,lda,strideA,
-			      d->weights_a_r+i2,ldb,strideB,&beta0,
-			      d->d_bigbeam_a_r,ldc,strideC,
+			      &alpha,d->d_br,lda,strideA,
+			      d->weights_r+i2,ldb,strideB,&beta0,
+			      d->d_bigbeam_r,ldc,strideC,
 			      batchCount);
     // -bd
     cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			      &malpha,d->d_bai,lda,strideA,
-			      d->weights_a_i+i2,ldb,strideB,&beta1,
-			      d->d_bigbeam_a_r,ldc,strideC,
+			      &malpha,d->d_bi,lda,strideA,
+			      d->weights_i+i2,ldb,strideB,&beta1,
+			      d->d_bigbeam_r,ldc,strideC,
 			      batchCount);
     // bc
     cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			      &alpha,d->d_bai,lda,strideA,
-			      d->weights_a_r+i2,ldb,strideB,&beta0,
-			      d->d_bigbeam_a_i,ldc,strideC,
+			      &alpha,d->d_bi,lda,strideA,
+			      d->weights_r+i2,ldb,strideB,&beta0,
+			      d->d_bigbeam_i,ldc,strideC,
 			      batchCount);
     // ad
     cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			      &alpha,d->d_bar,lda,strideA,
-			      d->weights_a_i+i2,ldb,strideB,&beta1,
-			      d->d_bigbeam_a_i,ldc,strideC,
+			      &alpha,d->d_br,lda,strideA,
+			      d->weights_i+i2,ldb,strideB,&beta1,
+			      d->d_bigbeam_i,ldc,strideC,
 			      batchCount);
-
-    // POL B
-    
-    // ac
-    cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			      &alpha,d->d_bbr,lda,strideA,
-			      d->weights_b_r+i2,ldb,strideB,&beta0,
-			      d->d_bigbeam_b_r,ldc,strideC,
-			      batchCount);
-    // -bd
-    cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			      &malpha,d->d_bbi,lda,strideA,
-			      d->weights_b_i+i2,ldb,strideB,&beta1,
-			      d->d_bigbeam_b_r,ldc,strideC,
-			      batchCount);
-    // bc
-    cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			      &alpha,d->d_bbi,lda,strideA,
-			      d->weights_b_r+i2,ldb,strideB,&beta0,
-			      d->d_bigbeam_b_i,ldc,strideC,
-			      batchCount);
-    // ad
-    cublasHgemmStridedBatched(cublasH,transa,transb,m,n,k,
-			      &alpha,d->d_bbr,lda,strideA,
-			      d->weights_b_i+i2,ldb,strideB,&beta1,
-			      d->d_bigbeam_b_i,ldc,strideC,
-			      batchCount);
-
+      
     cudaDeviceSynchronize();
     end = clock();
     d->cubl += (float)(end - begin) / CLOCKS_PER_SEC;
       
         
-    // form total power, sum/transpose twice
+    // simple formation of total power and scaling to 8-bit in transpose kernel
     begin = clock();
-
-    // incoherent beam summation
-    sum_ib<<<NCHAN_PER_PACKET*2*NPACKETS_PER_BLOCK,32>>>(d->d_bar,d->d_bai,d->d_bbr,d->d_bbi,d->d_ibsum,d->d_flagants+iArm*48);
-    
-    dim3 dimBlock2(32, 8), dimGrid2(NPACKETS_PER_BLOCK/4/32,(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2/32);
-    power_sum_and_transpose_output<<<dimGrid2,dimBlock2>>>(d->d_bigbeam_a_r,d->d_bigbeam_b_r,d->d_bigbeam_a_i,d->d_bigbeam_b_i,d->d_ibsum,d->subtract_ib,d->d_htx);
-
-    dim3 dimBlock(32, 8), dimGrid((NBEAMS/2)/32,(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)/32);
-    sum_transpose_and_scale_output<<<dimGrid,dimBlock>>>(d->d_htx,d->d_bigpower+iArm*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2),d->subtract_ib);
-
+    dim3 dimBlock(16, 8), dimGrid((NBEAMS/2)*(NPACKETS_PER_BLOCK/4)/16, (NCHAN_PER_PACKET/8)/16);
+    transpose_scale_bf<<<dimGrid,dimBlock>>>(d->d_bigbeam_r,d->d_bigbeam_i,d->d_bigpower+iArm*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2));
     end = clock();
     d->outp += (float)(end - begin) / CLOCKS_PER_SEC;
       
@@ -1001,22 +818,32 @@ void dbeamformer(dmem * d) {
   
 }
 
-// kernel to populate an instance of weights matrix [2, (NCHAN_PER_PACKET/8), NBEAMS/2, (NANTS/2)]
-// run with 2*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*(NANTS/2)/128 blocks of 128 threads
-__global__ void populate_weights_matrix(float * antpos_e, float * antpos_n, float * calibs, half * war, half * wai, half * wbr, half * wbi, float * fqs, float dec) {
+// kernel to populate an instance of weights matrix [2, (NCHAN_PER_PACKET/8), NBEAMS/2, 4times*(NANTS/2)*8chan*2tim*2pol]
+// run with 2*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*128*(NANTS/2)/128 blocks of 128 threads
+__global__ void populate_weights_matrix(float * antpos_e, float * antpos_n, float * calibs, half * wr, half * wi, float * fqs, float dec) {
 
   int bidx = blockIdx.x;
   int tidx = threadIdx.x;
   int inidx = bidx*128+tidx;  
   
+  // 2*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*128*(NANTS/2)
+  
   // get indices
-  int iArm = (int)(inidx / ((NCHAN_PER_PACKET/8)*(NBEAMS/2)*(NANTS/2)));
-  int iidx = (int)(inidx % ((NCHAN_PER_PACKET/8)*(NBEAMS/2)*(NANTS/2)));
-  int fq = (int)(iidx / ((NBEAMS/2)*(NANTS/2)));
-  int idx = (int)(iidx % ((NBEAMS/2)*(NANTS/2)));
-  int bm = (int)(idx / (NANTS/2));
-  int a = (int)(idx % (NANTS/2));
-  int widx = (a+48*iArm)*(NCHAN_PER_PACKET/8)*2*2 + fq*2*2;
+  int iArm = (int)(inidx / ((NCHAN_PER_PACKET/8)*(NBEAMS/2)*128*(NANTS/2)));
+  int iidx = (int)(inidx % ((NCHAN_PER_PACKET/8)*(NBEAMS/2)*128*(NANTS/2)));
+  int fq = (int)(iidx / (128*(NANTS/2)*(NBEAMS/2)));
+  int idx = (int)(iidx % (128*(NANTS/2)*(NBEAMS/2)));
+  int bm = (int)(idx / (128*(NANTS/2)));
+  int tactp = (int)(idx % (128*(NANTS/2)));
+  int t = (int)(tactp / (32*(NANTS/2)));
+  int actp = (int)(tactp % (32*(NANTS/2)));
+  int a = (int)(actp / 32);
+  int ctp = (int)(actp % 32);
+  int c = (int)(ctp / 4);
+  int tp = (int)(ctp % 4);
+  int t2 = (int)(tp / 2);
+  int pol = (int)(tp % 2);
+  int widx = (a+48*iArm)*(NCHAN_PER_PACKET/8)*2*2 + fq*2*2 + pol*2;
   
   // calculate weights
   float theta, afac, twr, twi;
@@ -1025,28 +852,20 @@ __global__ void populate_weights_matrix(float * antpos_e, float * antpos_n, floa
     afac = -2.*PI*fqs[fq]*theta/CVAC; // factor for rotate
     twr = cos(afac*antpos_e[a+48*iArm]);
     twi = sin(afac*antpos_e[a+48*iArm]);
-    war[inidx] = __float2half((twr*calibs[widx] - twi*calibs[widx+1]));
-    wai[inidx] = __float2half((twi*calibs[widx] + twr*calibs[widx+1]));
-    wbr[inidx] = __float2half((twr*calibs[widx+2] - twi*calibs[widx+3]));
-    wbi[inidx] = __float2half((twi*calibs[widx+2] + twr*calibs[widx+3]));
+    wr[inidx] = __float2half((twr*calibs[widx] - twi*calibs[widx+1]));
+    wi[inidx] = __float2half((twi*calibs[widx] + twr*calibs[widx+1]));
     //wr[inidx] = __float2half(calibs[widx]);
     //wi[inidx] = __float2half(calibs[widx+1]);
-    //wr[inidx] = __float2half(1.0);
-    //wi[inidx] = __float2half(0.0);
   }
   if (iArm==1) {
     theta = sep*(127.-bm*1.)*PI/10800.-(PI/180.)*dec; // radians
     afac = -2.*PI*fqs[fq]*theta/CVAC; // factor for rotate
     twr = cos(afac*antpos_n[a+48*iArm]);
     twi = sin(afac*antpos_n[a+48*iArm]);
-    war[inidx] = __float2half((twr*calibs[widx] - twi*calibs[widx+1]));
-    wai[inidx] = __float2half((twi*calibs[widx] + twr*calibs[widx+1]));
-    wbr[inidx] = __float2half((twr*calibs[widx+2] - twi*calibs[widx+3]));
-    wbi[inidx] = __float2half((twi*calibs[widx+2] + twr*calibs[widx+3]));
+    wr[inidx] = __float2half((twr*calibs[widx] - twi*calibs[widx+1]));
+    wi[inidx] = __float2half((twi*calibs[widx] + twr*calibs[widx+1]));
     //wr[inidx] = __float2half(calibs[widx]);
     //wi[inidx] = __float2half(calibs[widx+1]);
-    //wr[inidx] = __float2half(1.0);
-    //wi[inidx] = __float2half(0.0);
   }
     
 }
@@ -1063,7 +882,6 @@ void calc_weights(dmem * d) {
   float *antpos_n = (float *)malloc(sizeof(float)*NANTS);
   float *calibs = (float *)malloc(sizeof(float)*NANTS*(NCHAN_PER_PACKET/8)*2*2);
   float *d_antpos_e, *d_antpos_n, *d_calibs;
-  int * flagas = (int *)malloc(sizeof(int)*NANTS);
   float wnorm;
   cudaMalloc((void **)(&d_antpos_e), sizeof(float)*NANTS);
   cudaMalloc((void **)(&d_antpos_n), sizeof(float)*NANTS);
@@ -1078,15 +896,10 @@ void calc_weights(dmem * d) {
   for (int i=0;i<NANTS*(NCHAN_PER_PACKET/8)*2;i++) {
 
     iant = (int)(i/((NCHAN_PER_PACKET/8)*2));
-    flagas[iant] = 0;
 
     found = 0;
-    for (int j=0;j<d->nflags;j++) {
-      if (d->flagants[j]==iant) {
-	found = 1;
-	flagas[iant] = 1;
-      }
-    }
+    for (int j=0;j<d->nflags;j++)
+      if (d->flagants[j]==iant) found = 1;
 
     calibs[2*i] = d->h_winp[2*NANTS+2*i];
     calibs[2*i+1] = d->h_winp[2*NANTS+2*i+1];
@@ -1107,12 +920,10 @@ void calc_weights(dmem * d) {
   
   cudaMemcpy(d_antpos_e,antpos_e,NANTS*sizeof(float),cudaMemcpyHostToDevice);
   cudaMemcpy(d_antpos_n,antpos_n,NANTS*sizeof(float),cudaMemcpyHostToDevice);
-  cudaMemcpy(d->d_flagants,flagas,NANTS*sizeof(int),cudaMemcpyHostToDevice);
   cudaMemcpy(d_calibs,calibs,NANTS*(NCHAN_PER_PACKET/8)*2*2*sizeof(float),cudaMemcpyHostToDevice);
 
   // run kernel to populate weights matrix
-  //weights are [NCHAN_PER_PACKET/8, (NBEAMS/2), NANTS/2] for each pol and r/i, and arm
-  populate_weights_matrix<<<2*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*(NANTS/2)/128,128>>>(d_antpos_e,d_antpos_n,d_calibs,d->weights_a_r,d->weights_a_i,d->weights_b_r,d->weights_b_i,d->d_freqs,37.23-(d->obsdec));  
+  populate_weights_matrix<<<2*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*128*(NANTS/2)/128,128>>>(d_antpos_e,d_antpos_n,d_calibs,d->weights_r,d->weights_i,d->d_freqs,37.23-(d->obsdec));  
   
   // free stuff
   cudaFree(d_antpos_e);
@@ -1121,7 +932,6 @@ void calc_weights(dmem * d) {
   free(antpos_e);
   free(antpos_n);
   free(calibs);
-  free(flagas);
   
 }
 
@@ -1152,9 +962,9 @@ int main (int argc, char *argv[]) {
   float mydec = 71.66;
   char ftest[200], fflagants[200], fcalib[200], fpower[200];
   float sfreq = 1498.75;
-  int subtract_ib = 0;
+
   
-  while ((arg=getopt(argc,argv,"c:i:o:t:f:a:s:g:p:kbdh")) != -1)
+  while ((arg=getopt(argc,argv,"c:i:o:t:f:a:s:g:p:bdh")) != -1)
     {
       switch (arg)
 	{
@@ -1300,10 +1110,6 @@ int main (int argc, char *argv[]) {
 	  cudaSetDevice(0);
 	  syslog (LOG_NOTICE, "Running beamformer, NOT correlator");
 	  break;
-	case 'k':
-	  subtract_ib=1;
-	  syslog (LOG_NOTICE, "Subtracting incoherent beam");
-	  break;
 	case 'h':
 	  usage();
 	  return EXIT_SUCCESS;
@@ -1320,7 +1126,7 @@ int main (int argc, char *argv[]) {
 
   // allocate device memory
   dmem d;
-  initialize(&d,bf,subtract_ib);
+  initialize(&d,bf);
 
   // set up for beamformer
   FILE *ff, *fp;
@@ -1356,8 +1162,7 @@ int main (int argc, char *argv[]) {
     calc_weights(&d);
 
     // open power
-    if (!test)
-      fp = fopen(fpower,"w");
+    fp = fopen(fpower,"w");
     
   }
 
@@ -1399,34 +1204,33 @@ int main (int argc, char *argv[]) {
 	if (chunks>0) rewind(fin);
 	fread(d.h_input+chunks*rd_size,rd_size,1,fin);
 
-      }
+	// run correlator or beamformer, and output data
+	if (bf==0) {
+	  if (DEBUG) syslog(LOG_INFO,"run correlator");
+	  dcorrelator(&d);
+	  if (DEBUG) syslog(LOG_INFO,"copy to host");
+	  output_size = NBASE*NCHAN_PER_PACKET*2*2*4;
+	  output_data = (char *)malloc(output_size);
+	  cudaMemcpy(output_data,d.d_output,output_size,cudaMemcpyDeviceToHost);
+	  
+	  fout = fopen("output.dat","ab");
+	  fwrite((float *)output_data,sizeof(float),NBASE*NCHAN_PER_PACKET*2*2,fout);
+	  fclose(fout);
+	}
+	else {
+	  if (DEBUG) syslog(LOG_INFO,"run beamformer");
+	  dbeamformer(&d);
+	  if (DEBUG) syslog(LOG_INFO,"copy to host");
+	  output_size = (NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*NBEAMS;
+	  output_data = (char *)malloc(output_size);
+	  cudaMemcpy(output_data,d.d_bigpower,output_size,cudaMemcpyDeviceToHost);	
 
-      // run correlator or beamformer, and output data
-      if (bf==0) {
-	if (DEBUG) syslog(LOG_INFO,"run correlator");
-	dcorrelator(&d);
-	if (DEBUG) syslog(LOG_INFO,"copy to host");
-	output_size = NBASE*NCHAN_PER_PACKET*2*2*4;
-	output_data = (char *)malloc(output_size);
-	cudaMemcpy(output_data,d.d_output,output_size,cudaMemcpyDeviceToHost);
-	
-	fout = fopen("output.dat","ab");
-	fwrite((float *)output_data,sizeof(float),NBASE*NCHAN_PER_PACKET*2*2,fout);
-	fclose(fout);
-      }
-      else {
-	if (DEBUG) syslog(LOG_INFO,"run beamformer");
-	dbeamformer(&d);
-	if (DEBUG) syslog(LOG_INFO,"copy to host");
-	output_size = (NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*NBEAMS;
-	output_data = (char *)malloc(output_size);
-	cudaMemcpy(output_data,d.d_bigpower,output_size,cudaMemcpyDeviceToHost);	
-	
-	fout = fopen("output.dat","ab");
-	fwrite((unsigned char *)output_data,sizeof(unsigned char),output_size,fout);
-	fclose(fout);
-      }
+	  fout = fopen("output.dat","ab");
+	  fwrite((unsigned char *)output_data,sizeof(unsigned char),output_size,fout);
+	  fclose(fout);
+	}
 
+      }
     }
 
 	
