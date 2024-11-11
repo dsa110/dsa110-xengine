@@ -1921,7 +1921,7 @@ void find_peaks(pinfo *p, int bm) {
     // measure rms - should be 1
     //calculateStdDevFloat(float * d_data, int width, int height, int stride) {
     myStd = calculateStdDevFloat(p->boxes+sm*(p->ndms-2)*p->boxes_step/sizeof(float),p->ntime_out,p->ndms-2,p->boxes_step/sizeof(float));
-    printf("%d %g\n",sm,myStd);
+    //printf("%d %g\n",sm,myStd);
     if (myStd<1.2) myStd = 1.;
     if (myStd<2.) {
     
