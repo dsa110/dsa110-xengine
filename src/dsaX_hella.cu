@@ -2125,8 +2125,8 @@ int main(int argc, char *argv[]) {
   clock_t begin, end;
 
   // outputs
-  //unsigned char * hodata = (unsigned char *)malloc(sizeof(unsigned char)*p.NTIME*NCHAN);
-  float * hodata = (float *)malloc(sizeof(float)*p.ntime_out*(p.ndms-2));
+  unsigned char * hodata = (unsigned char *)malloc(sizeof(unsigned char)*p.NTIME*NCHAN);
+  //float * hodata = (float *)malloc(sizeof(float)*p.ntime_out*(p.ndms-2));
   FILE *ftest;
   int tot_flags = 0;
   
@@ -2179,6 +2179,14 @@ int main(int argc, char *argv[]) {
       begin = clock();
       printf("Flagging\n");
       fastflagger(&p);
+
+      // write out to disk
+      /*cudaMemcpy(hodata,p.d_data,NCHAN*p.NTIME,cudaMemcpyDeviceToHost);
+      ftest = fopen("image.out","w");
+      for (int i=0;i<NCHAN*p.NTIME;i++) 
+	fprintf(ftest,"%f\n",(float)(hodata[i]));
+	fclose(ftest);*/
+      
       // deal with flags
       for (int j=0;j<NBATCH;j++) {
 	for (int i=0;i<NCHAN;i++) {
@@ -2196,6 +2204,7 @@ int main(int argc, char *argv[]) {
       bm = 0;
       tot_time = readt+flagt;
       while ((bm<NBEAMS) && (tot_time<4.1) && (p.out_npeaks < MAX_GIANTS)) {
+      //while ((bm<NBEAMS) && (p.out_npeaks < MAX_GIANTS)) {
       
 	//printf("dedisperse\n");
 	begin =	clock();

@@ -180,9 +180,6 @@ int main (int argc, char *argv[]) {
   
   // set up
   int fctr = 0, integration = 0, cyclectr = 0;
-  sprintf(foutnam,"%s_%d.out.tmp",fnam,fctr);
-  sprintf(finaloutnam,"mv %s %s_%d.out",foutnam,fnam,fctr);
-  fout=fopen(foutnam,"wb");
   
   // data stuff
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
@@ -193,6 +190,8 @@ int main (int argc, char *argv[]) {
   memset(data, 0, 25*4656*(384/nfq)*2*2);
   int inidx, fsidx, outidx;
   int read_fstable = 0;
+  float mjd, mjd0;
+  int secs;
 
   // start things
   syslog(LOG_INFO, "starting observation");
@@ -204,10 +203,23 @@ int main (int argc, char *argv[]) {
     fblock = (float *)(block);
 
     // read fstable if first integration
+    // also read mjd of first spec
     if (read_fstable==0) {
       fsin=fopen(fsnam,"rb");
       fread(fstable,sizeof(float),25*4656*48*8*2*2,fsin);
       fclose(fsin);
+      
+      fsin = fopen("/home/ubuntu/tmp/mjd.dat","r");
+      fscanf(fsin,"%f",&mjd0);
+      fclose(fsin);
+
+      mjd = mjd0 + fctr*NINTS_PER_FILE*4096*32.768e-6/86400.;
+      secs = (int)((mjd-60600.)*1440.);
+      sprintf(foutnam,"%s_%d.out.tmp",fnam,secs);
+      sprintf(finaloutnam,"mv %s %s_%d.out",foutnam,fnam,secs);
+      fout=fopen(foutnam,"wb");
+      fwrite(&mjd,sizeof(float),1,fout);
+      
       read_fstable=1;
     }
 
@@ -256,9 +268,14 @@ int main (int argc, char *argv[]) {
       fclose(fout);
       syslog(LOG_INFO,"Closed file %s",foutnam);
       system(finaloutnam);
-      sprintf(foutnam,"%s_%d.out.tmp",fnam,fctr);
-      sprintf(finaloutnam,"mv %s %s_%d.out",foutnam,fnam,fctr);
+
+      mjd = mjd0 + fctr*NINTS_PER_FILE*4096*32.768e-6/86400.;
+      secs = (int)((mjd-60600.)*1440.);
+      sprintf(foutnam,"%s_%d.out.tmp",fnam,secs);
+      sprintf(finaloutnam,"mv %s %s_%d.out",foutnam,fnam,secs);
       fout=fopen(foutnam,"wb");
+      fwrite(&mjd,sizeof(float),1,fout);
+
     }
        
     // close off loop
