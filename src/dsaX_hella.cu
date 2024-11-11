@@ -385,7 +385,7 @@ const ClientSocket& ClientSocket::operator >> ( std::string& s ) const
 #define MAX_DM 2000
 #define TOL 1.3
 #define MAX_BOX 15
-#define MAX_GIANTS 100000
+#define MAX_GIANTS 10000
 #define DADA_BLOCK_KEY 0x0000dada // for capture program.
 
 int finished = 0;
@@ -802,6 +802,35 @@ __global__ void sumArray(half * data, float * sums, float * qsums, int width, in
   
 
 }
+// kernel to sum array and its squares
+__global__ void sumArrayFloat(float * data, float * sums, float * qsums, int width, int height, int stride) {
+
+  extern __shared__ float sfdata[512], qfdata[512];
+  unsigned int tid = threadIdx.x;
+  unsigned int i = blockIdx.x*512 + tid;
+  int x = i % width;
+  int y = i / width;
+  int iidx = y*stride+x;
+
+  sfdata[tid] = data[iidx];
+  qfdata[tid] = data[iidx]*data[iidx];
+
+  __syncthreads();
+
+  if (tid < 256) { sfdata[tid] += sfdata[tid + 256]; } __syncthreads(); 
+  if (tid < 128) { sfdata[tid] += sfdata[tid + 128]; } __syncthreads(); 
+  if (tid < 64) { sfdata[tid] += sfdata[tid + 64]; } __syncthreads(); 
+  if (tid < 32) warpReduce(sfdata, tid);
+  if (tid < 256) { qfdata[tid] += qfdata[tid + 256]; } __syncthreads(); 
+  if (tid < 128) { qfdata[tid] += qfdata[tid + 128]; } __syncthreads(); 
+  if (tid < 64) { qfdata[tid] += qfdata[tid + 64]; } __syncthreads(); 
+  if (tid < 32) warpReduce(qfdata, tid);
+
+  if (tid == 0) sums[blockIdx.x] = sfdata[0];
+  if (tid == 0) qsums[blockIdx.x] = qfdata[0];
+  
+
+}
     
 
 // Host function to orchestrate the normalization process
@@ -814,6 +843,44 @@ float calculateStdDev(half * d_data, int width, int height, int stride) {
   cudaMalloc(&d_sums, nblocks * sizeof(float));
   cudaMalloc(&d_qsums, nblocks * sizeof(float));
   sumArray<<<nblocks,512>>>(d_data,d_sums,d_qsums,new_width,height,stride);
+
+  float *sums, *qsums;
+  sums = (float *)malloc(sizeof(float)*nblocks);
+  qsums = (float *)malloc(sizeof(float)*nblocks);
+  cudaMemcpy(sums,d_sums,nblocks*sizeof(float),cudaMemcpyDeviceToHost);
+  cudaMemcpy(qsums,d_qsums,nblocks*sizeof(float),cudaMemcpyDeviceToHost);
+
+  float sum=0., qsum=0.;
+  for (int i=0;i<nblocks;i++) {
+    sum += sums[i];
+    qsum += qsums[i];
+  }
+  float mn = sum/(new_width*height*1.);
+
+  float stdDev = qsum-2.*sum*mn+mn*mn*new_width*height*1.;
+  stdDev /= 1.*new_width*height;
+  stdDev = sqrt(stdDev);
+
+  cudaFree(d_sums);
+  cudaFree(d_qsums);
+  free(sums);
+  free(qsums);
+  
+  return stdDev;
+  
+  
+  
+}
+// Host function to orchestrate the normalization process
+float calculateStdDevFloat(float * d_data, int width, int height, int stride) {
+
+  float *d_sums, *d_qsums;
+  int new_width = (int)(512*floor(width/512.));
+  int nblocks = new_width*height / 512;
+  
+  cudaMalloc(&d_sums, nblocks * sizeof(float));
+  cudaMalloc(&d_qsums, nblocks * sizeof(float));
+  sumArrayFloat<<<nblocks,512>>>(d_data,d_sums,d_qsums,new_width,height,stride);
 
   float *sums, *qsums;
   sums = (float *)malloc(sizeof(float)*nblocks);
@@ -1847,36 +1914,46 @@ void find_peaks(pinfo *p, int bm) {
   int * d_idxs = thrust::raw_pointer_cast(&p->output_indices[0]);
   int n_found;
   p->npeaks = 0;
+  float myStd;
 
   for (int sm=0;sm<p->nboxcar;sm++) {
 
-    // copy to thrust vector
-    //cudaMemcpy(dmt_ptr,p->boxes+sm*(p->ndms-2)*p->boxes_step/sizeof(float),(p->ndms-2)*p->boxes_step,cudaMemcpyDeviceToDevice);
-    cudaMemcpy2D(dmt_ptr,p->ntime_out*4,p->boxes+sm*(p->ndms-2)*p->boxes_step/sizeof(float),p->boxes_step,p->ntime_out*4,p->ndms-2,cudaMemcpyDeviceToDevice);
-
-    // Find indices and values of points greater than the threshold
-    //  thrust::copy(p->dmt.begin(), p->dmt.begin() + 20, std::ostream_iterator<float>(std::cout, " "));
-    thrust::device_vector<int>::iterator end = thrust::copy_if(thrust::device,
-							       thrust::make_counting_iterator(0),
-							       thrust::make_counting_iterator(p->ntime_out*(p->ndms-2)),
-							       p->dmt.begin(),
-							       p->output_indices.begin(),
-							       thrust::placeholders::_1 > p->snr);
-    n_found = end-p->output_indices.begin();
-    if (p->npeaks + n_found > MAX_GIANTS)
-      n_found = MAX_GIANTS - p->npeaks;
-
-    thrust::copy(thrust::make_permutation_iterator(p->dmt.begin(), p->output_indices.begin()),
-		 thrust::make_permutation_iterator(p->dmt.end(), p->output_indices.begin()+n_found),
-		 p->output_values.begin());
+    // measure rms - should be 1
+    //calculateStdDevFloat(float * d_data, int width, int height, int stride) {
+    myStd = calculateStdDevFloat(p->boxes+sm*(p->ndms-2)*p->boxes_step/sizeof(float),p->ntime_out,p->ndms-2,p->boxes_step/sizeof(float));
+    printf("%d %g\n",sm,myStd);
+    if (myStd<1.2) myStd = 1.;
+    if (myStd<2.) {
     
-    // copy to host
-    cudaMemcpy(p->peaks+p->npeaks, d_outputs, n_found*sizeof(float), cudaMemcpyDeviceToHost);
-    thrust::for_each(p->output_indices.begin(), p->output_indices.begin()+n_found, thrust::placeholders::_1 += (p->ndms-2)*sm*p->ntime_out);
-    cudaMemcpy(p->h_idxs+p->npeaks, d_idxs, n_found*sizeof(int), cudaMemcpyDeviceToHost);
+      // copy to thrust vector
+      //cudaMemcpy(dmt_ptr,p->boxes+sm*(p->ndms-2)*p->boxes_step/sizeof(float),(p->ndms-2)*p->boxes_step,cudaMemcpyDeviceToDevice);
+      cudaMemcpy2D(dmt_ptr,p->ntime_out*4,p->boxes+sm*(p->ndms-2)*p->boxes_step/sizeof(float),p->boxes_step,p->ntime_out*4,p->ndms-2,cudaMemcpyDeviceToDevice);
 
-    // iterate npeaks
-    p->npeaks += n_found;
+      // Find indices and values of points greater than the threshold
+      //  thrust::copy(p->dmt.begin(), p->dmt.begin() + 20, std::ostream_iterator<float>(std::cout, " "));
+      thrust::device_vector<int>::iterator end = thrust::copy_if(thrust::device,
+								 thrust::make_counting_iterator(0),
+								 thrust::make_counting_iterator(p->ntime_out*(p->ndms-2)),
+								 p->dmt.begin(),
+								 p->output_indices.begin(),
+								 thrust::placeholders::_1 > p->snr*myStd);
+      n_found = end-p->output_indices.begin();
+      if (p->npeaks + n_found > MAX_GIANTS)
+	n_found = MAX_GIANTS - p->npeaks;
+
+      thrust::copy(thrust::make_permutation_iterator(p->dmt.begin(), p->output_indices.begin()),
+		   thrust::make_permutation_iterator(p->dmt.end(), p->output_indices.begin()+n_found),
+		   p->output_values.begin());
+    
+      // copy to host
+      cudaMemcpy(p->peaks+p->npeaks, d_outputs, n_found*sizeof(float), cudaMemcpyDeviceToHost);
+      thrust::for_each(p->output_indices.begin(), p->output_indices.begin()+n_found, thrust::placeholders::_1 += (p->ndms-2)*sm*p->ntime_out);
+      cudaMemcpy(p->h_idxs+p->npeaks, d_idxs, n_found*sizeof(int), cudaMemcpyDeviceToHost);
+
+      // iterate npeaks
+      p->npeaks += n_found;
+
+    }
     
   }
     
@@ -2204,7 +2281,7 @@ int main(int argc, char *argv[]) {
       bm = 0;
       tot_time = readt+flagt;
       while ((bm<NBEAMS) && (tot_time<4.1) && (p.out_npeaks < MAX_GIANTS)) {
-      //while ((bm<NBEAMS) && (p.out_npeaks < MAX_GIANTS)) {
+	//while ((bm<NBEAMS) && (p.out_npeaks < MAX_GIANTS)) {
       
 	//printf("dedisperse\n");
 	begin =	clock();
