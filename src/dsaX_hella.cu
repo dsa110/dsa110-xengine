@@ -430,6 +430,7 @@ typedef struct pinfo {
   char out_path[500]; // path or IP
   int BEAM_OFFSET;
   int BEAM0;
+  int flag1, flag2; // flag ranges
   
   // derived params
   int NTIME; // gulp that includes rewind
@@ -516,6 +517,8 @@ void initialize(FILE *fconf, pinfo * p) {
   ssize_t read;
   size_t len = 0;
   char c1[20], c2[500];
+  p->flag1 = -1;
+  p->flag2 = -1;
   while (!feof(fconf)) {
 
     read = getline(&line, &len, fconf);
@@ -576,6 +579,10 @@ void initialize(FILE *fconf, pinfo * p) {
     }
     if (strcmp(c1,"GULP")==0)
       p->gulp=atoi(c2);
+    if (strcmp(c1,"FLAG1")==0)
+      p->flag1=atoi(c2);
+    if (strcmp(c1,"FLAG2")==0)
+      p->flag2=atoi(c2);
     
     if (strcmp(c1,"SCRUNCH")==0) {
 
@@ -1163,7 +1170,7 @@ __global__ void threshold_data(half * data, half * mask, float threshold, int wi
 
 // cuda kernel to replace masked values
 // run with NBATCH*NCHAN*width/32 blocks of 32 threads 
-__global__ void replace_data(half * data, half * mask, float repval, int width, int stride) {
+__global__ void replace_data(half * data, half * mask, float repval, int width, int stride, int flag1, int flag2) {
 
   int bid = blockIdx.x;
   int tid = threadIdx.x;
@@ -1171,9 +1178,13 @@ __global__ void replace_data(half * data, half * mask, float repval, int width, 
   int idx = bid*32+tid;
   int y = (int)(idx / width);
   int x = (int)(idx % width);
+  int ch = (int)(y % NCHAN);
   int iidx = y*stride+x;
 
   if (mask[iidx]>(half)(0.))
+    data[iidx] = repval;
+
+  if (ch>=flag1 && ch<flag2)
     data[iidx] = repval;
 
 }
@@ -1436,7 +1447,7 @@ void normalize_data(half * data, int width, int stride) {
 }
 
 // function to apply a single scrunch to the data
-float apply_scrunch(pinfo * p, half * data, half * mask, half * d_smooth, float * d_ts, int width, int stride, int tscrunch, int fscrunch, float thresh, int flag, int ts, float * d_flagSpec) {
+float apply_scrunch(pinfo * p, half * data, half * mask, half * d_smooth, float * d_ts, int width, int stride, int tscrunch, int fscrunch, float thresh, int flag, int ts, float * d_flagSpec, int flag1, int flag2) {
 
   float begin, end;
   float * d_mask;
@@ -1493,7 +1504,7 @@ float apply_scrunch(pinfo * p, half * data, half * mask, half * d_smooth, float 
     begin = clock();
     //smooth_data<<<NBATCH*NCHAN*width/32,32>>>(mask, d_smooth, 1./tscrunch/fscrunch, tscrunch, fscrunch, width, stride);
     npp_convolve_handler(mask, d_smooth, 1./tscrunch/fscrunch, tscrunch, fscrunch, width, stride);
-    replace_data<<<NBATCH*NCHAN*width/32,32>>>(data, mask, 0., width, stride);
+    replace_data<<<NBATCH*NCHAN*width/32,32>>>(data, mask, 0., width, stride, flag1, flag2);
     add_number<<<NBATCH*NCHAN*width/32,32>>>(data,1.,width,stride);
     calc_bandpass<<<NCHAN*NBATCH,256>>>(mask, d_mask, width, stride);
     add_bandpass<<<NCHAN*NBATCH/32,32>>>(d_mask,d_flagSpec);
@@ -1540,12 +1551,12 @@ void fastflagger(pinfo * p) {
     for (int scrnch=0;scrnch<p->nscrunches;scrnch++) {
       //printf("scrunch %d...",scrnch);
       if (scrnch==0)
-	mn_bp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, p->scrunches[scrnch].tscrunch,p->scrunches[scrnch].fscrunch, p->scrunches[scrnch].thresh,1,0,p->d_flagSpec);
+	mn_bp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, p->scrunches[scrnch].tscrunch,p->scrunches[scrnch].fscrunch, p->scrunches[scrnch].thresh,1,0,p->d_flagSpec,p->flag1,p->flag2);
       else
-	tmp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, p->scrunches[scrnch].tscrunch,p->scrunches[scrnch].fscrunch, p->scrunches[scrnch].thresh,1,0,p->d_flagSpec);
+	tmp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, p->scrunches[scrnch].tscrunch,p->scrunches[scrnch].fscrunch, p->scrunches[scrnch].thresh,1,0,p->d_flagSpec,p->flag1,p->flag2);
       cudaDeviceSynchronize();
     }
-    tmp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, 8, 8, 100., 0, 1, p->d_flagSpec);
+    tmp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, 8, 8, 100., 0, 1, p->d_flagSpec,p->flag1,p->flag2);
     //    printf("\n");
 
     cudaDeviceSynchronize();
