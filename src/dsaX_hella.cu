@@ -1599,7 +1599,7 @@ void fastflagger(pinfo * p) {
   // setup
   int nBatches = (int)(NBEAMS / NBATCH);
   cudaMemset(p->d_flagSpec,0,4*NBATCH*NCHAN);
-  float mn_bp, tmp;
+  float mn_bp[nBatches], tmp;
 
   //printf("fastflagger ");
   
@@ -1619,7 +1619,7 @@ void fastflagger(pinfo * p) {
     for (int scrnch=0;scrnch<p->nscrunches;scrnch++) {
       //printf("scrunch %d...",scrnch);
       if (scrnch==0)
-	mn_bp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, p->scrunches[scrnch].tscrunch,p->scrunches[scrnch].fscrunch, p->scrunches[scrnch].thresh,1,0,p->d_flagSpec,p->flag1,p->flag2);
+	mn_bp[batch] = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, p->scrunches[scrnch].tscrunch,p->scrunches[scrnch].fscrunch, p->scrunches[scrnch].thresh,1,0,p->d_flagSpec,p->flag1,p->flag2);
       else
 	tmp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, p->scrunches[scrnch].tscrunch,p->scrunches[scrnch].fscrunch, p->scrunches[scrnch].thresh,1,0,p->d_flagSpec,p->flag1,p->flag2);
       cudaDeviceSynchronize();
@@ -1645,6 +1645,7 @@ void fastflagger(pinfo * p) {
   }
   //printf("\n");
   
+  syslog(LOG_INFO,"fastflagger %g %g %g %g",mn_bp[0],mn_bp[1],mn_bp[2],mn_bp[3]);
   
 }
 
@@ -1923,7 +1924,7 @@ void find_peaks(pinfo *p, int bm) {
     //calculateStdDevFloat(float * d_data, int width, int height, int stride) {
     if (sm==0) {
       myStd = calculateStdDevFloat(p->boxes+sm*(p->ndms-2)*p->boxes_step/sizeof(float),p->ntime_out,p->ndms-2,p->boxes_step/sizeof(float));
-    //printf("%d %g\n",sm,myStd);
+      if (bm==32) syslog(LOG_INFO,"STDDEV %g",myStd);
       if (myStd<1.2) myStd = 1.;
     }
     if (myStd<2.) {
