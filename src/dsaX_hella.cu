@@ -37,6 +37,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/select.h>
+#include <syslog.h>
 
 #include "sock.h"
 #include "tmutil.h"
@@ -1600,7 +1601,7 @@ void fastflagger(pinfo * p) {
   cudaMemset(p->d_flagSpec,0,4*NBATCH*NCHAN);
   float mn_bp, tmp;
 
-  printf("fastflagger ");
+  //printf("fastflagger ");
   
   // loop over batches
   for (int batch = 0; batch < nBatches; batch++) {
@@ -1639,10 +1640,10 @@ void fastflagger(pinfo * p) {
     
     //printf("done\n");
 
-    printf("%g ",mn_bp);
+    //printf("%g ",mn_bp);
     
   }
-  printf("\n");
+  //printf("\n");
   
   
 }
@@ -2087,6 +2088,7 @@ int main(int argc, char *argv[]) {
   free(output);
 */  
   
+
   
   // parse command line
   FILE *fconf;
@@ -2096,7 +2098,7 @@ int main(int argc, char *argv[]) {
     // configuration
     if (strcmp(argv[i],"-c")==0) {
       fconf=fopen(argv[i+1],"r");
-      printf("Getting config from %s\n",argv[i+1]);
+      syslog(LOG_INFO,"Getting config from %s\n",argv[i+1]);
     }
     if (strcmp(argv[i],"-i")==0) {
       core = atoi(argv[i+1]);
@@ -2113,14 +2115,24 @@ int main(int argc, char *argv[]) {
   cudaSetDevice(get_gpu_id(fconf));
   int currentDevice;
   cudaGetDevice(&currentDevice);
-  printf("Using GPU ID %d\n",currentDevice);
+
+  // startup syslog message
+  // using LOG_LOCAL0
+  if (currentDevice==0)
+    openlog ("dsaX_hella0", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
+  else
+    openlog ("dsaX_hella1", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
+  syslog (LOG_NOTICE, "Program started by User %d", getuid ());
+
+
+  syslog(LOG_INFO,"Using GPU ID %d\n",currentDevice);
 
   // Bind to cpu core
   if (core >= 0)
     {
-      printf("binding to core %d\n", core);
+      syslog(LOG_INFO,"binding to core %d\n", core);
       if (dada_bind_thread_to_core(core) < 0)
-	printf("failed to bind to core %d\n", core);
+	syslog(LOG_ERR,"failed to bind to core %d\n", core);
     }
   
   
@@ -2151,7 +2163,7 @@ int main(int argc, char *argv[]) {
     header_in = ipcbuf_get_next_read (hdu_in->header_block, &header_size);
     ipcbuf_mark_cleared (hdu_in->header_block);
     block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
-    printf("Connected to dada buffer\n");
+    syslog(LOG_INFO,"Connected to dada buffer\n");
 
   }
   
@@ -2175,10 +2187,10 @@ int main(int argc, char *argv[]) {
     //(fin)=fopen(p.inp_path,"rb");
     //fread(heade, sizeof(char), nbytes_header, fin);
     //free(heade);
-    printf("Finished with header (nbytes %d) of input filFile %s\n",nbytes_header,p.inp_path);
+    syslog(LOG_INFO,"Finished with header (nbytes %d) of input filFile %s\n",nbytes_header,p.inp_path);
   }
     
-  printf("Starting...\n");
+  syslog(LOG_INFO,"Starting...\n");
   int samp = 0;
   if (p.inp_format!=1)
     samp = -(p.NTIME-p.gulp) + (int)(p.maxWidth)/2;
@@ -2220,7 +2232,7 @@ int main(int argc, char *argv[]) {
     for (int i=0;i<NCHAN;i++) specflags[i] = 0;
     clear_peaks(&p);
 
-    printf("Starting gulp %d\n",gulp);
+    syslog(LOG_INFO,"Starting gulp %d\n",gulp);
     
     // loop over beams to read in data
     begin = clock();
@@ -2256,7 +2268,7 @@ int main(int argc, char *argv[]) {
     if ((gulp>0 && p.inp_format!=1) || (p.inp_format==1)) {
       
       begin = clock();
-      printf("Flagging\n");
+      //printf("Flagging\n");
       fastflagger(&p);
 
       // write out to disk
@@ -2279,7 +2291,7 @@ int main(int argc, char *argv[]) {
 
       // loop over beams to dedisperse and search
       // check time, out_npeaks
-      printf("Looping over beams...\n");
+      //printf("Looping over beams...\n");
       bm = 0;
       tot_time = readt+flagt;
       while ((bm<NBEAMS) && (tot_time<4.1) && (p.out_npeaks < MAX_GIANTS)) {
@@ -2341,10 +2353,10 @@ int main(int argc, char *argv[]) {
     if (p.inp_format==0)
       ipcio_close_block_read (hdu_in->data_block, bytes_read);
 
-    printf("Beamstats %d giants %d %d\n",bm,p.out_npeaks,tot_flags);
+    syslog(LOG_INFO,"Beamstats %d giants %d %d\n",bm,p.out_npeaks,tot_flags);
     tot_flags = 0;
-    printf("processed %g s in read %g flag %g dedisp %g smooth %g peak %g output %g [%g]\n",(p.ntime_dd)*2.62144e-4,readt,flagt,dedispt,smootht,peakt,outputt,readt+flagt+dedispt+smootht+peakt+outputt);
-    printf("Flagging: %g %g %g %g %g %g %g %g\n",p.t1,p.t2,p.t3,p.t4,p.t5,p.t6,p.t7,p.t8);
+    syslog(LOG_INFO,"processed %g s in read %g flag %g dedisp %g smooth %g peak %g output %g [%g]\n",(p.ntime_dd)*2.62144e-4,readt,flagt,dedispt,smootht,peakt,outputt,readt+flagt+dedispt+smootht+peakt+outputt);
+    syslog(LOG_INFO,"Flagging: %g %g %g %g %g %g %g %g\n",p.t1,p.t2,p.t3,p.t4,p.t5,p.t6,p.t7,p.t8);
     readt = 0.;
     flagt = 0.;
     dedispt = 0.;

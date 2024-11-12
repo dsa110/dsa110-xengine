@@ -174,8 +174,8 @@ void * process(void * ptr)
 
     }
     
-    if (pct != NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW/(P_SIZE-12))
-      syslog(LOG_ERR,"thread %d: only received %d of %d",thread_id,pct,NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW/(P_SIZE-12));
+    //if (pct != NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW/(P_SIZE-12))
+    //  syslog(LOG_ERR,"thread %d: only received %d of %d",thread_id,pct,NSAMPS_PER_TRANSMIT*NBEAMS_PER_BLOCK*NW/(P_SIZE-12));
     
     act_tseq = (current_tseq * NSAMPS_PER_TRANSMIT) % NSAMPS_PER_BLOCK; // place within output buffer
 

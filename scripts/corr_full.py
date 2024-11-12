@@ -184,22 +184,22 @@ def get_srch_nodes():
         result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep Blockcts_full | tail -n 1 | awk '{print $12}'", shell=True, stderr=subprocess.STDOUT)
         arr = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /home/ubuntu/data/tmp/log_3.log | grep Beamstats | tail -n 1 | awk '{print $2}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep dsaX_hella0 | grep Beamstats | tail -n 1 | awk '{print $3}'", shell=True, stderr=subprocess.STDOUT)
         arr2 = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /home/ubuntu/data/tmp/log_3.log | grep Beamstats | tail -n 1 | awk '{print $4}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep dsaX_hella0 | grep Beamstats | tail -n 1 | awk '{print $5}'", shell=True, stderr=subprocess.STDOUT)
         arr3 = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /home/ubuntu/data/tmp/log_4.log | grep Beamstats | tail -n 1 | awk '{print $2}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep dsaX_hella1 | grep Beamstats | tail -n 1 | awk '{print $3}'", shell=True, stderr=subprocess.STDOUT)
         arr4 = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /home/ubuntu/data/tmp/log_4.log | grep Beamstats | tail -n 1 | awk '{print $4}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep dsaX_hella1 | grep Beamstats | tail -n 1 | awk '{print $5}'", shell=True, stderr=subprocess.STDOUT)
         arr5 = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /home/ubuntu/data/tmp/log_3.log | grep Beamstats | tail -n 1 | awk '{print $5}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep dsaX_hella0 | grep Beamstats | tail -n 1 | awk '{print $6}'", shell=True, stderr=subprocess.STDOUT)
         arr6 = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /home/ubuntu/data/tmp/log_4.log | grep Beamstats | tail -n 1 | awk '{print $5}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep dsaX_hella1 | grep Beamstats | tail -n 1 | awk '{print $6}'", shell=True, stderr=subprocess.STDOUT)
         arr7 = result.decode("utf-8")
 
         oarr = np.zeros(15)
@@ -211,13 +211,13 @@ def get_srch_nodes():
         oarr[5] = float(arr6)
         oarr[6] = float(arr7)
 
-        for ii in np.arange(2,6):
+        for ii in np.arange(3,7):
         
-            result = subprocess.check_output(f"tail -n 1000 /home/ubuntu/data/tmp/log_3.log | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
-            oarr[2*(ii-2)+7] = float(result.decode("utf-8"))
+            result = subprocess.check_output(f"tail -n 1000 /var/log/syslog | grep dsaX_hella0 | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
+            oarr[2*(ii-3)+7] = float(result.decode("utf-8"))
 
-            result = subprocess.check_output(f"tail -n 1000 /home/ubuntu/data/tmp/log_4.log | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
-            oarr[2*(ii-2)+1+7] = result.decode("utf-8")
+            result = subprocess.check_output(f"tail -n 1000 /var/log/syslog | grep dsaX_hella1 | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
+            oarr[2*(ii-3)+1+7] = result.decode("utf-8")
         
         
     except:
