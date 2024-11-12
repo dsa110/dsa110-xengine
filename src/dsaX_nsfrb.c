@@ -42,6 +42,7 @@ void usage()
 	   " -d debug [default no]\n"
 	   " -k in_key [default XGPU_BLOCK_KEY]\n"
 	   " -f filename base [default ~/tmp]\n"
+	   " -s SB number to include in filename [default 0]\n"
 	   " -t full path to fstable [if not provided will not fringestop]\n"
 	   " -j number of frequency integrations to average [default 48]\n"
 	   " -h        print usage\n");
@@ -77,9 +78,10 @@ int main (int argc, char *argv[]) {
   char fnam[300], fsnam[300], foutnam[300], finaloutnam[400];
   FILE *fout;
   int provided_fs = 0;
+  int sb = 0;
   sprintf(fnam,"/home/ubuntu/tmp");
   
-  while ((arg=getopt(argc,argv,"c:f:j:t:k:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:j:t:s:k:dh")) != -1)
     {
       switch (arg)
 	{
@@ -111,6 +113,9 @@ int main (int argc, char *argv[]) {
 	    }
 	case 'f':
 	  strcpy(fnam,optarg);
+	  break;
+	case 's':
+	  sb=atoi(optarg);
 	  break;
 	case 't':
 	  strcpy(fsnam,optarg);
@@ -219,6 +224,7 @@ int main (int argc, char *argv[]) {
       sprintf(finaloutnam,"mv %s %s_%d.out",foutnam,fnam,secs);
       fout=fopen(foutnam,"wb");
       fwrite(&mjd,sizeof(float),1,fout);
+      fwrite(&sb,sizeof(int),1,fout);
       
       read_fstable=1;
     }
@@ -275,6 +281,7 @@ int main (int argc, char *argv[]) {
       sprintf(finaloutnam,"mv %s %s_%d.out",foutnam,fnam,secs);
       fout=fopen(foutnam,"wb");
       fwrite(&mjd,sizeof(float),1,fout);
+      fwrite(&sb,sizeof(int),1,fout);
 
     }
        
