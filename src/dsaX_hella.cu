@@ -1926,8 +1926,9 @@ void find_peaks(pinfo *p, int bm) {
       myStd = calculateStdDevFloat(p->boxes+sm*(p->ndms-2)*p->boxes_step/sizeof(float),p->ntime_out,p->ndms-2,p->boxes_step/sizeof(float));
       if (bm==32) syslog(LOG_INFO,"STDDEV %g",myStd);
       if (myStd<1.2) myStd = 1.;
+      if (myStd<0.96) myStd = 2.;
     }
-    if (myStd<2.) {
+    if (myStd<1.5 && myStd>0.92) {
     
       // copy to thrust vector
       //cudaMemcpy(dmt_ptr,p->boxes+sm*(p->ndms-2)*p->boxes_step/sizeof(float),(p->ndms-2)*p->boxes_step,cudaMemcpyDeviceToDevice);
