@@ -866,18 +866,19 @@ void dbeamformer(dmem * d) {
   long long int i1, i2, o1;
   
   // create streams
-  cudaStream_t stream;
-  cudaStreamCreate(&stream);
+  cudaStream_t streams[2];
+  for (int st=0;st<2;st++) 
+    cudaStreamCreate(&streams[st]);
 
   // timing
   // copy, prepare, cublas, output
   clock_t begin, end;
 
   // do big memcpy
-  begin = clock();
-  cudaMemcpy(d->d_big_input,d->h_input,NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4,cudaMemcpyHostToDevice);
-  end = clock();
-  d->cp += (float)(end - begin) / CLOCKS_PER_SEC;
+  //begin = clock();
+  //cudaMemcpy(d->d_big_input,d->h_input,NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*4,cudaMemcpyHostToDevice);
+  //end = clock();
+  //d->cp += (float)(end - begin) / CLOCKS_PER_SEC;
   
   // loop over halves of the array
   for (int iArm=0;iArm<2;iArm++) {
@@ -894,20 +895,20 @@ void dbeamformer(dmem * d) {
     // final data: need to split by NANTS.
     begin = clock();
     for (i1=0;i1<NPACKETS_PER_BLOCK;i1++) 
-      cudaMemcpy(d->d_input+i1*(NANTS/2)*NCHAN_PER_PACKET*4,d->d_big_input+i1*(NANTS)*NCHAN_PER_PACKET*4+iArm*(NANTS/2)*NCHAN_PER_PACKET*4,(NANTS/2)*NCHAN_PER_PACKET*4,cudaMemcpyDeviceToDevice);
+      cudaMemcpyAsync(d->d_input+i1*(NANTS/2)*NCHAN_PER_PACKET*4,d->h_input+i1*(NANTS)*NCHAN_PER_PACKET*4+iArm*(NANTS/2)*NCHAN_PER_PACKET*4,(NANTS/2)*NCHAN_PER_PACKET*4,cudaMemcpyHostToDevice,streams[iArm]);
     end = clock();
     d->cp += (float)(end - begin) / CLOCKS_PER_SEC;
     
     // do reorder and fluff of data to real and imag
     begin = clock();
     dim3 dimBlock1(32, 8), dimGrid1(NCHAN_PER_PACKET*2/32,(NPACKETS_PER_BLOCK)*(NANTS/2)/32);
-    transpose_fluff_bf<<<dimGrid1,dimBlock1>>>((unsigned short *)(d->d_input), d->d_bar, d->d_bai, d->d_bbr, d->d_bbi);
+    transpose_fluff_bf<<<dimGrid1,dimBlock1,0,streams[iArm]>>>((unsigned short *)(d->d_input), d->d_bar, d->d_bai, d->d_bbr, d->d_bbi);
     end = clock();
     d->prep += (float)(end - begin) / CLOCKS_PER_SEC;
 
     // large matrix multiply to get real and imag outputs
     // set up for gemm
-    cublasSetStream(cublasH, stream);
+    cublasSetStream(cublasH, streams[iArm]);
     i2 = iArm*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*(NANTS/2); // weights offset
     
     // run strided batched gemm
@@ -976,13 +977,13 @@ void dbeamformer(dmem * d) {
     begin = clock();
 
     // incoherent beam summation
-    sum_ib<<<NCHAN_PER_PACKET*2*NPACKETS_PER_BLOCK,32>>>(d->d_bar,d->d_bai,d->d_bbr,d->d_bbi,d->d_ibsum,d->d_flagants+iArm*48);
+    sum_ib<<<NCHAN_PER_PACKET*2*NPACKETS_PER_BLOCK,32,0,streams[iArm]>>>(d->d_bar,d->d_bai,d->d_bbr,d->d_bbi,d->d_ibsum,d->d_flagants+iArm*48);
     
     dim3 dimBlock2(32, 8), dimGrid2(NPACKETS_PER_BLOCK/4/32,(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2/32);
-    power_sum_and_transpose_output<<<dimGrid2,dimBlock2>>>(d->d_bigbeam_a_r,d->d_bigbeam_b_r,d->d_bigbeam_a_i,d->d_bigbeam_b_i,d->d_ibsum,d->subtract_ib,d->d_htx);
+    power_sum_and_transpose_output<<<dimGrid2,dimBlock2,0,streams[iArm]>>>(d->d_bigbeam_a_r,d->d_bigbeam_b_r,d->d_bigbeam_a_i,d->d_bigbeam_b_i,d->d_ibsum,d->subtract_ib,d->d_htx);
 
     dim3 dimBlock(32, 8), dimGrid((NBEAMS/2)/32,(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)/32);
-    sum_transpose_and_scale_output<<<dimGrid,dimBlock>>>(d->d_htx,d->d_bigpower+iArm*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2),d->subtract_ib);
+    sum_transpose_and_scale_output<<<dimGrid,dimBlock,0,streams[iArm]>>>(d->d_htx,d->d_bigpower+iArm*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2),d->subtract_ib);
 
     end = clock();
     d->outp += (float)(end - begin) / CLOCKS_PER_SEC;
@@ -990,7 +991,8 @@ void dbeamformer(dmem * d) {
 
   }
 
-  cudaStreamDestroy(stream);
+  for (int st=0;st<2;st++) 
+    cudaStreamDestroy(streams[st]);
 
 
   cublasDestroy(cublasH);
@@ -1417,6 +1419,7 @@ int main (int argc, char *argv[]) {
       else {
 	if (DEBUG) syslog(LOG_INFO,"run beamformer");
 	dbeamformer(&d);
+	syslog(LOG_INFO,"%f %f %f %f \n",d.cp,d.prep,d.cubl,d.outp);
 	if (DEBUG) syslog(LOG_INFO,"copy to host");
 	output_size = (NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*NBEAMS;
 	output_data = (char *)malloc(output_size);
@@ -1555,8 +1558,8 @@ int main (int argc, char *argv[]) {
       if (DEBUG) syslog(LOG_INFO,"run beamformer");
       dbeamformer(&d);
       if (DEBUG) syslog(LOG_INFO,"copy to host");
-      cudaMemcpy(output_buffer,d.d_bigpower,block_out,cudaMemcpyDeviceToHost);      
-
+      cudaMemcpy(output_buffer,d.d_bigpower,block_out,cudaMemcpyDeviceToHost);            
+      
       // deal with power output
       for (int i=0;i<NBEAMS;i++)
 	output_power[i] += d.h_chscf[i]/(1.*power_cycle);
