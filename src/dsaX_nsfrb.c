@@ -239,7 +239,7 @@ int main (int argc, char *argv[]) {
 	  for (int l=0;l<2;l++) {
 	    inidx = 2*(i*384*2 + j*nfq*2 + k*2 + l);
 	    fsidx = inidx + cyclectr*4656*384*2*2;
-	    outidx = cyclectr*4656*(384/nfq)*2*2 + i*(384/nfq)*2*2 + k*4 + l*2;
+	    outidx = cyclectr*4656*(384/nfq)*2*2 + i*(384/nfq)*2*2 + j*4 + l*2;
 
 	    // complex mult: (a+ib)*(c+id) = (ac-bd) + i(bc+ad)	    
 	    data[outidx] += fblock[inidx]*fstable[fsidx] - fblock[inidx+1]*fstable[fsidx+1];
