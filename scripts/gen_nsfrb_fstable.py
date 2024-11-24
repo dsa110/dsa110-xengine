@@ -34,7 +34,7 @@ w = 1.*vals[:,:,:,0] + 1j*vals[:,:,:,1]
 cal_table = np.zeros((4656, 48, 8, 2),dtype=np.complex64)
 bi = 0
 for i in np.arange(96):
-    for j in np.arange(i):  
+    for j in np.arange(i+1):  
         for k in np.arange(8):
             cal_table[bi,:,k,:] = w[i,:,:]*np.conjugate(w[j,:,:])
         bi += 1

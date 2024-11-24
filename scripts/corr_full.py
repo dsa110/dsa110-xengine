@@ -140,7 +140,7 @@ def get_capture_stats():
     my_log.function('get_capture_stats')
     
     try:
-        result = subprocess.check_output("tail -n 50000 /var/log/syslog | grep CAPSTATS | tail -n 1 | awk '{print $7,$10,$13,$15,$17}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("sudo tail -n 50000 /var/log/syslog | grep CAPSTATS | tail -n 1 | awk '{print $7,$10,$13,$15,$17}'", shell=True, stderr=subprocess.STDOUT)
         arr = result.decode("utf-8").split(' ')
         oarr = np.zeros(5)
         for i in range(5):
@@ -181,25 +181,25 @@ def get_srch_nodes():
 
     try:
 
-        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep Blockcts_full | tail -n 1 | awk '{print $12}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("sudo tail -n 1000 /var/log/syslog | grep Blockcts_full | tail -n 1 | awk '{print $12}'", shell=True, stderr=subprocess.STDOUT)
         arr = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep dsaX_hella0 | grep Beamstats | tail -n 1 | awk '{print $7}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("sudo tail -n 1000 /var/log/syslog | grep dsaX_hella0 | grep Beamstats | tail -n 1 | awk '{print $7}'", shell=True, stderr=subprocess.STDOUT)
         arr2 = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep dsaX_hella0 | grep Beamstats | tail -n 1 | awk '{print $9}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("sudo tail -n 1000 /var/log/syslog | grep dsaX_hella0 | grep Beamstats | tail -n 1 | awk '{print $9}'", shell=True, stderr=subprocess.STDOUT)
         arr3 = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep dsaX_hella1 | grep Beamstats | tail -n 1 | awk '{print $7}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("sudo tail -n 1000 /var/log/syslog | grep dsaX_hella1 | grep Beamstats | tail -n 1 | awk '{print $7}'", shell=True, stderr=subprocess.STDOUT)
         arr4 = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep dsaX_hella1 | grep Beamstats | tail -n 1 | awk '{print $9}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("sudo tail -n 1000 /var/log/syslog | grep dsaX_hella1 | grep Beamstats | tail -n 1 | awk '{print $9}'", shell=True, stderr=subprocess.STDOUT)
         arr5 = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep dsaX_hella0 | grep Beamstats | tail -n 1 | awk '{print $10}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("sudo tail -n 1000 /var/log/syslog | grep dsaX_hella0 | grep Beamstats | tail -n 1 | awk '{print $10}'", shell=True, stderr=subprocess.STDOUT)
         arr6 = result.decode("utf-8")
 
-        result = subprocess.check_output("tail -n 1000 /var/log/syslog | grep dsaX_hella1 | grep Beamstats | tail -n 1 | awk '{print $10}'", shell=True, stderr=subprocess.STDOUT)
+        result = subprocess.check_output("sudo tail -n 1000 /var/log/syslog | grep dsaX_hella1 | grep Beamstats | tail -n 1 | awk '{print $10}'", shell=True, stderr=subprocess.STDOUT)
         arr7 = result.decode("utf-8")
 
         oarr = np.zeros(15)
@@ -213,10 +213,10 @@ def get_srch_nodes():
 
         for ii in np.arange(7,11):
         
-            result = subprocess.check_output(f"tail -n 1000 /var/log/syslog | grep dsaX_hella0 | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
+            result = subprocess.check_output(f"sudo tail -n 1000 /var/log/syslog | grep dsaX_hella0 | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
             oarr[2*(ii-7)+7] = float(result.decode("utf-8"))
 
-            result = subprocess.check_output(f"tail -n 1000 /var/log/syslog | grep dsaX_hella1 | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
+            result = subprocess.check_output(f"sudo tail -n 1000 /var/log/syslog | grep dsaX_hella1 | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
             oarr[2*(ii-7)+1+7] = result.decode("utf-8")
         
         
