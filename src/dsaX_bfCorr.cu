@@ -686,6 +686,8 @@ __global__ void sum_beam(unsigned char * input, float * output) {
 }
 
 /*
+h04 version!
+
 Beamformer:
  - initial data is [NPACKETS_PER_BLOCK, NANTS, NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex] 
  - split into EW and NS antennas via cudaMemcpy: [NPACKETS_PER_BLOCK, NANTS/2, NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex]
