@@ -192,7 +192,7 @@ int main (int argc, char *argv[]) {
   char *block;
   float *fblock;
   float *data = (float *)malloc(sizeof(float)*25*4656*(384/nfq)*2*2);
-  memset(data, 0, 25*4656*(384/nfq)*2*2);
+  memset(data, 0, 25*4656*(384/nfq)*2*2*sizeof(float));
   int inidx, fsidx, outidx;
   int read_fstable = 0;
   float mjd, mjd0;
@@ -241,7 +241,7 @@ int main (int argc, char *argv[]) {
 	    fsidx = inidx + cyclectr*4656*384*2*2;
 	    outidx = cyclectr*4656*(384/nfq)*2*2 + i*(384/nfq)*2*2 + j*4 + l*2;
 
-	    // complex mult: (a+ib)*(c+id) = (ac-bd) + i(bc+ad)	    
+	    // complex mult: (a+ib)*(c+id) = (ac-bd) + i(bc+ad)
 	    data[outidx] += fblock[inidx]*fstable[fsidx] - fblock[inidx+1]*fstable[fsidx+1];
 	    data[outidx+1] += fblock[inidx+1]*fstable[fsidx] + fblock[inidx]*fstable[fsidx+1];
 	  }
@@ -261,7 +261,7 @@ int main (int argc, char *argv[]) {
       fwrite(data,sizeof(float),25*4656*(384/nfq)*2*2,fout);
 
       // zero out data
-      memset(data, 0, 25*4656*(384/nfq)*2*2);
+      memset(data, 0, 25*4656*(384/nfq)*2*2*sizeof(float));
 
       if (DEBUG) syslog(LOG_DEBUG,"Finished a block");
       
