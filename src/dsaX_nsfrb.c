@@ -180,8 +180,8 @@ int main (int argc, char *argv[]) {
      divide out at native resolution, then integrate. */
   // read fs table
   FILE *fsin;
-  // fstable has shape (25, 4656, 48, 8, 2, 2)
-  float *fstable = (float *)malloc(sizeof(float)*25*4656*48*8*2*2);
+  // fstable has shape (25, 4656, 384, 8, 2, 2)
+  float *fstable = (float *)malloc(sizeof(float)*25*4656*384*8*2*2);
   
   // set up
   int fctr = 0, integration = 0, cyclectr = 0;
@@ -211,7 +211,7 @@ int main (int argc, char *argv[]) {
     // also read mjd of first spec
     if (read_fstable==0) {
       fsin=fopen(fsnam,"rb");
-      fread(fstable,sizeof(float),25*4656*48*8*2*2,fsin);
+      fread(fstable,sizeof(float),25*4656*384*8*2*2,fsin);
       fclose(fsin);
       
       fsin = fopen("/home/ubuntu/tmp/mjd.dat","r");
