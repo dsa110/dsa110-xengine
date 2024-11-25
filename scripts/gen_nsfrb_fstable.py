@@ -46,7 +46,8 @@ output_table = np.zeros((25, 4656, 384, 2),dtype=np.complex64)
 for iT in np.arange(25):
     for i in np.arange(2):
         output_table[iT,:,:,i] = cal_table[:,:,i] / vis_model[iT,:,:]
-        
+
+output_table /= np.abs(output_table)
 output_table = output_table.astype(np.complex64).view(np.float32)
 
 # write out
