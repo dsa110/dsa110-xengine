@@ -74,6 +74,9 @@ class Socket
     // Client initialization
     bool connect ( const std::string host, const int port );
 
+    // closing
+    bool closeit() const;
+
     // Data Transimission
     bool send ( const std::string ) const;
     int recv ( std::string& ) const;
@@ -275,6 +278,17 @@ bool Socket::connect ( const std::string address, const int port )
     return false;
 }
 
+bool Socket::closeit() const
+{
+
+  int retval = ::close( m_sock );
+  if (retval==0)
+    return true;
+  else
+    return false;
+
+}
+
 void Socket::set_non_blocking ( const bool b )
 {
   int opts;
@@ -349,6 +363,17 @@ const ClientSocket& ClientSocket::operator << ( const char * s ) const
 
 const ClientSocket& ClientSocket::operator << ( const size_t n ) const
 {
+
+  // close socket
+  if (n==0) {
+    if ( ! Socket::closeit() )
+      throw SocketException ( "Could not close socket." );
+    else {
+      syslog(LOG_INFO,"Closed client socket");
+    }
+  }
+  
+  
   std::ostringstream oss (std::ostringstream::out);
   oss << n;
   if ( ! Socket::send ( std::string( oss.str() ) ) )
@@ -2044,9 +2069,14 @@ void output_peaks(pinfo *p, int samp) {
 	    << p->out_beam[i]+p->BEAM0 << std::endl;
 	
 	client_socket << oss.str();
+	
 	oss.flush();
 	oss.str("");
       }
+
+      // close socket
+      client_socket << (size_t)(0);
+      
     }
       
     catch (SocketException& e )
