@@ -364,6 +364,8 @@ const ClientSocket& ClientSocket::operator << ( const char * s ) const
 const ClientSocket& ClientSocket::operator << ( const size_t n ) const
 {
 
+  std::ostringstream oss (std::ostringstream::out);
+  
   // close socket
   if (n==0) {
     if ( ! Socket::closeit() )
@@ -372,13 +374,12 @@ const ClientSocket& ClientSocket::operator << ( const size_t n ) const
       syslog(LOG_INFO,"Closed client socket");
     }
   }
+  else {
+    oss << n;
+    if ( ! Socket::send ( std::string( oss.str() ) ) )
+      throw SocketException ( "Could not write to socket." );
+  }
   
-  
-  std::ostringstream oss (std::ostringstream::out);
-  oss << n;
-  if ( ! Socket::send ( std::string( oss.str() ) ) )
-    throw SocketException ( "Could not write to socket." );
-
   return *this;
 }
 
