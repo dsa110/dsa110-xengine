@@ -2051,6 +2051,7 @@ void output_peaks(pinfo *p, int samp) {
       
     catch (SocketException& e )
       {
+	syslog(LOG_ERR,"Socket exception");
 	std::cout << "SocketException was caught:" << e.description() << std::endl;
       }
   }
