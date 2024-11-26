@@ -242,13 +242,17 @@ def get_monitor_dict(params, corr_num, my_ds):
 
         infoo = get_buf_info(buff['k'])
         if infoo==-1:
-            return -1
-
-        mon_dict['b'+str(bct)+'_name'] = buff['k']
-        mon_dict['b'+str(bct)+'_full'] = infoo[0]
-        mon_dict['b'+str(bct)+'_clear'] = infoo[1]
-        mon_dict['b'+str(bct)+'_written'] = infoo[2]
-        mon_dict['b'+str(bct)+'_read'] = infoo[3]
+            mon_dict['b'+str(bct)+'_name'] = buff['k']
+            mon_dict['b'+str(bct)+'_full'] = 0
+            mon_dict['b'+str(bct)+'_clear'] = 0
+            mon_dict['b'+str(bct)+'_written'] = 0
+            mon_dict['b'+str(bct)+'_read'] = 0
+        else:
+            mon_dict['b'+str(bct)+'_name'] = buff['k']
+            mon_dict['b'+str(bct)+'_full'] = infoo[0]
+            mon_dict['b'+str(bct)+'_clear'] = infoo[1]
+            mon_dict['b'+str(bct)+'_written'] = infoo[2]
+            mon_dict['b'+str(bct)+'_read'] = infoo[3]
 
         bct += 1
         
@@ -504,10 +508,12 @@ def corr_run(args):
 
         key = '/mon/corr/' + str(args.corr_num)
         md = get_monitor_dict(params,args.corr_num,my_ds)
-        if md!=-1:
+        if md==-1:
+            print("Could not get mon dict")
+        else:
             try:
                 my_ds.put_dict(key, md)
-                get_rms_into_etcd(args.corr_num)
+#                get_rms_into_etcd(args.corr_num)
 #                if args.instance=='search':
 #                    try:
 #                        #my_ds.put_dict('/mon/T1/'+str(args.corr_num-16),
