@@ -45,6 +45,7 @@ void usage()
 	   " -s SB number to include in filename [default 0]\n"
 	   " -t full path to fstable [if not provided will not fringestop]\n"
 	   " -j number of frequency integrations to average [default 48]\n"
+	   " -e declination to add to header [default 0.0]\n"
 	   " -h        print usage\n");
 }
 
@@ -79,9 +80,10 @@ int main (int argc, char *argv[]) {
   FILE *fout;
   int provided_fs = 0;
   int sb = 0;
+  float decl = 0.0;
   sprintf(fnam,"/home/ubuntu/tmp");
   
-  while ((arg=getopt(argc,argv,"c:f:j:t:s:k:dh")) != -1)
+  while ((arg=getopt(argc,argv,"c:f:j:t:s:k:e:dh")) != -1)
     {
       switch (arg)
 	{
@@ -126,6 +128,9 @@ int main (int argc, char *argv[]) {
 	  break;
 	case 'j':
 	  nfq = atoi(optarg);
+	  break;
+	case 'e':
+	  decl = atof(optarg);
 	  break;
 	case 'h':
 	  usage();
@@ -225,6 +230,7 @@ int main (int argc, char *argv[]) {
       fout=fopen(foutnam,"wb");
       fwrite(&mjd,sizeof(float),1,fout);
       fwrite(&sb,sizeof(int),1,fout);
+      fwrite(&decl,sizeof(float),1,fout);
       
       read_fstable=1;
     }
@@ -282,6 +288,7 @@ int main (int argc, char *argv[]) {
       fout=fopen(foutnam,"wb");
       fwrite(&mjd,sizeof(float),1,fout);
       fwrite(&sb,sizeof(int),1,fout);
+      fwrite(&decl,sizeof(float),1,fout);
 
     }
        
