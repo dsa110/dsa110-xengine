@@ -58,7 +58,7 @@
 const int MAXHOSTNAME = 200;
 const int MAXCONNECTIONS = 5;
 const int MAXRECV = 500;
-
+#define SENDSIZE 100000 // SIZE OF PACKET TO BE SENT IN BYTES -- DEPENDS ON MAX_GIANTS
 
 // exception to catch in try statement
 class SocketException
@@ -109,6 +109,7 @@ int close_socket(int * m_sock)
 
   //int retval = ::close( (*m_sock ));
   int retval = ::shutdown( (*m_sock ), SHUT_RDWR);
+  (*m_sock) = -1;
   if (retval==0)
     return 1;
   else {
@@ -118,9 +119,14 @@ int close_socket(int * m_sock)
 
 }
 
-int send_socket(int * m_sock, const std::string s)
+int send_socket(int * m_sock, const std::string s, char * output_data)
 {
-  int status = ::send ( (*m_sock), s.c_str(), s.size(), MSG_NOSIGNAL );
+
+  // copy to output_data
+  memset(output_data,0,SENDSIZE);
+  memcpy(output_data,s.c_str(), s.size());
+  
+  int status = ::send ( (*m_sock), output_data, SENDSIZE, MSG_NOSIGNAL );
   if ( status == -1 ) {
     throw SocketException ( "Could not send cands." );
     return 0;
@@ -143,7 +149,7 @@ int send_socket(int * m_sock, const std::string s)
 #define MAX_BOX 15
 #define MAX_GIANTS 10000
 #define DADA_BLOCK_KEY 0x0000dada // for capture program.
-#define SOCKET_CADENCE 1
+#define SOCKET_CADENCE 10
 
 int finished = 0;
 
@@ -185,6 +191,7 @@ typedef struct pinfo {
   int coincidencer_port;
   std::string coincidencer_host;
   int m_sock;
+  char * output_data; // fixed size data output
   char out_path[500]; // path or IP
   int BEAM_OFFSET;
   int BEAM0;
@@ -403,6 +410,7 @@ void initialize(FILE *fconf, pinfo * p) {
   
   // allocate everything
 
+  p->output_data = (char *)malloc(sizeof(char)*SENDSIZE);
   p->h_flagSpec = (float *)malloc(sizeof(float)*NCHAN*NBATCH);
   cudaMalloc((void **)(&p->d_flagSpec), sizeof(float)*NCHAN*NBATCH);
   p->rewinds = (unsigned char *)malloc(sizeof(unsigned char)*NCHAN*(p->NTIME-p->gulp)*NBEAMS);
@@ -495,6 +503,7 @@ void deallocator(pinfo * p) {
   free(p->peaks);
   free(p->stds);
   free(p->rewinds);
+  free(p->output_data);
   
 }
 
@@ -1795,7 +1804,7 @@ void output_peaks(pinfo *p, int samp, int restart_socket) {
     if (restart_socket) {
 
       // close it if already open
-      if (p->m_sock!=-1) {
+      /*if (p->m_sock!=-1) {
 	try
 	  {
 	    sstat *= close_socket(&p->m_sock);
@@ -1805,20 +1814,22 @@ void output_peaks(pinfo *p, int samp, int restart_socket) {
 	    syslog(LOG_ERR,"Socket exception: could not close socket");
 	    std::cout << "SocketException was caught:" << e.description() << std::endl;
 	  }
-      }
+	  }*/
 
       // open socket
-      try
-	{
-	  sstat *= open_socket(&p->m_sock,p->coincidencer_host,p->coincidencer_port);
-	}
-      catch (SocketException& e )
-	{
-	  syslog(LOG_ERR,"Socket exception: could not open socket");
-	  std::cout << "SocketException was caught:" << e.description() << std::endl;
-	}
-      
-
+      if (p->m_sock==-1) {
+	try
+	  {
+	    sstat *= open_socket(&p->m_sock,p->coincidencer_host,p->coincidencer_port);
+	  }
+	catch (SocketException& e )
+	  {
+	    syslog(LOG_ERR,"Socket exception: could not open socket");
+	    std::cout << "SocketException was caught:" << e.description() << std::endl;
+	    sstat = 0;
+	  }
+      }
+	
     }
 
     /*
@@ -1861,7 +1872,7 @@ void output_peaks(pinfo *p, int samp, int restart_socket) {
 	oss.str("");
       }
     */
-    if (sstat) {
+    if (sstat && (p->m_sock != -1)) {
       oss << (int)(samp/p->gulp)+1 << std::endl;
       
       // record output
@@ -1879,12 +1890,28 @@ void output_peaks(pinfo *p, int samp, int restart_socket) {
 
       try
 	{
-	  send_socket(&p->m_sock,oss.str());
+	  send_socket(&p->m_sock,oss.str(),p->output_data);
 	}
       catch (SocketException& e )
 	{
 	  syslog(LOG_ERR,"Socket exception: could not send cand");
 	  std::cout << "SocketException was caught:" << e.description() << std::endl;
+
+	  // close socket
+	  if (p->m_sock!=-1) {
+	    try
+	      {
+		close_socket(&p->m_sock);
+	      }
+	    catch (SocketException& e )
+	      {
+		syslog(LOG_ERR,"Socket exception: could not close socket");
+		std::cout << "SocketException was caught:" << e.description() << std::endl;
+	      }
+	  }
+	
+
+	  
 	}
       
       oss.flush();
