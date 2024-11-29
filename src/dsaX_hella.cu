@@ -59,43 +59,8 @@ const int MAXHOSTNAME = 200;
 const int MAXCONNECTIONS = 5;
 const int MAXRECV = 500;
 
-class Socket
-{
-  public:
-    Socket();
-    virtual ~Socket();
 
-    // Server initialization
-    bool create();
-    bool bind ( const char * address, const int port );
-    bool listen() const;
-    bool accept ( Socket& ) const;
-
-    // Client initialization
-    bool connect ( const std::string host, const int port );
-
-    // closing
-    bool closeit() const;
-
-    // Data Transimission
-    bool send ( const std::string ) const;
-    int recv ( std::string& ) const;
-
-    void set_non_blocking ( const bool );
-
-    bool is_valid() const { return m_sock != -1; }
-
-    int select_timeout ( float sleep_secs );
-
-  private:
-
-    int m_sock;
-
-    sockaddr_in m_addr;
-
-};
-
-
+// exception to catch in try statement
 class SocketException
 {
   public:
@@ -109,296 +74,60 @@ class SocketException
 
 };
 
+// open socket
+int open_socket(int * m_sock, const std::string address, const int port) {
 
-class ClientSocket : private Socket
-{
-  public:
-
-    ClientSocket ( std::string host, int port );
-    virtual ~ClientSocket(){};
-
-    const ClientSocket& operator << ( const std::string& ) const;
-    const ClientSocket& operator << ( const char * ) const;
-    const ClientSocket& operator << ( const size_t n ) const;
-    const ClientSocket& operator << ( const float f ) const;
-    const ClientSocket& operator >> ( std::string& ) const;
-
-};
-
-Socket::Socket() :
-  m_sock ( -1 )
-{
-
+  sockaddr_in m_addr;
+  
   memset ( &m_addr, 0, sizeof ( m_addr ) );
 
-}
-
-Socket::~Socket()
-{
-  if ( is_valid() )
-    ::close ( m_sock );
-}
-
-bool Socket::create()
-{
-  m_sock = socket ( AF_INET, SOCK_STREAM, 0 );
-
-  if ( ! is_valid() )
-    return false;
-
-
-  // TIME_WAIT - argh
+  // create stuff
+  (*m_sock) = socket ( AF_INET, SOCK_STREAM, 0 );
   int on = 1;
-  if ( setsockopt ( m_sock, SOL_SOCKET, SO_REUSEADDR, ( const char* ) &on, sizeof ( on ) ) == -1 )
-    return false;
-
-  return true;
-}
-
-
-bool Socket::bind ( const char * address, const int port )
-{
-
-  if ( ! is_valid() )
-  {
-    return false;
-  }
-
-  m_addr.sin_family = AF_INET;
-  m_addr.sin_port = htons ( port );
-  m_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-  if (strcmp(address, "any") == 0)
-    m_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-  else
-  {
-    m_addr.sin_addr.s_addr = inet_addr (address);
-    // if we didn't parse the address as an IP address
-    if (m_addr.sin_addr.s_addr == -1)
-    {
-      struct hostent * hp = gethostbyname (address);
-      memcpy(&(m_addr.sin_addr.s_addr), hp->h_addr, hp->h_length);
-    }
-  }
-
-  int bind_return = ::bind ( m_sock,
-           ( struct sockaddr * ) &m_addr,
-           sizeof ( m_addr ) );
-
-
-  if ( bind_return == -1 )
-    return false;
-
-  return true;
-}
-
-
-bool Socket::listen() const
-{
-  if ( ! is_valid() )
-    return false;
-
-  int listen_return = ::listen ( m_sock, MAXCONNECTIONS );
-
-  if ( listen_return == -1 )
-    return false;
-
-  return true;
-}
-
-
-bool Socket::accept ( Socket& new_Socket ) const
-{
-  int addr_length = sizeof ( m_addr );
-  new_Socket.m_sock = ::accept ( m_sock, ( sockaddr * ) &m_addr, ( socklen_t * ) &addr_length );
-
-  if ( new_Socket.m_sock <= 0 )
-    return false;
-  else
-    return true;
-}
-
-bool Socket::send ( const std::string s ) const
-{
-  int status = ::send ( m_sock, s.c_str(), s.size(), MSG_NOSIGNAL );
-  if ( status == -1 )
-    return false;
-  else
-    return true;
-}
-
-int Socket::recv ( std::string& s ) const
-{
-  char buf [ MAXRECV + 1 ];
-
-  s = "";
-
-  memset ( buf, 0, MAXRECV + 1 );
-
-  int status = ::recv ( m_sock, buf, MAXRECV, 0 );
-
-  if ( status == -1 )
-  {
-    std::cout << "status == -1   errno == " << errno << "  in Socket::recv\n";
+  if ( setsockopt ( (*m_sock), SOL_SOCKET, SO_REUSEADDR, ( const char* ) &on, sizeof ( on ) ) == -1 ) {
+    throw SocketException ( "Could not create socket." );
     return 0;
   }
-  else if ( status == 0 )
-  {
-    return 0;
-  }
-  else
-  {
-    s = buf;
-    return status;
-  }
-}
 
-bool Socket::connect ( const std::string address, const int port )
-{
-  if ( ! is_valid() ) return false;
-
+  // connect stuff
   m_addr.sin_family = AF_INET;
   m_addr.sin_port = htons ( port );
   m_addr.sin_addr.s_addr = inet_addr (address.c_str());
 
-  // if we didn't parse the address as an IP address
-  if (m_addr.sin_addr.s_addr == -1)
-  {
-    struct hostent * hp = gethostbyname (address.c_str());
-    memcpy(&(m_addr.sin_addr.s_addr), hp->h_addr, hp->h_length);
-  }
-
-  if ( errno == EAFNOSUPPORT ) return false;
-
-  int status = ::connect ( m_sock, ( sockaddr * ) &m_addr, sizeof ( m_addr ) );
-
-  if ( status == 0 )
-    return true;
-  else
-    return false;
-}
-
-bool Socket::closeit() const
-{
-
-  int retval = ::close( m_sock );
-  if (retval==0)
-    return true;
-  else
-    return false;
-
-}
-
-void Socket::set_non_blocking ( const bool b )
-{
-  int opts;
-
-  opts = fcntl ( m_sock,
-     F_GETFL );
-
-  if ( opts < 0 )
-    return;
-
-  if ( b )
-    opts = ( opts | O_NONBLOCK );
-  else
-    opts = ( opts & ~O_NONBLOCK );
-
-  fcntl ( m_sock,
-    F_SETFL,opts );
-
-}
-
-int Socket::select_timeout ( float sleep_secs )
-{
-  struct timeval timeout;
-  fd_set *rdsp = NULL;
-  fd_set readset;
-
-  float whole_seconds = floor (sleep_secs);
-  float micro_seconds = sleep_secs - whole_seconds;
-  micro_seconds *= 100000;
-
-  timeout.tv_sec = (long int) whole_seconds;
-  timeout.tv_usec = (long int) micro_seconds;
-
-  FD_ZERO (&readset);
-  FD_SET (m_sock, &readset);
-  rdsp = &readset;
-
-  // select returns the number of file descriptors changed
-  // 0 if timeout, -1 if error
-  return select (m_sock+1, rdsp, NULL, NULL, &timeout);
-}
-
-
-ClientSocket::ClientSocket ( std::string host, int port )
-{
-  if ( ! Socket::create() )
-    throw SocketException ( "Could not create client socket." );
-
-  if ( ! Socket::connect ( host, port ) )
-    throw SocketException ( "Could not bind to port." );
-
-  //  printf("Connected to socket %d\n",port);
-  
-}
-
-
-const ClientSocket& ClientSocket::operator << ( const std::string& s ) const
-{
-  if ( ! Socket::send ( s ) )
-    throw SocketException ( "Could not write to socket." );
-
-  return *this;
-}
-
-const ClientSocket& ClientSocket::operator << ( const char * s ) const
-{
-  if ( ! Socket::send ( std::string(s) ) )
-    throw SocketException ( "Could not write to socket." );
-
-  return *this;
-}
-
-const ClientSocket& ClientSocket::operator << ( const size_t n ) const
-{
-
-  std::ostringstream oss (std::ostringstream::out);
-  
-  // close socket
-  if (n==0) {
-    if ( ! Socket::closeit() )
-      throw SocketException ( "Could not close socket." );
-    else {
-      syslog(LOG_INFO,"Closed client socket");
-    }
-  }
+  // connect
+  int status = ::connect ( (*m_sock), ( sockaddr * ) &m_addr, sizeof ( m_addr )) ;
+  if (status==0) return 1;
   else {
-    oss << n;
-    if ( ! Socket::send ( std::string( oss.str() ) ) )
-      throw SocketException ( "Could not write to socket." );
+    throw SocketException ( "Could not connect to socket." );
+    return 0;
   }
   
-  return *this;
 }
 
-const ClientSocket& ClientSocket::operator << ( const float f ) const
+int close_socket(int * m_sock)
 {
-  std::ostringstream oss (std::ostringstream::out);
-  oss << f;
-  if ( ! Socket::send ( std::string( oss.str() ) ) )
-    throw SocketException ( "Could not write to socket." );
 
-  return *this;
+  //int retval = ::close( (*m_sock ));
+  int retval = ::shutdown( (*m_sock ), SHUT_RDWR);
+  if (retval==0)
+    return 1;
+  else {
+    throw SocketException ( "Could not close socket." );
+    return 0;
+  }
+
 }
 
-const ClientSocket& ClientSocket::operator >> ( std::string& s ) const
+int send_socket(int * m_sock, const std::string s)
 {
-  if ( ! Socket::recv ( s ) )
-    throw SocketException ( "Could not read from socket." );
+  int status = ::send ( (*m_sock), s.c_str(), s.size(), MSG_NOSIGNAL );
+  if ( status == -1 ) {
+    throw SocketException ( "Could not send cands." );
+    return 0;
+  }
+  else
+    return 1;
 
-  return *this;
 }
 
 
@@ -414,6 +143,7 @@ const ClientSocket& ClientSocket::operator >> ( std::string& s ) const
 #define MAX_BOX 15
 #define MAX_GIANTS 10000
 #define DADA_BLOCK_KEY 0x0000dada // for capture program.
+#define SOCKET_CADENCE 1
 
 int finished = 0;
 
@@ -454,6 +184,7 @@ typedef struct pinfo {
   int out_format; // 0 for file, 1 for socket, 2 for both
   int coincidencer_port;
   std::string coincidencer_host;
+  int m_sock;
   char out_path[500]; // path or IP
   int BEAM_OFFSET;
   int BEAM0;
@@ -626,6 +357,13 @@ void initialize(FILE *fconf, pinfo * p) {
   }
   fclose(fconf);
 
+  // set up socket
+  if (p->out_format==1)
+    p->m_sock=-1;
+  else
+    p->m_sock=0;
+  
+  
   // derived parameters
   p->NTIME=p->gulp;
   p->rewind=0;
@@ -2025,7 +1763,7 @@ void clear_peaks(pinfo *p) {
 }
 
 // output peaks
-void output_peaks(pinfo *p, int samp) {
+void output_peaks(pinfo *p, int samp, int restart_socket) {
 
   // text output
   FILE *fout;
@@ -2047,14 +1785,54 @@ void output_peaks(pinfo *p, int samp) {
 
   // socket output
   std::ostringstream oss;
+  oss.flush();
+  oss.str("");
+  int sstat=1;
   
   if (p->out_format != 0) {
-    
-    try {
-      ClientSocket client_socket ( p->coincidencer_host, p->coincidencer_port );
 
+    // reopen socket
+    if (restart_socket) {
+
+      // close it if already open
+      if (p->m_sock!=-1) {
+	try
+	  {
+	    sstat *= close_socket(&p->m_sock);
+	  }
+	catch (SocketException& e )
+	  {
+	    syslog(LOG_ERR,"Socket exception: could not close socket");
+	    std::cout << "SocketException was caught:" << e.description() << std::endl;
+	  }
+      }
+
+      // open socket
+      try
+	{
+	  sstat *= open_socket(&p->m_sock,p->coincidencer_host,p->coincidencer_port);
+	}
+      catch (SocketException& e )
+	{
+	  syslog(LOG_ERR,"Socket exception: could not open socket");
+	  std::cout << "SocketException was caught:" << e.description() << std::endl;
+	}
+      
+
+    }
+
+    /*
+    if (sstat) {
       oss << (int)(samp/p->gulp)+1 << std::endl;
-      client_socket << oss.str();
+      try
+	{
+	  send_socket(&p->m_sock,oss.str());
+	}
+      catch (SocketException& e )
+	{
+	  syslog(LOG_ERR,"Socket exception: could not send gulp");
+	  std::cout << "SocketException was caught:" << e.description() << std::endl;
+	}
       oss.flush();
       oss.str("");
 
@@ -2069,22 +1847,52 @@ void output_peaks(pinfo *p, int samp) {
 	    << p->DMs[p->out_dm_idx[i]] << " "
 	    << p->out_beam[i]+p->BEAM0 << std::endl;
 	
-	client_socket << oss.str();
+	try
+	  {
+	    send_socket(&p->m_sock,oss.str());
+	  }
+	catch (SocketException& e )
+	  {
+	    syslog(LOG_ERR,"Socket exception: could not send cand");
+	    std::cout << "SocketException was caught:" << e.description() << std::endl;
+	  }
 	
 	oss.flush();
 	oss.str("");
       }
+    */
+    if (sstat) {
+      oss << (int)(samp/p->gulp)+1 << std::endl;
+      
+      // record output
+      for( int i=0; i<p->out_npeaks; i++ ) {
+	oss << p->out_peaks[i] << " "
+	    << p->out_samp[i]+samp << " "
+	    << p->out_samp[i]+samp << " "
+	    << 262.144e-6*(p->out_samp[i]+samp)/86400. << " "
+	    << p->out_width[i] << " "
+	    << p->out_dm_idx[i] << " "
+	    << p->DMs[p->out_dm_idx[i]] << " "
+	    << p->out_beam[i]+p->BEAM0 << std::endl;
+	
+      }
 
-      // close socket
-      client_socket << (size_t)(0);
+      try
+	{
+	  send_socket(&p->m_sock,oss.str());
+	}
+      catch (SocketException& e )
+	{
+	  syslog(LOG_ERR,"Socket exception: could not send cand");
+	  std::cout << "SocketException was caught:" << e.description() << std::endl;
+	}
+      
+      oss.flush();
+      oss.str("");
+      
       
     }
-      
-    catch (SocketException& e )
-      {
-	syslog(LOG_ERR,"Socket exception");
-	std::cout << "SocketException was caught:" << e.description() << std::endl;
-      }
+
   }
 
 }
@@ -2216,11 +2024,11 @@ int main(int argc, char *argv[]) {
     fin=fopen(p.inp_path,"rb");
     
     int nbytes_header = read_header(fin);
-    //    fclose(fin);
-    //char * heade = (char *)malloc(sizeof(char)*nbytes_header);
-    //(fin)=fopen(p.inp_path,"rb");
-    //fread(heade, sizeof(char), nbytes_header, fin);
-    //free(heade);
+    fclose(fin);
+    char * heade = (char *)malloc(sizeof(char)*nbytes_header);
+    (fin)=fopen(p.inp_path,"rb");
+    fread(heade, sizeof(char), nbytes_header, fin);
+    free(heade);
     syslog(LOG_INFO,"Finished with header (nbytes %d) of input filFile %s\n",nbytes_header,p.inp_path);
   }
     
@@ -2254,12 +2062,16 @@ int main(int argc, char *argv[]) {
   //float * hodata = (float *)malloc(sizeof(float)*p.ntime_out*(p.ndms-2));
   FILE *ftest;
   int tot_flags = 0;
+  int socket_count = 0;
   
   while (finished==0) {
 
     // dada input
     if (p.inp_format==0) 
       block = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
+
+    if (p.inp_format==2)
+      fread(tmpbuf, sizeof(unsigned char), NBEAMS*p.gulp*NCHAN, fin);
     
     // set up logging and reset output
     //for (int i=0;i<NBEAMS;i++) beamflags[i] = 0;
@@ -2282,14 +2094,10 @@ int main(int argc, char *argv[]) {
       }
       
       // filterbank input
-      if (p.inp_format==2) {
-
-	fread(tmpbuf, sizeof(unsigned char), 2*NBEAMS*p.gulp*NCHAN, fin);
+      if (p.inp_format==2) {	
 	memcpy(p.data + bmm*p.NTIME*NCHAN + NCHAN*(p.NTIME-p.gulp),tmpbuf+(bmm+p.BEAM_OFFSET)*p.gulp*NCHAN,p.gulp*NCHAN);
 	memcpy(p.data + bmm*p.NTIME*NCHAN, p.rewinds + bmm*NCHAN*(p.NTIME-p.gulp), NCHAN*(p.NTIME-p.gulp));
 	memcpy(p.rewinds + bmm*NCHAN*(p.NTIME-p.gulp), p.data + bmm*p.NTIME*NCHAN + NCHAN*p.gulp, NCHAN*(p.NTIME-p.gulp));
-
-	
       }
 
     }
@@ -2358,7 +2166,10 @@ int main(int argc, char *argv[]) {
 
       begin = clock();
       // output peaks
-      output_peaks(&p,samp);
+      if (socket_count==0)
+	output_peaks(&p,samp,1);
+      else
+	output_peaks(&p,samp,0);
       // output flags
       //fbeam = fopen(p.beamflags,"a");
       fspec = fopen(p.specflags,"a");
@@ -2368,6 +2179,11 @@ int main(int argc, char *argv[]) {
       fclose(fspec);
       end = clock();
       outputt += (float)(end - begin) / CLOCKS_PER_SEC;
+
+      // increment socket_count
+      socket_count++;
+      if (socket_count==SOCKET_CADENCE)
+	socket_count=0;
       
     }
 
@@ -2380,8 +2196,9 @@ int main(int argc, char *argv[]) {
       finished = 1;
 
     // look for eof for fil input
-    if (p.inp_format==2)
+    if (p.inp_format==2) 
       if (feof(fin)) finished = 1;
+    //std::cout << "Finished: " << finished << std::endl;
 
     // close off dada block
     if (p.inp_format==0)
