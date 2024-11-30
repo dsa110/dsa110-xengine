@@ -83,11 +83,11 @@ int open_socket(int * m_sock, const std::string address, const int port) {
 
   // create stuff
   (*m_sock) = socket ( AF_INET, SOCK_STREAM, 0 );
-  int on = 1;
+  /*int on = 1;
   if ( setsockopt ( (*m_sock), SOL_SOCKET, SO_REUSEADDR, ( const char* ) &on, sizeof ( on ) ) == -1 ) {
     throw SocketException ( "Could not create socket." );
     return 0;
-  }
+    }*/
 
   // connect stuff
   m_addr.sin_family = AF_INET;
@@ -107,8 +107,8 @@ int open_socket(int * m_sock, const std::string address, const int port) {
 int close_socket(int * m_sock)
 {
 
-  //int retval = ::close( (*m_sock ));
-  int retval = ::shutdown( (*m_sock ), SHUT_RDWR);
+  int retval = ::close( (*m_sock ));
+  //int retval = ::shutdown( (*m_sock ), SHUT_RDWR);
   (*m_sock) = -1;
   if (retval==0)
     return 1;
@@ -123,10 +123,11 @@ int send_socket(int * m_sock, const std::string s, char * output_data)
 {
 
   // copy to output_data
-  memset(output_data,0,SENDSIZE);
-  memcpy(output_data,s.c_str(), s.size());
+  //memset(output_data,0,SENDSIZE);
+  //memcpy(output_data,s.c_str(), s.size());
   
-  int status = ::send ( (*m_sock), output_data, SENDSIZE, MSG_NOSIGNAL );
+  //int status = ::send ( (*m_sock), output_data, SENDSIZE, MSG_NOSIGNAL );
+  int status = ::send ( (*m_sock), s.c_str(), s.size(), MSG_NOSIGNAL );
   if ( status == -1 ) {
     throw SocketException ( "Could not send cands." );
     return 0;
@@ -149,7 +150,7 @@ int send_socket(int * m_sock, const std::string s, char * output_data)
 #define MAX_BOX 15
 #define MAX_GIANTS 10000
 #define DADA_BLOCK_KEY 0x0000dada // for capture program.
-#define SOCKET_CADENCE 10
+#define SOCKET_CADENCE 1
 
 int finished = 0;
 
@@ -1804,9 +1805,10 @@ void output_peaks(pinfo *p, int samp, int restart_socket) {
     if (restart_socket) {
 
       // close it if already open
-      /*if (p->m_sock!=-1) {
+      if (p->m_sock!=-1) {
 	try
 	  {
+	    syslog(LOG_INFO,"closing socket BEFORE");
 	    sstat *= close_socket(&p->m_sock);
 	  }
 	catch (SocketException& e )
@@ -1814,18 +1816,20 @@ void output_peaks(pinfo *p, int samp, int restart_socket) {
 	    syslog(LOG_ERR,"Socket exception: could not close socket");
 	    std::cout << "SocketException was caught:" << e.description() << std::endl;
 	  }
-	  }*/
+      }
 
       // open socket
       if (p->m_sock==-1) {
 	try
 	  {
+	    syslog(LOG_INFO,"opening socket");
 	    sstat *= open_socket(&p->m_sock,p->coincidencer_host,p->coincidencer_port);
 	  }
 	catch (SocketException& e )
 	  {
-	    syslog(LOG_ERR,"Socket exception: could not open socket");
+	    syslog(LOG_ERR,"Socket exception: could not open socket");	    
 	    std::cout << "SocketException was caught:" << e.description() << std::endl;
+	    p->m_sock = -1;
 	    sstat = 0;
 	  }
       }
@@ -1890,33 +1894,32 @@ void output_peaks(pinfo *p, int samp, int restart_socket) {
 
       try
 	{
+	  syslog(LOG_INFO,"sending data");
 	  send_socket(&p->m_sock,oss.str(),p->output_data);
 	}
       catch (SocketException& e )
 	{
 	  syslog(LOG_ERR,"Socket exception: could not send cand");
 	  std::cout << "SocketException was caught:" << e.description() << std::endl;
-
-	  // close socket
-	  if (p->m_sock!=-1) {
-	    try
-	      {
-		close_socket(&p->m_sock);
-	      }
-	    catch (SocketException& e )
-	      {
-		syslog(LOG_ERR,"Socket exception: could not close socket");
-		std::cout << "SocketException was caught:" << e.description() << std::endl;
-	      }
-	  }
-	
-
 	  
 	}
       
       oss.flush();
       oss.str("");
-      
+
+      // close socket if cadence is 1
+      if (SOCKET_CADENCE==1) {
+      	try
+	  {
+	    syslog(LOG_INFO,"closing socket AFTER");
+	    close_socket(&p->m_sock);
+	  }
+	catch (SocketException& e )
+	  {
+	    syslog(LOG_ERR,"Socket exception: could not close socket");
+	    std::cout << "SocketException was caught:" << e.description() << std::endl;
+	  }
+      }
       
     }
 
