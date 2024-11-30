@@ -1827,8 +1827,8 @@ void output_peaks(pinfo *p, int samp, int restart_socket) {
 	  }
 	catch (SocketException& e )
 	  {
-	    syslog(LOG_ERR,"Socket exception: could not open socket");	    
-	    std::cout << "SocketException was caught:" << e.description() << std::endl;
+	    syslog(LOG_ERR,"Socket exception: could not open socket: %d",sstat);	    
+	    //std::cout << "SocketException was caught:" << e.description() << std::endl;
 	    p->m_sock = -1;
 	    sstat = 0;
 	  }
@@ -1900,7 +1900,7 @@ void output_peaks(pinfo *p, int samp, int restart_socket) {
       catch (SocketException& e )
 	{
 	  syslog(LOG_ERR,"Socket exception: could not send cand");
-	  std::cout << "SocketException was caught:" << e.description() << std::endl;
+	  //std::cout << "SocketException was caught:" << e.description() << std::endl;
 	  
 	}
       
@@ -1917,7 +1917,7 @@ void output_peaks(pinfo *p, int samp, int restart_socket) {
 	catch (SocketException& e )
 	  {
 	    syslog(LOG_ERR,"Socket exception: could not close socket");
-	    std::cout << "SocketException was caught:" << e.description() << std::endl;
+	    //std::cout << "SocketException was caught:" << e.description() << std::endl;
 	  }
       }
       
