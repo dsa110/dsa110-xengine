@@ -58,85 +58,6 @@
 const int MAXHOSTNAME = 200;
 const int MAXCONNECTIONS = 5;
 const int MAXRECV = 500;
-#define SENDSIZE 100000 // SIZE OF PACKET TO BE SENT IN BYTES -- DEPENDS ON MAX_GIANTS
-
-// exception to catch in try statement
-class SocketException
-{
-  public:
-    SocketException ( std::string s ) : m_s ( s ) {};
-    ~SocketException (){};
-
-    std::string description() { return m_s; }
-
-  private:
-    std::string m_s;
-
-};
-
-// open socket
-int open_socket(int * m_sock, const std::string address, const int port) {
-
-  sockaddr_in m_addr;
-  
-  memset ( &m_addr, 0, sizeof ( m_addr ) );
-
-  // create stuff
-  (*m_sock) = socket ( AF_INET, SOCK_STREAM, 0 );
-  /*int on = 1;
-  if ( setsockopt ( (*m_sock), SOL_SOCKET, SO_REUSEADDR, ( const char* ) &on, sizeof ( on ) ) == -1 ) {
-    throw SocketException ( "Could not create socket." );
-    return 0;
-    }*/
-
-  // connect stuff
-  m_addr.sin_family = AF_INET;
-  m_addr.sin_port = htons ( port );
-  m_addr.sin_addr.s_addr = inet_addr (address.c_str());
-
-  // connect
-  int status = ::connect ( (*m_sock), ( sockaddr * ) &m_addr, sizeof ( m_addr )) ;
-  if (status==0) return 1;
-  else {
-    throw SocketException ( "Could not connect to socket." );
-    return 0;
-  }
-  
-}
-
-int close_socket(int * m_sock)
-{
-
-  int retval = ::close( (*m_sock ));
-  //int retval = ::shutdown( (*m_sock ), SHUT_RDWR);
-  (*m_sock) = -1;
-  if (retval==0)
-    return 1;
-  else {
-    throw SocketException ( "Could not close socket." );
-    return 0;
-  }
-
-}
-
-int send_socket(int * m_sock, const std::string s, char * output_data)
-{
-
-  // copy to output_data
-  //memset(output_data,0,SENDSIZE);
-  //memcpy(output_data,s.c_str(), s.size());
-  
-  //int status = ::send ( (*m_sock), output_data, SENDSIZE, MSG_NOSIGNAL );
-  int status = ::send ( (*m_sock), s.c_str(), s.size(), MSG_NOSIGNAL );
-  if ( status == -1 ) {
-    throw SocketException ( "Could not send cands." );
-    return 0;
-  }
-  else
-    return 1;
-
-}
-
 
 #define NMEDFILT 13
 #define NTSMED 19
@@ -191,8 +112,6 @@ typedef struct pinfo {
   int out_format; // 0 for file, 1 for socket, 2 for both
   int coincidencer_port;
   std::string coincidencer_host;
-  int m_sock;
-  char * output_data; // fixed size data output
   char out_path[500]; // path or IP
   int BEAM_OFFSET;
   int BEAM0;
@@ -364,13 +283,6 @@ void initialize(FILE *fconf, pinfo * p) {
     }   
   }
   fclose(fconf);
-
-  // set up socket
-  if (p->out_format==1)
-    p->m_sock=-1;
-  else
-    p->m_sock=0;
-  
   
   // derived parameters
   p->NTIME=p->gulp;
@@ -411,7 +323,6 @@ void initialize(FILE *fconf, pinfo * p) {
   
   // allocate everything
 
-  p->output_data = (char *)malloc(sizeof(char)*SENDSIZE);
   p->h_flagSpec = (float *)malloc(sizeof(float)*NCHAN*NBATCH);
   cudaMalloc((void **)(&p->d_flagSpec), sizeof(float)*NCHAN*NBATCH);
   p->rewinds = (unsigned char *)malloc(sizeof(unsigned char)*NCHAN*(p->NTIME-p->gulp)*NBEAMS);
@@ -504,7 +415,6 @@ void deallocator(pinfo * p) {
   free(p->peaks);
   free(p->stds);
   free(p->rewinds);
-  free(p->output_data);
   
 }
 
@@ -1798,129 +1708,72 @@ void output_peaks(pinfo *p, int samp, int restart_socket) {
   oss.flush();
   oss.str("");
   int sstat=1;
+  sockaddr_in m_addr;
+  int m_sock = -1;
   
   if (p->out_format != 0) {
 
-    // reopen socket
-    if (restart_socket) {
-
-      // close it if already open
-      if (p->m_sock!=-1) {
-	try
-	  {
-	    syslog(LOG_INFO,"closing socket BEFORE");
-	    sstat *= close_socket(&p->m_sock);
-	  }
-	catch (SocketException& e )
-	  {
-	    syslog(LOG_ERR,"Socket exception: could not close socket");
-	    std::cout << "SocketException was caught:" << e.description() << std::endl;
-	  }
-      }
-
-      // open socket
-      if (p->m_sock==-1) {
-	try
-	  {
-	    syslog(LOG_INFO,"opening socket");
-	    sstat *= open_socket(&p->m_sock,p->coincidencer_host,p->coincidencer_port);
-	  }
-	catch (SocketException& e )
-	  {
-	    syslog(LOG_ERR,"Socket exception: could not open socket: %d",sstat);	    
-	    //std::cout << "SocketException was caught:" << e.description() << std::endl;
-	    p->m_sock = -1;
-	    sstat = 0;
-	  }
-      }
+    // open socket
+    syslog(LOG_INFO,"opening socket");        
+    memset ( &m_addr, 0, sizeof ( m_addr ) );
+    m_sock = socket ( AF_INET, SOCK_STREAM, 0 );
+    if (m_sock==-1) {
+      syslog(LOG_ERR,"Socket exception: could not create socket");
+      return;
+    }
+    
+    // connect stuff
+    m_addr.sin_family = AF_INET;
+    m_addr.sin_port = htons ( p->coincidencer_port );
+    m_addr.sin_addr.s_addr = inet_addr (p->coincidencer_host.c_str());    
+    sstat = connect ( m_sock, ( sockaddr * ) &m_addr, sizeof ( m_addr )) ;
+    
+    if (sstat!=0) {
+      syslog(LOG_ERR,"Socket exception: could not open socket: %d",sstat);	    
+      return;
+    }
+    else
+      sstat=1;
 	
+    if (sstat && (m_sock != -1)) {
+      oss << (int)(samp/p->gulp)+1 << std::endl;
+      
+      // record output
+      for( int i=0; i<p->out_npeaks; i++ ) {
+	oss << p->out_peaks[i] << " "
+	    << p->out_samp[i]+samp << " "
+	    << p->out_samp[i]+samp << " "
+	    << 262.144e-6*(p->out_samp[i]+samp)/86400. << " "
+	    << p->out_width[i] << " "
+	    << p->out_dm_idx[i] << " "
+	    << p->DMs[p->out_dm_idx[i]] << " "
+	    << p->out_beam[i]+p->BEAM0 << std::endl;
+	
+      }
+
+
+      std::string s = oss.str();
+      syslog(LOG_INFO,"sending data");        
+      sstat = send ( m_sock, s.c_str(), s.size(), MSG_NOSIGNAL );
+      if (sstat==-1) {
+	syslog(LOG_ERR,"Socket exception: could not send cand");
+	return;
+      }
+      
+      oss.flush();
+      oss.str("");
+
     }
 
-    /*
-    if (sstat) {
-      oss << (int)(samp/p->gulp)+1 << std::endl;
-      try
-	{
-	  send_socket(&p->m_sock,oss.str());
-	}
-      catch (SocketException& e )
-	{
-	  syslog(LOG_ERR,"Socket exception: could not send gulp");
-	  std::cout << "SocketException was caught:" << e.description() << std::endl;
-	}
-      oss.flush();
-      oss.str("");
-
-      // record output
-      for( int i=0; i<p->out_npeaks; i++ ) {
-	oss << p->out_peaks[i] << " "
-	    << p->out_samp[i]+samp << " "
-	    << p->out_samp[i]+samp << " "
-	    << 262.144e-6*(p->out_samp[i]+samp)/86400. << " "
-	    << p->out_width[i] << " "
-	    << p->out_dm_idx[i] << " "
-	    << p->DMs[p->out_dm_idx[i]] << " "
-	    << p->out_beam[i]+p->BEAM0 << std::endl;
-	
-	try
-	  {
-	    send_socket(&p->m_sock,oss.str());
-	  }
-	catch (SocketException& e )
-	  {
-	    syslog(LOG_ERR,"Socket exception: could not send cand");
-	    std::cout << "SocketException was caught:" << e.description() << std::endl;
-	  }
-	
-	oss.flush();
-	oss.str("");
+    // close socket
+    if (m_sock != -1) {
+      syslog(LOG_INFO,"closing socket AFTER");
+      sstat = close( m_sock );
+      if (sstat!=0) {
+	syslog(LOG_ERR,"Socket exception: could not close socket: %d",sstat);
+	return;
       }
-    */
-    if (sstat && (p->m_sock != -1)) {
-      oss << (int)(samp/p->gulp)+1 << std::endl;
-      
-      // record output
-      for( int i=0; i<p->out_npeaks; i++ ) {
-	oss << p->out_peaks[i] << " "
-	    << p->out_samp[i]+samp << " "
-	    << p->out_samp[i]+samp << " "
-	    << 262.144e-6*(p->out_samp[i]+samp)/86400. << " "
-	    << p->out_width[i] << " "
-	    << p->out_dm_idx[i] << " "
-	    << p->DMs[p->out_dm_idx[i]] << " "
-	    << p->out_beam[i]+p->BEAM0 << std::endl;
-	
-      }
-
-      try
-	{
-	  syslog(LOG_INFO,"sending data");
-	  send_socket(&p->m_sock,oss.str(),p->output_data);
-	}
-      catch (SocketException& e )
-	{
-	  syslog(LOG_ERR,"Socket exception: could not send cand");
-	  //std::cout << "SocketException was caught:" << e.description() << std::endl;
-	  
-	}
-      
-      oss.flush();
-      oss.str("");
-
-      // close socket if cadence is 1
-      if (SOCKET_CADENCE==1) {
-      	try
-	  {
-	    syslog(LOG_INFO,"closing socket AFTER");
-	    close_socket(&p->m_sock);
-	  }
-	catch (SocketException& e )
-	  {
-	    syslog(LOG_ERR,"Socket exception: could not close socket");
-	    //std::cout << "SocketException was caught:" << e.description() << std::endl;
-	  }
-      }
-      
+      m_sock = -1;
     }
 
   }
