@@ -116,6 +116,7 @@ typedef struct pinfo {
   int BEAM_OFFSET;
   int BEAM0;
   int flag1, flag2; // flag ranges
+  int output_bandpass;
   
   // derived params
   int NTIME; // gulp that includes rewind
@@ -145,6 +146,7 @@ typedef struct pinfo {
   half * batch, * mask, * d_smooth;
   float * d_ts;
   int batch_stride;
+  float * d_bpout;
   
   // boxcars
   Npp32f * boxes;
@@ -204,6 +206,7 @@ void initialize(FILE *fconf, pinfo * p) {
   char c1[20], c2[500];
   p->flag1 = -1;
   p->flag2 = -1;
+  p->output_bandpass = 0;
   while (!feof(fconf)) {
 
     read = getline(&line, &len, fconf);
@@ -268,6 +271,8 @@ void initialize(FILE *fconf, pinfo * p) {
       p->flag1=atoi(c2);
     if (strcmp(c1,"FLAG2")==0)
       p->flag2=atoi(c2);
+    if (strcmp(c1,"OUTPUT_BANDPASS")==0)
+      p->output_bandpass=atoi(c2);
     
     if (strcmp(c1,"SCRUNCH")==0) {
 
@@ -340,6 +345,7 @@ void initialize(FILE *fconf, pinfo * p) {
   cudaMalloc((void **)(&p->d_smooth), NBATCH * NCHAN * p->batch_stride * sizeof(half));  
   p->d_dedisp = nppiMalloc_32f_C1(p->ntime_dd,p->ndms,&(p->d_dedisp_step));
   cudaMalloc((void **)(&p->d_ts), NBATCH * p->NTIME * sizeof(float));
+  cudaMalloc((&p->d_bpout), NBATCH * NCHAN * sizeof(float));
 
   printf("Will use %d DM trials, output %d times, process %d times with stride %d\n",p->ndms,p->ntime_dd,p->NTIME,p->batch_stride);
 
@@ -397,6 +403,7 @@ void deallocator(pinfo * p) {
   printf("deallocating pinfo struct\n");
   free(p->data);
   free(p->h_dataF);
+  cudaFree(p->d_bpout);
   cudaFree(p->d_data);
   cudaFree(p->batch);
   cudaFree(p->mask);
@@ -439,6 +446,7 @@ void help() {
   printf("PORT <T2 port>\n");
   printf("GPU <GPU ID 0 or 1>\n");
   printf("BEAM0 <first beam in output>\n");
+  printf("OUTPUT_BANDPASS <0 or 1 or 2>\n");
   printf("SCRUNCH <number of scrunches>\n");
   printf("<time scrunch> <frequency scrunch> <flagging threshold> <number of iterations>\n");
   printf("repeat the above as many times as you like for different parameters\n");
@@ -1285,6 +1293,15 @@ void fastflagger(pinfo * p) {
   cudaMemset(p->d_flagSpec,0,4*NBATCH*NCHAN);
   float mn_bp[nBatches], tmp;
 
+  // output bandpass
+  FILE *fout;
+  char fnam[200];
+  float * h_bpout = (float *)malloc(sizeof(float)*NBATCH*NCHAN);
+  if (p->output_bandpass>0) {
+    sprintf(fnam,"/home/ubuntu/data/bpout_%d.tmp",p->output_bandpass);
+    fout=fopen(fnam,"w");
+  }
+  
   //printf("fastflagger ");
   
   // loop over batches
@@ -1298,6 +1315,16 @@ void fastflagger(pinfo * p) {
     end = clock();
     p->t7 += (float)(end - begin) / CLOCKS_PER_SEC;
 
+    // output init bandpass
+    if (p->output_bandpass>0) {
+      begin = clock();
+      calc_bandpass<<<NCHAN*NBATCH,256>>>(p->batch, p->d_bpout, p->NTIME, p->batch_stride);
+      cudaMemcpy(h_bpout,p->d_bpout,NBATCH*NCHAN*4,cudaMemcpyDeviceToHost);
+      for (int i=0;i<NBATCH*NCHAN;i++)
+	fprintf(fout,"%g\n",h_bpout[i]);
+      end = clock();
+      p->t8 += (float)(end - begin) / CLOCKS_PER_SEC;
+    }
 
     // loop over scrunches
     for (int scrnch=0;scrnch<p->nscrunches;scrnch++) {
@@ -1313,12 +1340,23 @@ void fastflagger(pinfo * p) {
 
     cudaDeviceSynchronize();
 
+    // output final bandpass
+    if (p->output_bandpass>0) {
+      begin = clock();
+      calc_bandpass<<<NCHAN*NBATCH,256>>>(p->batch, p->d_bpout, p->NTIME, p->batch_stride);
+      cudaMemcpy(h_bpout,p->d_bpout,NBATCH*NCHAN,cudaMemcpyDeviceToHost);
+      for (int i=0;i<NBATCH*NCHAN;i++)
+	fprintf(fout,"%g\n",h_bpout[i]);
+      end = clock();
+      p->t8 += (float)(end - begin) / CLOCKS_PER_SEC;
+    }
+
     // unload the batch
     begin = clock();
     transpose_output_handler(p->d_data+batch*NBATCH*NCHAN*p->NTIME,p->batch,p->NTIME,p->batch_stride);
     cudaMemcpy(p->h_flagSpec,p->d_flagSpec,4*NBATCH*NCHAN,cudaMemcpyDeviceToHost);
     end = clock();
-    p->t8 += (float)(end - begin) / CLOCKS_PER_SEC;
+    p->t7 += (float)(end - begin) / CLOCKS_PER_SEC;
 
     
     
@@ -1330,6 +1368,13 @@ void fastflagger(pinfo * p) {
   //printf("\n");
   
   syslog(LOG_INFO,"fastflagger %g %g %g %g",mn_bp[0],mn_bp[1],mn_bp[2],mn_bp[3]);
+
+  if (p->output_bandpass>0) {
+    sprintf(fnam,"mv /home/ubuntu/data/bpout_%d.tmp /home/ubuntu/data/bpout_%d.out",p->output_bandpass,p->output_bandpass);
+    system(fnam);
+    fclose(fout);
+  }
+  free(h_bpout);
   
 }
 
