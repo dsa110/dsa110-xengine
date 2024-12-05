@@ -1344,7 +1344,7 @@ void fastflagger(pinfo * p) {
     if (p->output_bandpass>0) {
       begin = clock();
       calc_bandpass<<<NCHAN*NBATCH,256>>>(p->batch, p->d_bpout, p->NTIME, p->batch_stride);
-      cudaMemcpy(h_bpout,p->d_bpout,NBATCH*NCHAN,cudaMemcpyDeviceToHost);
+      cudaMemcpy(h_bpout,p->d_bpout,NBATCH*NCHAN*4,cudaMemcpyDeviceToHost);
       for (int i=0;i<NBATCH*NCHAN;i++)
 	fprintf(fout,"%g\n",h_bpout[i]);
       end = clock();
