@@ -7,6 +7,7 @@ dsaX_capture_manythread
 dsaX_dbnic
 dsaX_fake
 dsaX_filTrigger
+dsaX_filTrigger_twoInput
 dsaX_nicdb
 dsaX_reorder_raw
 dsaX_simplesplit

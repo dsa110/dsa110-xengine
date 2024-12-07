@@ -103,6 +103,7 @@ typedef struct pinfo {
   // input params
   int inp_format; // 0 for dada, 1 for file, 2 for filterbank
   char inp_path[500];
+  char dada_out[100];
   float minDM, maxDM, snr;
   int minWidth, maxWidth;
   int gulp;
@@ -253,6 +254,11 @@ void initialize(FILE *fconf, pinfo * p) {
     if (strcmp(c1,"INPUT_PATH")==0) {
       strcpy(p->inp_path,c2);
       printf("Input path: %s\n",p->inp_path);
+    }
+
+    if (strcmp(c1,"DADA_OUT")==0) {
+      strcpy(p->dada_out,c2);
+      printf("DADA out: %s\n",p->dada_out);
     }
 
     if (strcmp(c1,"DM_MIN")==0)
@@ -438,6 +444,7 @@ void help() {
   printf("Everything is in the config file. Specific parameters include: \n");
   printf("INPUT <DADA or FILE or FILTERBANK>\n");
   printf("INPUT_PATH <dada buffer or full path to filterbank file>\n");
+  printf("DADA_OUT <dada buffer>\n");
   printf("BEAM_OFFSET <offset in number of beams in input dada buffer>\n");
   printf("DM_MIN <min DM of search>\n");
   printf("DM_MAX <max DM of search>\n");
@@ -1968,10 +1975,12 @@ int main(int argc, char *argv[]) {
 
   // DADA Header plus Data Unit 
   dada_hdu_t* hdu_in = 0;
+  dada_hdu_t* hdu_out = 0;
   key_t in_key = DADA_BLOCK_KEY;
-  char * header_in;
+  key_t out_key = DADA_BLOCK_KEY;
+  char * header_in, * header_out;
   uint64_t header_size = 0;
-  uint64_t block_size;
+  uint64_t block_size, block_out;
 
   // dada input
   if (p.inp_format==0) {
@@ -1986,6 +1995,17 @@ int main(int argc, char *argv[]) {
     block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
     syslog(LOG_INFO,"Connected to dada buffer\n");
 
+    sscanf(p.dada_out, "%x", &out_key);
+    hdu_out  = dada_hdu_create ();
+    dada_hdu_set_key (hdu_out, out_key);
+    dada_hdu_connect (hdu_out);
+    dada_hdu_lock_write(hdu_out);
+    header_out = ipcbuf_get_next_write (hdu_out->header_block);
+    memcpy (header_out, header_in, header_size);
+    ipcbuf_mark_filled (hdu_out->header_block, header_size);
+    block_out = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_out->data_block);
+    syslog(LOG_INFO,"Ready for output buffer\n");
+    
   }
   
   // text file input
@@ -2029,7 +2049,7 @@ int main(int argc, char *argv[]) {
   // dada stuff
   char * block;
   uint64_t  bytes_read = 0;
-  uint64_t block_id;
+  uint64_t block_id, written;
 
   // timer stuff
   float readt = 0., flagt = 0., dedispt = 0., smootht = 0., peakt = 0., outputt = 0.;
@@ -2086,12 +2106,25 @@ int main(int argc, char *argv[]) {
     end = clock();
     readt += (float)(end - begin) / CLOCKS_PER_SEC;
 
+    // if gulp is zero
+    if (p.inp_format==0 && gulp==0) {
+      cudaMemcpy(p.data,p.d_data+NBEAMS*(p.NTIME-p.gulp)*NCHAN,NBEAMS*p.gulp*NCHAN,cudaMemcpyDeviceToHost);
+      written = ipcio_write (hdu_out->data_block, (char *)(p.data), block_out);
+    }
+
+
     if ((gulp>0 && p.inp_format!=1) || (p.inp_format==1)) {
       
       begin = clock();
       //printf("Flagging\n");
       fastflagger(&p);
-
+      
+      // write to dada
+      if (p.inp_format==0) {
+	cudaMemcpy(p.data,p.d_data+NBEAMS*(p.NTIME-p.gulp)*NCHAN,NBEAMS*p.gulp*NCHAN,cudaMemcpyDeviceToHost);
+	written = ipcio_write (hdu_out->data_block, (char *)(p.data), block_out);
+      }
+      
       // write out to disk
       /*cudaMemcpy(hodata,p.d_data,NCHAN*p.NTIME,cudaMemcpyDeviceToHost);
       ftest = fopen("image.out","w");
