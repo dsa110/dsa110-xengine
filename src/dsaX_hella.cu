@@ -2108,7 +2108,9 @@ int main(int argc, char *argv[]) {
 
     // if gulp is zero
     if (p.inp_format==0 && gulp==0) {
-      cudaMemcpy(p.data,p.d_data+NBEAMS*(p.NTIME-p.gulp)*NCHAN,NBEAMS*p.gulp*NCHAN,cudaMemcpyDeviceToHost);
+
+      for (int bmm=0;bmm<NBEAMS;bmm++) 
+	cudaMemcpy(p.data, p.d_data + bmm*p.NTIME*NCHAN + NCHAN*(p.NTIME-p.gulp),p.gulp*NCHAN, cudaMemcpyDeviceToHost);      
       written = ipcio_write (hdu_out->data_block, (char *)(p.data), block_out);
     }
 
@@ -2118,20 +2120,7 @@ int main(int argc, char *argv[]) {
       begin = clock();
       //printf("Flagging\n");
       fastflagger(&p);
-      
-      // write to dada
-      if (p.inp_format==0) {
-	cudaMemcpy(p.data,p.d_data+NBEAMS*(p.NTIME-p.gulp)*NCHAN,NBEAMS*p.gulp*NCHAN,cudaMemcpyDeviceToHost);
-	written = ipcio_write (hdu_out->data_block, (char *)(p.data), block_out);
-      }
-      
-      // write out to disk
-      /*cudaMemcpy(hodata,p.d_data,NCHAN*p.NTIME,cudaMemcpyDeviceToHost);
-      ftest = fopen("image.out","w");
-      for (int i=0;i<NCHAN*p.NTIME;i++) 
-	fprintf(ftest,"%f\n",(float)(hodata[i]));
-	fclose(ftest);*/
-      
+
       // deal with flags
       for (int j=0;j<NBATCH;j++) {
 	for (int i=0;i<NCHAN;i++) {
@@ -2142,6 +2131,25 @@ int main(int argc, char *argv[]) {
       }
       end = clock();
       flagt += (float)(end - begin) / CLOCKS_PER_SEC;
+
+      
+      // write to dada
+      begin = clock();
+      if (p.inp_format==0) {
+	for (int bmm=0;bmm<NBEAMS;bmm++) 
+	  cudaMemcpy(p.data, p.d_data + bmm*p.NTIME*NCHAN + NCHAN*(p.NTIME-p.gulp),p.gulp*NCHAN, cudaMemcpyDeviceToHost);      
+	written = ipcio_write (hdu_out->data_block, (char *)(p.data), block_out);
+      }
+      end = clock();
+      readt += (float)(end - begin) / CLOCKS_PER_SEC;
+      
+      // write out to disk
+      /*cudaMemcpy(hodata,p.d_data,NCHAN*p.NTIME,cudaMemcpyDeviceToHost);
+      ftest = fopen("image.out","w");
+      for (int i=0;i<NCHAN*p.NTIME;i++) 
+	fprintf(ftest,"%f\n",(float)(hodata[i]));
+	fclose(ftest);*/
+      
 
       // loop over beams to dedisperse and search
       // check time, out_npeaks
