@@ -2110,7 +2110,7 @@ int main(int argc, char *argv[]) {
     if (p.inp_format==0 && gulp==0) {
 
       for (int bmm=0;bmm<NBEAMS;bmm++) 
-	cudaMemcpy(p.data, p.d_data + bmm*p.NTIME*NCHAN + NCHAN*(p.NTIME-p.gulp),p.gulp*NCHAN, cudaMemcpyDeviceToHost);      
+	cudaMemcpy(p.data + bmm*p.gulp*NCHAN, p.d_data + bmm*p.NTIME*NCHAN + NCHAN*(p.NTIME-p.gulp),p.gulp*NCHAN, cudaMemcpyDeviceToHost);      
       written = ipcio_write (hdu_out->data_block, (char *)(p.data), block_out);
     }
 
@@ -2137,7 +2137,7 @@ int main(int argc, char *argv[]) {
       begin = clock();
       if (p.inp_format==0) {
 	for (int bmm=0;bmm<NBEAMS;bmm++) 
-	  cudaMemcpy(p.data, p.d_data + bmm*p.NTIME*NCHAN + NCHAN*(p.NTIME-p.gulp),p.gulp*NCHAN, cudaMemcpyDeviceToHost);      
+	  cudaMemcpy(p.data + bmm*p.gulp*NCHAN, p.d_data + bmm*p.NTIME*NCHAN + NCHAN*(p.NTIME-p.gulp),p.gulp*NCHAN, cudaMemcpyDeviceToHost);      
 	written = ipcio_write (hdu_out->data_block, (char *)(p.data), block_out);
       }
       end = clock();
