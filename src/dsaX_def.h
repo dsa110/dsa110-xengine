@@ -86,10 +86,10 @@
 // for second corner turn
 #define FIL_PORT0 6625 // port for first chan group
 #define NCLIENTS 16 // number of client dbnic processes to expect
-#define NSAMPS_PER_BLOCK 16384 // number of samples per block
+#define NSAMPS_PER_BLOCK 8192 // number of samples per block
 #define NCHAN_FIL 768 // final number of filterbank chans
 #define NBEAMS_PER_BLOCK 192 // number of beams to expect
-#define NSAMPS_PER_TRANSMIT 768 // number of samples transmitted at one time
+#define NSAMPS_PER_TRANSMIT 256 // number of samples transmitted at one time
 #define NBMS 768
 #define P_SIZE 4108
 #define NWAIT 100000
