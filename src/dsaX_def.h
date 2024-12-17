@@ -73,7 +73,7 @@
 #define NOUTBLOCKS 15 // number of input blocks stored by trigger
 #define NANTS 96
 #define NCHAN_PER_PACKET 384
-#define NBEAMS 512
+#define NBEAMS 768
 
 // for beamformer
 //#define sep 1.0 // arcmin
@@ -88,9 +88,9 @@
 #define NCLIENTS 16 // number of client dbnic processes to expect
 #define NSAMPS_PER_BLOCK 16384 // number of samples per block
 #define NCHAN_FIL 768 // final number of filterbank chans
-#define NBEAMS_PER_BLOCK 128 // number of beams to expect
-#define NSAMPS_PER_TRANSMIT 512 // number of samples transmitted at one time
-#define NBMS 512
+#define NBEAMS_PER_BLOCK 192 // number of beams to expect
+#define NSAMPS_PER_TRANSMIT 768 // number of samples transmitted at one time
+#define NBMS 768
 #define P_SIZE 4108
 #define NWAIT 100000
 

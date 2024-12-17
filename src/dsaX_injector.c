@@ -38,7 +38,7 @@
 
 #define NTIMES_P 16384  // # of time samples (assuming 1ms sampling period)
 #define NCHAN_P 768	// # of channels on BF node side
-#define NBEAMS_P 128	// # of beams on BF side
+#define NBEAMS_P 192	// # of beams on BF side
 #define M_P NTIMES_P
 #define N_P 32
 #define HDR_SIZE 4096

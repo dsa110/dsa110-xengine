@@ -63,7 +63,7 @@ const int MAXRECV = 500;
 #define NTSMED 19
 #define NBATCH 16
 #define NCHAN 768
-#define NBEAMS 64
+#define NBEAMS 96
 #define NCHAN_BOX 48
 #define NTIME_BOX 500
 #define MAX_DM 2000
@@ -319,7 +319,7 @@ void initialize(FILE *fconf, pinfo * p) {
   
   
   // set up DM plan
-  dedisp_create_plan(&p->dedispersion_plan,NCHAN,262.144e-6,1498.75,0.244140625);
+  dedisp_create_plan(&p->dedispersion_plan,NCHAN,2.*262.144e-6,1498.75,0.244140625);
   // generate DM list  
   dedisp_generate_dm_list(p->dedispersion_plan,p->minDM,p->maxDM,40,TOL);
   p->DMs = dedisp_get_dm_list(p->dedispersion_plan);
@@ -1393,7 +1393,12 @@ void fastflagger(pinfo * p) {
       tmp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, p->scrunches[scrnch].tscrunch,p->scrunches[scrnch].fscrunch, p->scrunches[scrnch].thresh,1,0,p->d_flagSpec,p->flag1,p->flag2);
       cudaDeviceSynchronize();
     }
+
+    tmp = bandpass_flag(p,p->batch);
+    
     tmp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, 8, 8, 100., 0, 1, p->d_flagSpec,p->flag1,p->flag2);
+    
+    
     //    printf("\n");
 
     cudaDeviceSynchronize();
@@ -1799,7 +1804,7 @@ void output_peaks(pinfo *p, int samp, int restart_socket) {
       fprintf(fout,"A %g %d %g %d %d %g %d\n",p->peaks[i],p->samp[i]+samp,262.144e-6*(p->samp[i]+samp),p->width[i],p->dm_idx[i],p->DMs[p->dm_idx[i]],bm);
     else
     fprintf(fout,"B %g %d %g %d %d %g %d\n",p->peaks[i],p->samp[i]+samp,262.144e-6*(p->samp[i]+samp),p->width[i],p->dm_idx[i],p->DMs[p->dm_idx[i]],bm);*/
-      fprintf(fout,"%g %d %d %g %d %d %g %d\n",p->out_peaks[i],p->out_samp[i]+samp,p->out_samp[i]+samp,262.144e-6*(p->out_samp[i]+samp)/86400.,p->out_width[i],p->out_dm_idx[i],p->DMs[p->out_dm_idx[i]],p->out_beam[i]+p->BEAM0);
+      fprintf(fout,"%g %d %d %g %d %d %g %d\n",p->out_peaks[i],p->out_samp[i]+samp,p->out_samp[i]+samp,2.*262.144e-6*(p->out_samp[i]+samp)/86400.,p->out_width[i],p->out_dm_idx[i],p->DMs[p->out_dm_idx[i]],p->out_beam[i]+p->BEAM0);
 
     }
     fclose(fout);
@@ -1846,7 +1851,7 @@ void output_peaks(pinfo *p, int samp, int restart_socket) {
 	oss << p->out_peaks[i] << " "
 	    << p->out_samp[i]+samp << " "
 	    << p->out_samp[i]+samp << " "
-	    << 262.144e-6*(p->out_samp[i]+samp)/86400. << " "
+	    << 2.*262.144e-6*(p->out_samp[i]+samp)/86400. << " "
 	    << p->out_width[i] << " "
 	    << p->out_dm_idx[i] << " "
 	    << p->DMs[p->out_dm_idx[i]] << " "
@@ -1966,7 +1971,9 @@ int main(int argc, char *argv[]) {
   
   // set up pipeline, allocate appropriate mem
   pinfo p;
-  initialize(fconf,&p);  
+  initialize(fconf,&p);
+
+  exit(1);
   
   // begin read of data
   FILE *fin;

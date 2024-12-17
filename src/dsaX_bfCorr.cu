@@ -45,7 +45,7 @@ using std::endl;
 #define power_cycle 8
 
 // beam sep
-#define sep 1.0 // arcmin
+#define sep 0.666 // arcmin
 
 /* global variables */
 int DEBUG = 0;
@@ -148,7 +148,7 @@ void initialize(dmem * d, int bf, int subtract_ib) {
   if (bf==1) {
     cudaMalloc((void **)(&d->d_input), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS/2)*NCHAN_PER_PACKET*2*2);
     cudaMalloc((void **)(&d->d_big_input), sizeof(char)*(NPACKETS_PER_BLOCK)*(NANTS)*NCHAN_PER_PACKET*2*2);
-    cudaMalloc((void **)(&d->d_htx), sizeof(half)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2);
+    cudaMalloc((void **)(&d->d_htx), sizeof(half)*(NPACKETS_PER_BLOCK/8)*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2);
     cudaMalloc((void **)(&d->d_ibsum), sizeof(half)*(NCHAN_PER_PACKET/8)*8*2*NPACKETS_PER_BLOCK);
     cudaMalloc((void **)(&d->d_bar), sizeof(half)*(NCHAN_PER_PACKET/8)*8*2*NPACKETS_PER_BLOCK*(NANTS/2));
     cudaMalloc((void **)(&d->d_bai), sizeof(half)*(NCHAN_PER_PACKET/8)*8*2*NPACKETS_PER_BLOCK*(NANTS/2));
@@ -162,7 +162,7 @@ void initialize(dmem * d, int bf, int subtract_ib) {
     cudaMalloc((void **)(&d->d_bigbeam_a_i), sizeof(half)*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2*NPACKETS_PER_BLOCK);
     cudaMalloc((void **)(&d->d_bigbeam_b_r), sizeof(half)*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2*NPACKETS_PER_BLOCK);
     cudaMalloc((void **)(&d->d_bigbeam_b_i), sizeof(half)*(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2*NPACKETS_PER_BLOCK);
-    cudaMalloc((void **)(&d->d_bigpower), sizeof(unsigned char)*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS));
+    cudaMalloc((void **)(&d->d_bigpower), sizeof(unsigned char)*(NPACKETS_PER_BLOCK/8)*(NCHAN_PER_PACKET/8)*(NBEAMS));
     cudaMalloc((void **)(&d->d_chscf), sizeof(float)*NBEAMS); // beam scale factor
     cudaMalloc((void **)(&d->d_flagants), sizeof(int)*NANTS); // flag ants
     d->h_chscf = (float *)malloc(sizeof(float)*NBEAMS);
@@ -650,15 +650,15 @@ __global__ void transpose_fluff_bf(unsigned short * idata, half * dra, half * di
 
 /* POWER SUM AND TRANSPOSE OUTPUT
  - Input for each pol and r/i is [NCHAN_PER_PACKET/8, NBEAMS/2, 8chan, 2 times, NPACKETS_PER_BLOCK] 
- - want to form total power, and sum total powers over 4 PACKETS_PER_BLOCK
- - Then do a transpose to [NPACKETS_PER_BLOCK/4, NCHAN_PER_PACKET/8, NBEAMS/2, 8chan, 2 times]
+ - want to form total power, and sum total powers over 8 PACKETS_PER_BLOCK
+ - Then do a transpose to [NPACKETS_PER_BLOCK/8, NCHAN_PER_PACKET/8, NBEAMS/2, 8chan, 2 times]
  - if doing subtract_ib:
   + ibsum has shape [NCHAN_PER_PACKET/8, 8chan, 2 times, NPACKETS_PER_BLOCK] 
   + 
 */
 // assume breakdown into tiles of 32x32, and run with 32x8 threads per block
 // launch with dim3 dimBlock(32, 8) and dim3 dimGrid(Width/32, Height/32)
-// here, width=NPACKETS_PER_BLOCK/4, height=NCHAN_PER_PACKET/8 * NBEAMS/2 * 8chan * 2times
+// here, width=NPACKETS_PER_BLOCK/8, height=NCHAN_PER_PACKET/8 * NBEAMS/2 * 8chan * 2times
 __global__ void power_sum_and_transpose_output(half * dra, half * drb, half * dia, half * dib, half * ibsum, int subtract_ib, half * outp) {
 
   __shared__ half tile[32][33];
@@ -672,18 +672,18 @@ __global__ void power_sum_and_transpose_output(half * dra, half * drb, half * di
   for (int j = 0; j < 32; j += 8) {
 
     iidx = (y+j)*width + x;
-    iChan = (int)(iidx / ((NBEAMS/2)*8*2*NPACKETS_PER_BLOCK/4));
-    iBeamSlow = (int)(iidx % ((NBEAMS/2)*8*2*NPACKETS_PER_BLOCK/4));
-    iFast = (int)(iBeamSlow % (8*2*NPACKETS_PER_BLOCK/4));
-    idx = iChan*8*2*NPACKETS_PER_BLOCK/4 + iFast;
+    iChan = (int)(iidx / ((NBEAMS/2)*8*2*NPACKETS_PER_BLOCK/8));
+    iBeamSlow = (int)(iidx % ((NBEAMS/2)*8*2*NPACKETS_PER_BLOCK/8));
+    iFast = (int)(iBeamSlow % (8*2*NPACKETS_PER_BLOCK/8));
+    idx = iChan*8*2*NPACKETS_PER_BLOCK/8 + iFast;
     
     tile[threadIdx.y+j][threadIdx.x] = 0.;
     
     // do power sum
-    for (int k=0;k<4;k++) {
-      tile[threadIdx.y+j][threadIdx.x] += dra[4*iidx+k]*dra[4*iidx+k] + dia[4*iidx+k]*dia[4*iidx+k] + drb[4*iidx+k]*drb[4*iidx+k] + dib[4*iidx+k]*dib[4*iidx+k];
+    for (int k=0;k<8;k++) {
+      tile[threadIdx.y+j][threadIdx.x] += dra[8*iidx+k]*dra[8*iidx+k] + dia[8*iidx+k]*dia[8*iidx+k] + drb[8*iidx+k]*drb[8*iidx+k] + dib[8*iidx+k]*dib[8*iidx+k];
       if (subtract_ib)
-	tile[threadIdx.y+j][threadIdx.x] -= ibsum[4*idx+k];
+	tile[threadIdx.y+j][threadIdx.x] -= ibsum[8*idx+k];
     }
       
   }
@@ -700,13 +700,13 @@ __global__ void power_sum_and_transpose_output(half * dra, half * drb, half * di
 }
 
 /* SUM TRANSPOSE AND SCALE OUTPUT
- - Input is [NPACKETS_PER_BLOCK/4, NCHAN_PER_PACKET/8, NBEAMS/2, 8chan, 2 times] 
+ - Input is [NPACKETS_PER_BLOCK/8, NCHAN_PER_PACKET/8, NBEAMS/2, 8chan, 2 times] 
  - want to sum over 8 chan and 2 times
- - Then do a transpose to [NBEAMS, NPACKETS_PER_BLOCK/4, NCHAN_PER_PACKET/8]
+ - Then do a transpose to [NBEAMS, NPACKETS_PER_BLOCK/8, NCHAN_PER_PACKET/8]
 */
 // assume breakdown into tiles of 32x32, and run with 32x8 threads per block
 // launch with dim3 dimBlock(32, 8) and dim3 dimGrid(Width/32, Height/32)
-// here, width=NBEAMS/2, height=NPACKETS_PER_BLOCK/4 * NCHAN_PER_PACKET/8
+// here, width=NBEAMS/2, height=NPACKETS_PER_BLOCK/8 * NCHAN_PER_PACKET/8
 __global__ void sum_transpose_and_scale_output(half * outp, unsigned char * odata, int subtract_ib) {
 
   __shared__ float tile[32][33];
@@ -738,22 +738,22 @@ __global__ void sum_transpose_and_scale_output(half * outp, unsigned char * odat
     if (subtract_ib==0) 
       odata[(y+j)*width + x] = (unsigned char)(tile[threadIdx.x][threadIdx.y + j]);
     else
-      odata[(y+j)*width + x] = (unsigned char)(40.+tile[threadIdx.x][threadIdx.y + j]);
+      odata[(y+j)*width + x] = (unsigned char)(40.+tile[threadIdx.x][threadIdx.y + j]/2.);
   }
 
 }
 
 
 // sum over all times and channels in output beam array
-// run with NBEAMS blocks of 512 threads
+// run with NBEAMS blocks of 256 threads
 __global__ void sum_beam(unsigned char * input, float * output) {
 
-  extern __shared__ float psum[512];
+  extern __shared__ float psum[256];
   int bid = blockIdx.x;
   int tid = threadIdx.x;
   int npartials = 48; // number partial sums
 
-  int idx0 = bid*512*48 + tid*48;
+  int idx0 = bid*256*48 + tid*48;
   psum[tid] = 0.;
   for (int i=idx0;i<npartials+idx0;i++)
     psum[tid] += (float)(input[i]);
@@ -761,7 +761,6 @@ __global__ void sum_beam(unsigned char * input, float * output) {
   __syncthreads();
 
   // sum over shared memory
-  if (tid < 256) { psum[tid] += psum[tid + 256]; } __syncthreads(); 
   if (tid < 128) { psum[tid] += psum[tid + 128]; } __syncthreads(); 
   if (tid < 64) { psum[tid] += psum[tid + 64]; } __syncthreads();
   if (tid < 32) { psum[tid] += psum[tid + 32]; } __syncthreads();
@@ -773,7 +772,7 @@ __global__ void sum_beam(unsigned char * input, float * output) {
 
   __syncthreads();
 
-  if (tid==0) output[bid] = psum[0]/512./48.;
+  if (tid==0) output[bid] = psum[0]/256./48.;
   
 }
 
@@ -829,15 +828,15 @@ weights already have k = NANTS/2, n=NBEAMS/2.
 output has m as fastest axis, and n as slowest axis (i.e., column major order)
 so output of batched matrix mult is [NCHAN_PER_PACKET/8, NBEAMS/2, 8chan, 2 times, NPACKETS_PER_BLOCK] 
 
- - can transform to output with two sum-and-transpose operations: [NBEAMS/2, NPACKETS_PER_BLOCK/4, NCHAN_PER_PACKET/8]. The first needs to form total power
+ - can transform to output with two sum-and-transpose operations: [NBEAMS/2, NPACKETS_PER_BLOCK/8, NCHAN_PER_PACKET/8]. The first needs to form total power
 
 OLD SCHEME
  - initial data is [NPACKETS_PER_BLOCK, NANTS, NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex] 
  - split into EW and NS antennas via cudaMemcpy: [NPACKETS_PER_BLOCK, NANTS/2, NCHAN_PER_PACKET, 2 times, 2 pol, 4-bit complex]
- - want [NCHAN_PER_PACKET/8, NPACKETS_PER_BLOCK/4, 4tim, NANTS/2, 8chan, 2 times, 2 pol, 4-bit complex]
+ - want [NCHAN_PER_PACKET/8, NPACKETS_PER_BLOCK/8, 8tim, NANTS/2, 8chan, 2 times, 2 pol, 4-bit complex]
 (single transpose operation)
  - weights are [NCHAN_PER_PACKET/8, NBEAMS, 4tim, NANTS/2, 8chan, 2 times, 2 pol] x 2
- - then fluff and run beamformer: output is [NCHAN_PER_PACKET/8, NBEAMS, NPACKETS_PER_BLOCK/4] (w column-major)
+ - then fluff and run beamformer: output is [NCHAN_PER_PACKET/8, NBEAMS, NPACKETS_PER_BLOCK/8] (w column-major)
  - transpose and done! 
 
 */
@@ -979,11 +978,11 @@ void dbeamformer(dmem * d) {
     // incoherent beam summation
     sum_ib<<<NCHAN_PER_PACKET*2*NPACKETS_PER_BLOCK,32,0,streams[iArm]>>>(d->d_bar,d->d_bai,d->d_bbr,d->d_bbi,d->d_ibsum,d->d_flagants+iArm*48);
     
-    dim3 dimBlock2(32, 8), dimGrid2(NPACKETS_PER_BLOCK/4/32,(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2/32);
+    dim3 dimBlock2(32, 8), dimGrid2(NPACKETS_PER_BLOCK/8/32,(NCHAN_PER_PACKET/8)*(NBEAMS/2)*8*2/32);
     power_sum_and_transpose_output<<<dimGrid2,dimBlock2,0,streams[iArm]>>>(d->d_bigbeam_a_r,d->d_bigbeam_b_r,d->d_bigbeam_a_i,d->d_bigbeam_b_i,d->d_ibsum,d->subtract_ib,d->d_htx);
 
-    dim3 dimBlock(32, 8), dimGrid((NBEAMS/2)/32,(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)/32);
-    sum_transpose_and_scale_output<<<dimGrid,dimBlock,0,streams[iArm]>>>(d->d_htx,d->d_bigpower+iArm*(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*(NBEAMS/2),d->subtract_ib);
+    dim3 dimBlock(32, 8), dimGrid((NBEAMS/2)/32,(NPACKETS_PER_BLOCK/8)*(NCHAN_PER_PACKET/8)/32);
+    sum_transpose_and_scale_output<<<dimGrid,dimBlock,0,streams[iArm]>>>(d->d_htx,d->d_bigpower+iArm*(NPACKETS_PER_BLOCK/8)*(NCHAN_PER_PACKET/8)*(NBEAMS/2),d->subtract_ib);
 
     end = clock();
     d->outp += (float)(end - begin) / CLOCKS_PER_SEC;
@@ -1023,7 +1022,7 @@ __global__ void populate_weights_matrix(float * antpos_e, float * antpos_n, floa
   // calculate weights
   float theta, afac, twr, twi;
   if (iArm==0) {
-    theta = sep*(127.-bm*1.)*PI/10800.; // radians
+    theta = sep*(1.*(NBEAMS/2)-1.-bm*1.)*PI/10800.; // radians
     afac = -2.*PI*fqs[fq]*theta/CVAC; // factor for rotate
     twr = cos(afac*antpos_e[a+48*iArm]);
     twi = sin(afac*antpos_e[a+48*iArm]);
@@ -1421,7 +1420,7 @@ int main (int argc, char *argv[]) {
 	dbeamformer(&d);
 	syslog(LOG_INFO,"%f %f %f %f \n",d.cp,d.prep,d.cubl,d.outp);
 	if (DEBUG) syslog(LOG_INFO,"copy to host");
-	output_size = (NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*NBEAMS;
+	output_size = (NPACKETS_PER_BLOCK/8)*(NCHAN_PER_PACKET/8)*NBEAMS;
 	output_data = (char *)malloc(output_size);
 	cudaMemcpy(output_data,d.d_bigpower,output_size,cudaMemcpyDeviceToHost);	
 	
@@ -1515,7 +1514,7 @@ int main (int argc, char *argv[]) {
   if (bf==0) 
     syslog(LOG_INFO, "main: EXPECT input and output block sizes %d %d\n",NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2,NBASE*NCHAN_PER_PACKET*2*2*4);
   else
-    syslog(LOG_INFO, "main: EXPECT input and output block sizes %d %d\n",NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2,(NPACKETS_PER_BLOCK/4)*(NCHAN_PER_PACKET/8)*NBEAMS);
+    syslog(LOG_INFO, "main: EXPECT input and output block sizes %d %d\n",NPACKETS_PER_BLOCK*NANTS*NCHAN_PER_PACKET*2*2,(NPACKETS_PER_BLOCK/8)*(NCHAN_PER_PACKET/8)*NBEAMS);
   uint64_t  bytes_read = 0;
   char * block;
   char * output_buffer;
