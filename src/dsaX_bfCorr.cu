@@ -46,6 +46,7 @@ using std::endl;
 
 // beam sep
 #define sep 1.0 // arcmin
+#define sep_ns 0.75 // arcmin
 
 /* global variables */
 int DEBUG = 0;
@@ -1037,7 +1038,7 @@ __global__ void populate_weights_matrix(float * antpos_e, float * antpos_n, floa
     //wi[inidx] = __float2half(0.0);
   }
   if (iArm==1) {
-    theta = sep*(127.-bm*1.)*PI/10800.-(PI/180.)*dec; // radians
+    theta = sep_ns*(127.-bm*1.)*PI/10800.-(PI/180.)*dec; // radians
     afac = -2.*PI*fqs[fq]*theta/CVAC; // factor for rotate
     twr = cos(afac*antpos_n[a+48*iArm]);
     twi = sin(afac*antpos_n[a+48*iArm]);
