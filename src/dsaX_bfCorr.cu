@@ -797,7 +797,7 @@ __global__ void sum_ib(half * dra, half * dia, half * drb, half * dib, half * do
 
   if (tid < 16) {
     idx = bid*48 + tid + 32;
-    if (flagants[tid+32] = 0.)
+    if (flagants[tid+32] == 0.)
       ppsum[tid] += dra[idx]*dra[idx] + dia[idx]*dia[idx] + drb[idx]*drb[idx] + dib[idx]*dib[idx];
   }
 

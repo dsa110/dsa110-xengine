@@ -200,7 +200,7 @@ int main (int argc, char *argv[]) {
   memset(data, 0, 25*4656*(384/nfq)*2*2*sizeof(float));
   int inidx, fsidx, outidx;
   int read_fstable = 0;
-  float mjd, mjd0;
+  double mjd, mjd0;
   int secs;
 
   // start things
@@ -220,7 +220,7 @@ int main (int argc, char *argv[]) {
       fclose(fsin);
       
       fsin = fopen("/home/ubuntu/tmp/mjd.dat","r");
-      fscanf(fsin,"%f",&mjd0);
+      fscanf(fsin,"%lf",&mjd0);
       fclose(fsin);
 
       mjd = mjd0 + fctr*NINTS_PER_FILE*4096*32.768e-6/86400.;
@@ -228,7 +228,7 @@ int main (int argc, char *argv[]) {
       sprintf(foutnam,"%s_%d.out.tmp",fnam,secs);
       sprintf(finaloutnam,"mv %s %s_%d.out",foutnam,fnam,secs);
       fout=fopen(foutnam,"wb");
-      fwrite(&mjd,sizeof(float),1,fout);
+      fwrite(&mjd,sizeof(double),1,fout);
       fwrite(&sb,sizeof(int),1,fout);
       fwrite(&decl,sizeof(float),1,fout);
       
