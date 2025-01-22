@@ -209,6 +209,9 @@ dsaX_beamformer: dsaX_beamformer.cu
 dsaX_bfCorr: dsaX_bfCorr.cu
 	$(CCU) -o $@ $^ $(CFLAGS2) $(LIBS)
 
+dsaX_bfCorr_twogpu: dsaX_bfCorr_twogpu.cu
+	$(CCU) -o $@ $^ $(CFLAGS2) $(LIBS)
+
 dsaX_hella: dsaX_hella.cu
 	$(CCU) -o $@ $^ $(CFLAGS2) $(LIBS)
 
