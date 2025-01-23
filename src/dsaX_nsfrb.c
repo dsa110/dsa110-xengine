@@ -189,7 +189,8 @@ int main (int argc, char *argv[]) {
   float *fstable = (float *)malloc(sizeof(float)*25*4656*384*2*2);
   
   // set up
-  int fctr = 0, integration = 0, cyclectr = 0;
+  double fctr = 0.;
+  int integration = 0, cyclectr = 0;
   
   // data stuff
   uint64_t block_size = ipcbuf_get_bufsz ((ipcbuf_t *) hdu_in->data_block);
@@ -223,7 +224,7 @@ int main (int argc, char *argv[]) {
       fscanf(fsin,"%lf",&mjd0);
       fclose(fsin);
 
-      mjd = mjd0 + fctr*NINTS_PER_FILE*4096*32.768e-6/86400.;
+      mjd = mjd0 + (double)(fctr*((double)(NINTS_PER_FILE))*4096.*32.768e-6/86400.);
       secs = (int)((mjd-60600.)*1440.);
       sprintf(foutnam,"%s_%d.out.tmp",fnam,secs);
       sprintf(finaloutnam,"mv %s %s_%d.out",foutnam,fnam,secs);
