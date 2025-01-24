@@ -739,7 +739,7 @@ __global__ void sum_transpose_and_scale_output(half * outp, unsigned char * odat
     if (subtract_ib==0) 
       odata[(y+j)*width + x] = (unsigned char)(tile[threadIdx.x][threadIdx.y + j]);
     else
-      odata[(y+j)*width + x] = (unsigned char)(40.+tile[threadIdx.x][threadIdx.y + j]);
+      odata[(y+j)*width + x] = (unsigned char)(70.+tile[threadIdx.x][threadIdx.y + j]);
   }
 
 }
