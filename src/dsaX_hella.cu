@@ -1391,11 +1391,9 @@ void fastflagger(pinfo * p) {
     for (int scrnch=0;scrnch<p->nscrunches;scrnch++) {
       //printf("scrunch %d...",scrnch);
       tmp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, p->scrunches[scrnch].tscrunch,p->scrunches[scrnch].fscrunch, p->scrunches[scrnch].thresh,1,0,p->d_flagSpec,p->flag1,p->flag2);
-      syslog(LOG_INFO,"TEST %d %g\n",scrnch,tmp);
       cudaDeviceSynchronize();
     }
     tmp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, 8, 8, 100., 0, 1, p->d_flagSpec,p->flag1,p->flag2);
-    syslog(LOG_INFO,"TEST -1 %g\n",tmp);
     //    printf("\n");
 
     cudaDeviceSynchronize();
