@@ -282,12 +282,12 @@ int main (int argc, char *argv[]) {
       syslog(LOG_INFO,"Closed file %s",foutnam);
       system(finaloutnam);
 
-      mjd = mjd0 + fctr*NINTS_PER_FILE*4096*32.768e-6/86400.;
+      mjd = mjd0 + (double)(fctr*((double)(NINTS_PER_FILE))*4096.*32.768e-6/86400.);
       secs = (int)((mjd-60600.)*1440.);
       sprintf(foutnam,"%s_%d.out.tmp",fnam,secs);
       sprintf(finaloutnam,"mv %s %s_%d.out",foutnam,fnam,secs);
       fout=fopen(foutnam,"wb");
-      fwrite(&mjd,sizeof(float),1,fout);
+      fwrite(&mjd,sizeof(double),1,fout);
       fwrite(&sb,sizeof(int),1,fout);
       fwrite(&decl,sizeof(float),1,fout);
 
