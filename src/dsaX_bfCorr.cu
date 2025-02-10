@@ -1026,8 +1026,8 @@ __global__ void populate_weights_matrix(float * antpos_e, float * antpos_n, floa
   if (iArm==0) {
     theta = sep*(127.-bm*1.)*PI/10800.; // radians
     afac = -2.*PI*fqs[fq]*theta/CVAC; // factor for rotate
-    twr = cos(afac*antpos_e[a+48*iArm]);
-    twi = sin(afac*antpos_e[a+48*iArm]);
+    twr = cosf(afac*antpos_e[a+48*iArm]);
+    twi = sinf(afac*antpos_e[a+48*iArm]);
     war[inidx] = __float2half((twr*calibs[widx] - twi*calibs[widx+1]));
     wai[inidx] = __float2half((twi*calibs[widx] + twr*calibs[widx+1]));
     wbr[inidx] = __float2half((twr*calibs[widx+2] - twi*calibs[widx+3]));
@@ -1039,9 +1039,9 @@ __global__ void populate_weights_matrix(float * antpos_e, float * antpos_n, floa
   }
   if (iArm==1) {
     theta = sep_ns*(127.-bm*1.)*PI/10800.-(PI/180.)*dec; // radians
-    afac = -2.*PI*fqs[fq]*theta/CVAC; // factor for rotate
-    twr = cos(afac*antpos_n[a+48*iArm]);
-    twi = sin(afac*antpos_n[a+48*iArm]);
+    afac = -2.*PI*fqs[fq]*sinf(theta)/CVAC; // factor for rotate
+    twr = cosf(afac*antpos_n[a+48*iArm]);
+    twi = sinf(afac*antpos_n[a+48*iArm]);
     war[inidx] = __float2half((twr*calibs[widx] - twi*calibs[widx+1]));
     wai[inidx] = __float2half((twi*calibs[widx] + twr*calibs[widx+1]));
     wbr[inidx] = __float2half((twr*calibs[widx+2] - twi*calibs[widx+3]));
@@ -1393,6 +1393,8 @@ int main (int argc, char *argv[]) {
     // allocate input
     d.h_input = (char *)malloc(sizeof(char)*in_block_size);
 
+    printf("NREPS NCHUNKS %d %d\n",nreps,nchunks);
+    
     // loop over reps and chunks
     for (int reps=0; reps<nreps; reps++) {
 
