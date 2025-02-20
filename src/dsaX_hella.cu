@@ -60,8 +60,8 @@ const int MAXCONNECTIONS = 5;
 const int MAXRECV = 500;
 
 #define NMEDFILT 13
-#define NTSMED 19
-#define NBATCH 16
+#define NTSMED 7
+#define NBATCH 4
 #define NCHAN 768
 #define NBEAMS 64
 #define NCHAN_BOX 48
@@ -220,6 +220,7 @@ void initialize(FILE *fconf, pinfo * p) {
       if (strcmp(c2,"DADA")==0) p->inp_format=0;
       if (strcmp(c2,"FILE")==0) p->inp_format=1;
       if (strcmp(c2,"FILTERBANK")==0) p->inp_format=2;
+      if (strcmp(c2,"CANDIDATE")==0) p->inp_format=3;
       printf("Using input format %d\n",p->inp_format);
     }
     if (strcmp(c1,"OUTPUT")==0) {
@@ -329,7 +330,7 @@ void initialize(FILE *fconf, pinfo * p) {
   p->ntime_dedisp = p->ntime_dd;
   // modify NTIME and ntime_dd in case of non-text input
   int oo;
-  if (p->inp_format != 1) {
+  if (p->inp_format == 0 || p->inp_format == 2) {
     p->NTIME = p->gulp + dedisp_get_max_delay(p->dedispersion_plan) + p->maxWidth;
     oo = 32*((int)(p->NTIME/32)+1);
     p->NTIME = oo;
@@ -795,7 +796,7 @@ __global__ void divide_by_bp(half * data, float * bp, int width, int stride) {
 
 // cuda kernel to divide data by time series
 // run with NBATCH*NCHAN*width/32 blocks of 32 threads 
-__global__ void divide_by_ts(half * data, float * ts, int width, int stride) {
+__global__ void divide_by_ts(half * data, float * ts, int width, int stride, int flag_ts) {
 
   int bid = blockIdx.x;
   int tid = threadIdx.x;
@@ -808,13 +809,19 @@ __global__ void divide_by_ts(half * data, float * ts, int width, int stride) {
   int iidx = y*stride+x;
 
   data[iidx] /= __float2half(ts[tsidx]);
+  
+  if (flag_ts==1) {
+    if (ts[tsidx]>1.05) data[iidx] = __float2half(1.);
+    if (ts[tsidx]<0.95) data[iidx] = __float2half(1.);
+  }
+
 
 }
 
 // handler for half-precision boxcar convolution from npp
 void npp_convolve_handler(half * data, half * output, float scfac, int xw, int yw, int width, int stride) {
 
-  NppiSize oSrcSize = {stride,NCHAN};
+  NppiSize oSrcSize = {stride,NCHAN*NBATCH};
   NppiPoint oSrcOffset = {0,0};
   Npp32f * pKernel;
   NppiSize pKernelSize = {xw,yw};
@@ -941,6 +948,8 @@ __global__ void threshold_data(half * data, half * mask, float threshold, int wi
   int iidx = y*stride+x;
 
   if (data[iidx]>__float2half(threshold))
+    mask[iidx] = 1.;
+  if (data[iidx]<__float2half(-1.*threshold))
     mask[iidx] = 1.;
 
 }
@@ -1206,7 +1215,7 @@ void ts_correct(half * data, float * d_ts, int width, int stride) {
   //medFilterTs(d_ts,width);
   
   // correct ts in data
-  divide_by_ts<<<NBATCH*NCHAN*width/32,32>>>(data,d_ts,width,stride);
+  divide_by_ts<<<NBATCH*NCHAN*width/32,32>>>(data,d_ts,width,stride,0);
 
 }
 
@@ -1322,9 +1331,9 @@ float apply_scrunch(pinfo * p, half * data, half * mask, half * d_smooth, float 
     begin = clock();
     //smooth_data<<<NBATCH*NCHAN*width/32,32>>>(mask, d_smooth, 1./tscrunch/fscrunch, tscrunch, fscrunch, width, stride);
     npp_convolve_handler(mask, d_smooth, 1./tscrunch/fscrunch, tscrunch, fscrunch, width, stride);
-    replace_data<<<NBATCH*NCHAN*width/32,32>>>(data, mask, 0., width, stride, flag1, flag2);
+    replace_data<<<NBATCH*NCHAN*width/32,32>>>(data, d_smooth, 0., width, stride, flag1, flag2);
     add_number<<<NBATCH*NCHAN*width/32,32>>>(data,1.,width,stride);
-    calc_bandpass<<<NCHAN*NBATCH,256>>>(mask, d_mask, width, stride);
+    calc_bandpass<<<NCHAN*NBATCH,256>>>(d_smooth, d_mask, width, stride);
     add_bandpass<<<NCHAN*NBATCH/32,32>>>(d_mask,d_flagSpec);
     cudaDeviceSynchronize();
     end = clock();
@@ -1349,6 +1358,7 @@ void fastflagger(pinfo * p) {
   // setup
   int nBatches = (int)(NBEAMS / NBATCH);
   cudaMemset(p->d_flagSpec,0,4*NBATCH*NCHAN);
+  syslog(LOG_INFO,"have nbatches %d",nBatches);
   float mn_bp[nBatches], tmp;
 
   // output bandpass
@@ -1426,7 +1436,7 @@ void fastflagger(pinfo * p) {
   //printf("\n");
   
   syslog(LOG_INFO,"fastflagger %g %g %g %g",mn_bp[0],mn_bp[1],mn_bp[2],mn_bp[3]);
-
+  
   if (p->output_bandpass>0) {
     sprintf(fnam,"mv /home/ubuntu/data/bpout_%d.tmp /home/ubuntu/data/bpout_%d.out",p->output_bandpass,p->output_bandpass);
     system(fnam);
@@ -1885,38 +1895,6 @@ void output_peaks(pinfo *p, int samp, int restart_socket) {
 
 // deals with data IO
 int main(int argc, char *argv[]) {
-  /*  
-  FILE *fin;
-  fin = fopen(argv[1],"r");
-  int width = atof(argv[2]);
-  int stride = atof(argv[3]);
-  float * input = (float *)malloc(sizeof(float)*NBATCH*NCHAN*width);
-  float * output = (float *)malloc(sizeof(float)*NBATCH*width);
-
-  int i=0;
-  float t;
-  while (!feof(fin)) {
-    fscanf(fin,"%f\n",&t);
-    input[i] = t;
-    input[i+NCHAN*width] = input[i];
-    i++;
-  }
-  fclose(fin);
-
-  apply_batch_test(input,output,width,stride);
-
-  fin=fopen("output.dat","w");
-  for (int i=0;i<width*NBATCH;i++) {
-    fprintf(fin,"%g\n",(float)(output[i]));
-  }
-  fclose(fin);
-  
-
-  free(input);
-  free(output);
-*/  
-  
-
   
   // parse command line
   FILE *fconf;
@@ -1966,10 +1944,70 @@ int main(int argc, char *argv[]) {
   
   // set up pipeline, allocate appropriate mem
   pinfo p;
-  initialize(fconf,&p);  
+  float tflags = 0.;
+  
+  unsigned char * hodata = (unsigned char *)malloc(sizeof(unsigned char)*p.NTIME*NCHAN);
+  float * h_ts = (float *)malloc(sizeof(float)*p.NTIME*NBATCH);
+  initialize(fconf,&p);
+  FILE *fin, *ftest;
+
+  // in CANDIDATE mode
+  if (p.inp_format==3) {
+
+    // read header
+    fin=fopen(p.inp_path,"rb");
+    int nbytes_header = read_header(fin);
+    fclose(fin);
+    char * heade = (char *)malloc(sizeof(char)*nbytes_header);
+    fin=fopen(p.inp_path,"rb");
+    fread(heade, sizeof(char), nbytes_header, fin);
+    free(heade);
+    syslog(LOG_INFO,"Finished with header (nbytes %d) of input filFile %s\n",nbytes_header,p.inp_path);
+
+    // read data
+    fread(p.data,sizeof(char),p.NTIME*NCHAN,fin);
+    if (NBEAMS>1) {
+      for (int i=1;i<NBEAMS;i++)
+	memcpy(p.data+i*p.NTIME*NCHAN,p.data,p.NTIME*NCHAN);
+    }
+    cudaMemcpy(p.d_data,p.data,NBEAMS*p.NTIME*NCHAN,cudaMemcpyHostToDevice);
+    fclose(fin);
+
+    // flag it
+    fastflagger(&p);
+
+    // output data
+    cudaMemcpy(hodata,p.d_data+2*NCHAN*p.NTIME,NCHAN*p.NTIME,cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_ts,p.d_ts,4*NBATCH*p.NTIME,cudaMemcpyDeviceToHost);
+    ftest = fopen("image.out","w");
+    for (int i=0;i<NCHAN*p.NTIME;i++) 
+      fprintf(ftest,"%f\n",(float)(hodata[i]));
+    fclose(ftest);
+    ftest = fopen("ts.out","w");
+    for (int i=0;i<NBATCH*p.NTIME;i++) 
+      fprintf(ftest,"%f\n",h_ts[i]);
+    fclose(ftest);
+    ftest = fopen("flags.out","w");
+    for (int i=0;i<NBATCH*NCHAN;i++) 
+      fprintf(ftest,"%f\n",p.h_flagSpec[i]);
+    fclose(ftest);
+    
+
+    for (int i=0;i<NCHAN*NBATCH;i++) {
+      tflags += (1.*p.NTIME*p.h_flagSpec[i]);
+    }
+
+    printf("TOT FLAGS %g\n",tflags);
+    
+    exit(1);
+    
+  }
+
+
+  
+
   
   // begin read of data
-  FILE *fin;
   float v;
   unsigned char * tmpbuf = (unsigned char *)malloc(sizeof(unsigned char)*NCHAN*p.gulp*NBEAMS*2);
 
@@ -2057,10 +2095,8 @@ int main(int argc, char *argv[]) {
   clock_t begin, end;
 
   // outputs
-  unsigned char * hodata = (unsigned char *)malloc(sizeof(unsigned char)*p.NTIME*NCHAN);
   //float * hodata = (float *)malloc(sizeof(float)*p.ntime_out*(p.ndms-2));
-  FILE *ftest;
-  int tot_flags = 0;
+  float tot_flags = 0.;
   int socket_count = 0;
   
   while (finished==0) {
@@ -2125,8 +2161,8 @@ int main(int argc, char *argv[]) {
       for (int j=0;j<NBATCH;j++) {
 	for (int i=0;i<NCHAN;i++) {
 	  //beamflags[bm] += (int)(p.h_flagSpec[j*NCHAN+i]);
-	  specflags[i] += (int)(p.h_flagSpec[j*NCHAN+i]);
-	  tot_flags += (int)(p.h_flagSpec[j*NCHAN+i]);
+	  specflags[i] += (int)(1.*p.NTIME*p.h_flagSpec[j*NCHAN+i]);
+	  tot_flags += (1.*p.NTIME*p.h_flagSpec[j*NCHAN+i])/805306368.;
 	}
       }
       end = clock();
@@ -2224,8 +2260,8 @@ int main(int argc, char *argv[]) {
     if (p.inp_format==0)
       ipcio_close_block_read (hdu_in->data_block, bytes_read);
 
-    syslog(LOG_INFO,"Beamstats %d giants %d %d\n",bm,p.out_npeaks,tot_flags);
-    tot_flags = 0;
+    syslog(LOG_INFO,"Beamstats %d giants %d %g\n",bm,p.out_npeaks,tot_flags);
+    tot_flags = 0.;
     syslog(LOG_INFO,"processed %g s in read %g flag %g dedisp %g smooth %g peak %g output %g [%g]\n",(p.ntime_dd)*2.62144e-4,readt,flagt,dedispt,smootht,peakt,outputt,readt+flagt+dedispt+smootht+peakt+outputt);
     syslog(LOG_INFO,"Flagging: %g %g %g %g %g %g %g %g\n",p.t1,p.t2,p.t3,p.t4,p.t5,p.t6,p.t7,p.t8);
     readt = 0.;
