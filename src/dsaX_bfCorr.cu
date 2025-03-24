@@ -74,7 +74,7 @@ typedef struct dmem {
   half * d_bigbeam_a_r, * d_bigbeam_a_i, * d_bigbeam_b_r, * d_bigbeam_b_i; 
   unsigned char * d_bigpower; 
   float * d_scf; // scale factor per beam
-  float * d_chscf, * h_chscf;
+  float * d_chscf, * h_chscf, * h_chscf2;
   float * h_winp;
   int * flagants, nflags;
   int * d_flagants;
@@ -167,6 +167,7 @@ void initialize(dmem * d, int bf, int subtract_ib) {
     cudaMalloc((void **)(&d->d_chscf), sizeof(float)*NBEAMS); // beam scale factor
     cudaMalloc((void **)(&d->d_flagants), sizeof(int)*NANTS); // flag ants
     d->h_chscf = (float *)malloc(sizeof(float)*NBEAMS);
+    d->h_chscf2 = (float *)malloc(sizeof(float)*NBEAMS);
     
     // input weights: first is [NANTS, E/N], then [NANTS, 48, 2pol, R/I]
     d->h_winp = (float *)malloc(sizeof(float)*(NANTS*2+NANTS*(NCHAN_PER_PACKET/8)*2*2));
@@ -778,6 +779,39 @@ __global__ void sum_beam(unsigned char * input, float * output) {
   
 }
 
+// sum over all times and channels in output beam array squared
+// run with NBEAMS blocks of 512 threads
+__global__ void sum_beam_2(unsigned char * input, float * output) {
+
+  extern __shared__ float psum[512];
+  int bid = blockIdx.x;
+  int tid = threadIdx.x;
+  int npartials = 48; // number partial sums
+
+  int idx0 = bid*512*48 + tid*48;
+  psum[tid] = 0.;
+  for (int i=idx0;i<npartials+idx0;i++)
+    psum[tid] += ((float)(input[i])-70.)*((float)(input[i])-70.);
+
+  __syncthreads();
+
+  // sum over shared memory
+  if (tid < 256) { psum[tid] += psum[tid + 256]; } __syncthreads(); 
+  if (tid < 128) { psum[tid] += psum[tid + 128]; } __syncthreads(); 
+  if (tid < 64) { psum[tid] += psum[tid + 64]; } __syncthreads();
+  if (tid < 32) { psum[tid] += psum[tid + 32]; } __syncthreads();
+  if (tid < 16) { psum[tid] += psum[tid + 16]; } __syncthreads();
+  if (tid < 8) { psum[tid] += psum[tid + 8]; } __syncthreads();
+  if (tid < 4) { psum[tid] += psum[tid + 4]; } __syncthreads();
+  if (tid < 2) { psum[tid] += psum[tid + 2]; } __syncthreads();
+  if (tid < 1) { psum[tid] += psum[tid + 1]; } __syncthreads(); 
+
+  __syncthreads();
+
+  if (tid==0) output[bid] = psum[0]/512./48.;
+  
+}
+
 
 // sum over all powers of all antennas in input voltage array, removing flagged ones
 // also sum over pols
@@ -1001,6 +1035,8 @@ void dbeamformer(dmem * d) {
   // form sum over times
   sum_beam<<<NBEAMS,512>>>(d->d_bigpower,d->d_chscf);
   cudaMemcpy(d->h_chscf,d->d_chscf,4*NBEAMS,cudaMemcpyDeviceToHost);
+  sum_beam_2<<<NBEAMS,512>>>(d->d_bigpower,d->d_chscf);
+  cudaMemcpy(d->h_chscf2,d->d_chscf,4*NBEAMS,cudaMemcpyDeviceToHost);
   
 }
 
@@ -1527,6 +1563,7 @@ int main (int argc, char *argv[]) {
 
   // output powers
   float output_power[NBEAMS];
+  float output_power2[NBEAMS];
   int iPower = 0;
   
   // get things started
@@ -1542,6 +1579,7 @@ int main (int argc, char *argv[]) {
     // zero out powers
     if (iPower==0) {
       for (int i=0;i<NBEAMS;i++) output_power[i] = 0.;
+      for (int i=0;i<NBEAMS;i++) output_power2[i] = 0.;
     }
     
     if (DEBUG) syslog(LOG_INFO,"reading block");    
@@ -1566,12 +1604,14 @@ int main (int argc, char *argv[]) {
       // deal with power output
       for (int i=0;i<NBEAMS;i++)
 	output_power[i] += d.h_chscf[i]/(1.*power_cycle);
+      for (int i=0;i<NBEAMS;i++)
+	output_power2[i] += d.h_chscf2[i]/(1.*power_cycle);
 	//fprintf(fp,"%g\n",d.h_chscf[i]);
 
       iPower++;
       if (iPower == power_cycle) {
 	for (int i=0;i<NBEAMS;i++)
-	  fprintf(fp,"%g\n",output_power[i]);
+	  fprintf(fp,"%g %g\n",output_power[i],output_power2[i]);
 	iPower = 0;
       }
       
