@@ -61,7 +61,7 @@ const int MAXRECV = 500;
 
 #define NMEDFILT 13
 #define NTSMED 7
-#define NBATCH 4
+#define NBATCH 16
 #define NCHAN 768
 #define NBEAMS 64
 #define NCHAN_BOX 48
