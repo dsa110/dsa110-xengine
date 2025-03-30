@@ -1251,7 +1251,7 @@ void normalize_data(half * data, int width, int stride) {
 }
 
 // function to implement bandpass flagging on data
-float bandpass_flag(pinfo * p, half * data) {
+float bandpass_flag(pinfo * p, half * data, float * fperc) {
 
   // bandpass correct
   float mn_bp = bandpass_correct(data,p->NTIME, p->batch_stride);
@@ -1266,9 +1266,19 @@ float bandpass_flag(pinfo * p, half * data) {
   // flag data
   replace_data_bandpass<<<NBATCH*NCHAN*p->NTIME/32,32>>>(data, p->d_bpout, 0., p->NTIME, p->batch_stride, p->spec_min, p->spec_max);
 
+  // get flagged fraction
+  float * h_bpout = (float *)malloc(NBATCH * NCHAN * sizeof(float));
+  cudaMemcpy(h_bpout,p->d_bpout,NBATCH*NCHAN*4,cudaMemcpyDeviceToHost);
+  float val = 0.;
+  for (int i=0;i<NBATCH*NCHAN;i++)
+    if (h_bpout[i]<p->spec_min || h_bpout[i]>p->spec_max) val += 1.;
+  val /= (1.*NBATCH*NCHAN);
+  (*fperc) = val;
+
   // finish up
   add_number<<<NBATCH*NCHAN*p->NTIME/32,32>>>(data,1.,p->NTIME, p->batch_stride);
 
+  free(h_bpout);
   return mn_bp;
 
 }
@@ -1363,6 +1373,8 @@ void fastflagger(pinfo * p) {
 
   // output bandpass
   FILE *fout;
+  float fperc=0.;
+  float myfperc;
   char fnam[200];
   float * h_bpout = (float *)malloc(sizeof(float)*NBATCH*NCHAN);
   if (p->output_bandpass>0) {
@@ -1394,8 +1406,9 @@ void fastflagger(pinfo * p) {
       p->t8 += (float)(end - begin) / CLOCKS_PER_SEC;
     }
 
-    // bandpass flag / correct
-    mn_bp[batch] = bandpass_flag(p,p->batch);
+    // bandpass flag / correct    
+    mn_bp[batch] = bandpass_flag(p,p->batch,&myfperc);
+    fperc += myfperc/(1.*nBatches);
 
     // loop over scrunches
     for (int scrnch=0;scrnch<p->nscrunches;scrnch++) {
@@ -1435,7 +1448,7 @@ void fastflagger(pinfo * p) {
   }
   //printf("\n");
   
-  syslog(LOG_INFO,"fastflagger %g %g %g %g",mn_bp[0],mn_bp[1],mn_bp[2],mn_bp[3]);
+  syslog(LOG_INFO,"fastflagger %g %g %g %g %g",mn_bp[0],mn_bp[1],mn_bp[2],mn_bp[3],fperc);
   
   if (p->output_bandpass>0) {
     sprintf(fnam,"mv /home/ubuntu/data/bpout_%d.tmp /home/ubuntu/data/bpout_%d.out",p->output_bandpass,p->output_bandpass);
@@ -2152,6 +2165,15 @@ int main(int argc, char *argv[]) {
 
 
     if ((gulp>0 && p.inp_format!=1) || (p.inp_format==1)) {
+
+      begin = clock();
+      if (p.inp_format==0) {
+	for (int bmm=0;bmm<NBEAMS;bmm++) 
+	  cudaMemcpy(p.data + bmm*p.gulp*NCHAN, p.d_data + bmm*p.NTIME*NCHAN + NCHAN*(p.NTIME-p.gulp),p.gulp*NCHAN, cudaMemcpyDeviceToHost);      
+	written = ipcio_write (hdu_out->data_block, (char *)(p.data), block_out);
+      }
+      end = clock();
+      readt += (float)(end - begin) / CLOCKS_PER_SEC;
       
       begin = clock();
       //printf("Flagging\n");
@@ -2169,7 +2191,7 @@ int main(int argc, char *argv[]) {
       flagt += (float)(end - begin) / CLOCKS_PER_SEC;
 
       
-      // write to dada
+      /*      // write to dada
       begin = clock();
       if (p.inp_format==0) {
 	for (int bmm=0;bmm<NBEAMS;bmm++) 
@@ -2177,7 +2199,7 @@ int main(int argc, char *argv[]) {
 	written = ipcio_write (hdu_out->data_block, (char *)(p.data), block_out);
       }
       end = clock();
-      readt += (float)(end - begin) / CLOCKS_PER_SEC;
+      readt += (float)(end - begin) / CLOCKS_PER_SEC;*/
       
       // write out to disk
       /*cudaMemcpy(hodata,p.d_data,NCHAN*p.NTIME,cudaMemcpyDeviceToHost);

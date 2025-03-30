@@ -202,7 +202,7 @@ def get_srch_nodes():
         result = subprocess.check_output("sudo tail -n 1000 /var/log/syslog | grep dsaX_hella1 | grep Beamstats | tail -n 1 | awk '{print $10}'", shell=True, stderr=subprocess.STDOUT)
         arr7 = result.decode("utf-8")
 
-        oarr = np.zeros(15)
+        oarr = np.zeros(17)
         oarr[0] = float(arr)
         oarr[1] = float(arr2)
         oarr[2] = float(arr3)
@@ -218,6 +218,14 @@ def get_srch_nodes():
 
             result = subprocess.check_output(f"sudo tail -n 1000 /var/log/syslog | grep dsaX_hella1 | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
             oarr[2*(ii-7)+1+7] = result.decode("utf-8")
+
+        ii=11
+        result = subprocess.check_output(f"sudo tail -n 1000 /var/log/syslog | grep dsaX_hella0 | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
+        oarr[15] = float(result.decode("utf-8"))
+
+        result = subprocess.check_output(f"sudo tail -n 1000 /var/log/syslog | grep dsaX_hella1 | grep fastflagger | tail -n 1 | awk '{{print ${ii}}}'", shell=True, stderr=subprocess.STDOUT)
+        oarr[16] = result.decode("utf-8")
+
         
         
     except:
@@ -301,7 +309,9 @@ def get_monitor_dict(params, corr_num, my_ds):
         mon_dict['bp_1_2'] = srch_nodes[12]
         mon_dict['bp_0_3'] = srch_nodes[13]
         mon_dict['bp_1_3'] = srch_nodes[14]
-
+        mon_dict['bp_perc_0'] = srch_nodes[15]
+        mon_dict['bp_perc_1'] = srch_nodes[16]
+        
     nfils = get_nfils()
     if nfils==-1:
         mon_dict['nfils_written'] = 0.0
