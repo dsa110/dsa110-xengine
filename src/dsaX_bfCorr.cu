@@ -279,7 +279,9 @@ __global__ void corr_input_copy(char *input, half *inr, half *ini) {
   int iidx = bidx*128+tidx;
   
   inr[iidx] = __float2half((float)((char)(((unsigned char)(input[iidx]) & (unsigned char)(15)) << 4) >> 4));
+  inr[iidx] *= 0.05;
   ini[iidx] = __float2half((float)((char)(((unsigned char)(input[iidx]) & (unsigned char)(240))) >> 4));
+  ini[iidx] *= 0.05;
 
 }
 
