@@ -374,7 +374,8 @@ def process(params, cmd, val, my_ds):
             if rout.get('hostargs') is None:
                 cmdstr = rout['cmd']+' '+myargs
             else:
-                cmdstr = rout['cmd']+' '+myargs+' '+str(rout.get('hostargs')[socket.gethostname()])
+                myhostargs = str(rout.get('hostargs')[socket.gethostname()]).replace("CUSTOMDEC",val)
+                cmdstr = rout['cmd']+' '+myargs+' '+myhostargs
             my_log.debug('running: '+cmdstr)
             my_log.info('Starting '+rout['name'])
             #log = open('/home/ubuntu/tmp/log.log','w')
