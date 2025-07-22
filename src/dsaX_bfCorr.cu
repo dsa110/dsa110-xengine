@@ -744,7 +744,7 @@ __global__ void sum_transpose_and_scale_output(half * outp, unsigned char * odat
       odata[(y+j)*width + x] = (unsigned char)(tile[threadIdx.x][threadIdx.y + j]);
     else
       //odata[(y+j)*width + x] = (unsigned char)(70.+tile[threadIdx.x][threadIdx.y + j]);
-      odata[(y+j)*width + x] = (unsigned char)(tile[threadIdx.x][threadIdx.y + j]);
+      odata[(y+j)*width + x] = (unsigned char)(55.+tile[threadIdx.x][threadIdx.y + j]);
   }
 
 }
@@ -795,7 +795,8 @@ __global__ void sum_beam_2(unsigned char * input, float * output) {
   int idx0 = bid*512*48 + tid*48;
   psum[tid] = 0.;
   for (int i=idx0;i<npartials+idx0;i++)
-    psum[tid] += ((float)(input[i])-70.)*((float)(input[i])-70.);
+    //psum[tid] += ((float)(input[i])-70.)*((float)(input[i])-70.);
+    psum[tid] += ((float)(input[i])-65.6)*((float)(input[i])-65.6);
 
   __syncthreads();
 
