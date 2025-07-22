@@ -687,7 +687,8 @@ __global__ void power_sum_and_transpose_output(half * dra, half * drb, half * di
     for (int k=0;k<4;k++) {
       tile[threadIdx.y+j][threadIdx.x] += dra[4*iidx+k]*dra[4*iidx+k] + dia[4*iidx+k]*dia[4*iidx+k] + drb[4*iidx+k]*drb[4*iidx+k] + dib[4*iidx+k]*dib[4*iidx+k];
       if (subtract_ib)
-	tile[threadIdx.y+j][threadIdx.x] -= ibsum[4*idx+k];
+	//tile[threadIdx.y+j][threadIdx.x] -= ibsum[4*idx+k];
+	tile[threadIdx.y+j][threadIdx.x] = ibsum[4*idx+k];
     }
       
   }
@@ -742,7 +743,8 @@ __global__ void sum_transpose_and_scale_output(half * outp, unsigned char * odat
     if (subtract_ib==0) 
       odata[(y+j)*width + x] = (unsigned char)(tile[threadIdx.x][threadIdx.y + j]);
     else
-      odata[(y+j)*width + x] = (unsigned char)(70.+tile[threadIdx.x][threadIdx.y + j]);
+      //odata[(y+j)*width + x] = (unsigned char)(70.+tile[threadIdx.x][threadIdx.y + j]);
+      odata[(y+j)*width + x] = (unsigned char)(tile[threadIdx.x][threadIdx.y + j]);
   }
 
 }
