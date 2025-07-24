@@ -1257,7 +1257,7 @@ float bandpass_flag(pinfo * p, half * data, float * fperc) {
   float mn_bp = bandpass_correct(data,p->NTIME, p->batch_stride);
 
   // normalize data
-  normalize_data(data,p->NTIME, p->batch_stride);
+  /*normalize_data(data,p->NTIME, p->batch_stride);
   cudaDeviceSynchronize();
 
   // calculate bandpass
@@ -1278,7 +1278,7 @@ float bandpass_flag(pinfo * p, half * data, float * fperc) {
   // finish up
   add_number<<<NBATCH*NCHAN*p->NTIME/32,32>>>(data,1.,p->NTIME, p->batch_stride);
 
-  free(h_bpout);
+  free(h_bpout);*/
   return mn_bp;
 
 }
