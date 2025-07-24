@@ -495,7 +495,7 @@ __global__ void sumArray(half * data, float * sums, float * qsums, int width, in
   int iidx = y*stride+x;
 
   sdata[tid] = __half2float(data[iidx]);
-  qdata[tid] = __half2float(data[iidx]*data[iidx]);
+  qdata[tid] = __half2float(data[iidx])*__half2float(data[iidx]);
 
   __syncthreads();
 
