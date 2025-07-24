@@ -571,7 +571,8 @@ float calculateStdDev(half * d_data, int width, int height, int stride) {
   float stdDev = qsum-2.*sum*mn+mn*mn*new_width*height*1.;
   stdDev /= 1.*new_width*height;
   stdDev = sqrt(stdDev);
-
+  syslog(LOG_INFO,"TESTA %g %g\n",(qsum-2.*sum*mn+mn*mn*new_width*height*1.)/(1.*new_width*height),qsum/new_width/height-mn*mn);
+  
   cudaFree(d_sums);
   cudaFree(d_qsums);
   free(sums);
@@ -1257,7 +1258,7 @@ float bandpass_flag(pinfo * p, half * data, float * fperc) {
   float mn_bp = bandpass_correct(data,p->NTIME, p->batch_stride);
 
   // normalize data
-  /*normalize_data(data,p->NTIME, p->batch_stride);
+  normalize_data(data,p->NTIME, p->batch_stride);
   cudaDeviceSynchronize();
 
   // calculate bandpass
@@ -1278,7 +1279,7 @@ float bandpass_flag(pinfo * p, half * data, float * fperc) {
   // finish up
   add_number<<<NBATCH*NCHAN*p->NTIME/32,32>>>(data,1.,p->NTIME, p->batch_stride);
 
-  free(h_bpout);*/
+  free(h_bpout);
   return mn_bp;
 
 }
