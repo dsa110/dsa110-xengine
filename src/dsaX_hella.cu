@@ -569,7 +569,7 @@ float calculateStdDev(half * d_data, int width, int height, int stride) {
   }
   float mn = sum/(new_width*height*1.);
 
-  float stdDev = qsum//qsum-2.*sum*mn+mn*mn*new_width*height*1.;
+  float stdDev = qsum;//qsum-2.*sum*mn+mn*mn*new_width*height*1.;
   stdDev /= 1.*new_width*height;
   stdDev = sqrt(stdDev);
   syslog(LOG_INFO,"TESTA %g %g\n",qsum/new_width/height,mn);
