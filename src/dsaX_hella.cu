@@ -495,7 +495,7 @@ __global__ void sumArray(half * data, float * sums, float * qsums, int width, in
   int iidx = y*stride+x;
 
   sdata[tid] = __half2float(data[iidx]);
-  qdata[tid] = __half2float(data[iidx])*__half2float(data[iidx]);
+  qdata[tid] = (__half2float(data[iidx])-1.)*(__half2float(data[iidx])-1.);
 
   __syncthreads();
 
@@ -550,6 +550,7 @@ float calculateStdDev(half * d_data, int width, int height, int stride) {
   float *d_sums, *d_qsums;
   int new_width = (int)(512*floor(width/512.));
   int nblocks = new_width*height / 512;
+
   
   cudaMalloc(&d_sums, nblocks * sizeof(float));
   cudaMalloc(&d_qsums, nblocks * sizeof(float));
@@ -568,10 +569,10 @@ float calculateStdDev(half * d_data, int width, int height, int stride) {
   }
   float mn = sum/(new_width*height*1.);
 
-  float stdDev = qsum-2.*sum*mn+mn*mn*new_width*height*1.;
+  float stdDev = qsum//qsum-2.*sum*mn+mn*mn*new_width*height*1.;
   stdDev /= 1.*new_width*height;
   stdDev = sqrt(stdDev);
-  syslog(LOG_INFO,"TESTA %g %g %g %g %g\n",qsum,mn,sum,(qsum-2.*sum*mn+mn*mn*new_width*height*1.)/(1.*new_width*height),qsum/new_width/height-mn*mn);
+  syslog(LOG_INFO,"TESTA %g %g\n",qsum/new_width/height,mn);
   
   cudaFree(d_sums);
   cudaFree(d_qsums);
