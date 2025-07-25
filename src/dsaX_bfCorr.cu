@@ -744,7 +744,7 @@ __global__ void sum_transpose_and_scale_output(half * outp, unsigned char * odat
       odata[(y+j)*width + x] = (unsigned char)(tile[threadIdx.x][threadIdx.y + j]);
     else
       //odata[(y+j)*width + x] = (unsigned char)(70.+tile[threadIdx.x][threadIdx.y + j]);
-      odata[(y+j)*width + x] = (unsigned char)(55.+tile[threadIdx.x][threadIdx.y + j]);
+      odata[(y+j)*width + x] = (unsigned char)(tile[threadIdx.x][threadIdx.y + j]);
   }
 
 }
