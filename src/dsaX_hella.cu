@@ -1275,13 +1275,15 @@ float bandpass_flag(pinfo * p, half * data, float * fperc) {
   FILE * ftmp;
 
   if (doDump) {
-  
+
+    syslog(LOG_INFO,"DUMPING FOR FIRST TIME");
     cudaMalloc(&dtmpf, NCHAN * p->NTIME * sizeof(float));
     dtmpf = (float *)malloc(sizeof(float)*p->NTIME*NCHAN);
     extract_data<<<p->batch_stride*NCHAN/32,32>>>(data,dtmpf,p->NTIME,p->batch_stride);
+    cudaDeviceSynchronize();
     cudaMemcpy(htmp,dtmpf,p->NTIME*NCHAN*4,cudaMemcpyDeviceToHost);
     ftmp = fopen("/home/ubuntu/data/d1.tmp","wb");
-    fwrite(htmp,4,NCHAN * p->NTIME,ftmp);
+    fwrite(htmp,4,NCHAN*p->NTIME,ftmp);
     fclose(ftmp);
 
   }
@@ -1290,8 +1292,10 @@ float bandpass_flag(pinfo * p, half * data, float * fperc) {
   float mn_bp = bandpass_correct(data,p->NTIME, p->batch_stride);
 
   if (doDump) {
-  
+
+    syslog(LOG_INFO,"DUMPING FOR SECOND TIME");
     extract_data<<<p->batch_stride*NCHAN/32,32>>>(data,dtmpf,p->NTIME,p->batch_stride);
+    cudaDeviceSynchronize();
     cudaMemcpy(htmp,dtmpf,p->NTIME*NCHAN*4,cudaMemcpyDeviceToHost);
     ftmp = fopen("/home/ubuntu/data/d2.tmp","wb");
     fwrite(htmp,4,NCHAN * p->NTIME,ftmp);
