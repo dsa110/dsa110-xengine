@@ -74,6 +74,7 @@ const int MAXRECV = 500;
 #define SOCKET_CADENCE 1
 
 int finished = 0;
+int doDump = 1;
 
 void dsaX_dbgpu_cleanup (dada_hdu_t * in);
 
@@ -1252,11 +1253,54 @@ void normalize_data(half * data, int width, int stride) {
 
 }
 
+__global__ void extract_data(half * data, float * small, int width, int stride) {
+
+  int bid = blockIdx.x;
+  int tid = threadIdx.x;
+
+  int i = bid*32+tid;
+
+  int x = (int)(i % stride);
+  int y = (int)(i / stride);
+  int ii = y*width+x;
+
+  small[ii] = __half2float(data[i]);
+
+}
+
 // function to implement bandpass flagging on data
 float bandpass_flag(pinfo * p, half * data, float * fperc) {
 
+  float * dtmpf, * htmp;
+  FILE * ftmp;
+
+  if (doDump) {
+  
+    cudaMalloc(&dtmpf, NCHAN * p->NTIME * sizeof(float));
+    dtmpf = (float *)malloc(sizeof(float)*p->NTIME*NCHAN);
+    extract_data<<<p->batch_stride*NCHAN/32,32>>>(data,dtmpf,p->NTIME,p->batch_stride);
+    cudaMemcpy(htmp,dtmpf,p->NTIME*NCHAN*4,cudaMemcpyDeviceToHost);
+    ftmp = fopen("/home/ubuntu/data/d1.tmp","wb");
+    fwrite(htmp,4,NCHAN * p->NTIME,ftmp);
+    fclose(ftmp);
+
+  }
+  
   // bandpass correct
   float mn_bp = bandpass_correct(data,p->NTIME, p->batch_stride);
+
+  if (doDump) {
+  
+    extract_data<<<p->batch_stride*NCHAN/32,32>>>(data,dtmpf,p->NTIME,p->batch_stride);
+    cudaMemcpy(htmp,dtmpf,p->NTIME*NCHAN*4,cudaMemcpyDeviceToHost);
+    ftmp = fopen("/home/ubuntu/data/d2.tmp","wb");
+    fwrite(htmp,4,NCHAN * p->NTIME,ftmp);
+    fclose(ftmp);
+
+    doDump = 0;
+
+  }
+
 
   // normalize data
   normalize_data(data,p->NTIME, p->batch_stride);
