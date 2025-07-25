@@ -1282,10 +1282,12 @@ float bandpass_flag(pinfo * p, half * data, float * fperc) {
     extract_data<<<p->batch_stride*NCHAN/32,32>>>(data,dtmpf,p->NTIME,p->batch_stride);
     cudaDeviceSynchronize();
     cudaMemcpy(htmp,dtmpf,p->NTIME*NCHAN*4,cudaMemcpyDeviceToHost);
-    ftmp = fopen("/home/ubuntu/data/d1.tmp","wb");
-    fwrite(htmp,4,NCHAN*p->NTIME,ftmp);
+    ftmp = fopen("/home/ubuntu/data/d2.tmp","w");
+    for (int i=0;i<NCHAN * p->NTIME;i++)
+      fprintf(ftmp,"%g\n",htmp[i]);
     fclose(ftmp);
-
+    syslog(LOG_INFO,"%d\n",NCHAN * p->NTIME);
+    
   }
   
   // bandpass correct
@@ -1297,8 +1299,9 @@ float bandpass_flag(pinfo * p, half * data, float * fperc) {
     extract_data<<<p->batch_stride*NCHAN/32,32>>>(data,dtmpf,p->NTIME,p->batch_stride);
     cudaDeviceSynchronize();
     cudaMemcpy(htmp,dtmpf,p->NTIME*NCHAN*4,cudaMemcpyDeviceToHost);
-    ftmp = fopen("/home/ubuntu/data/d2.tmp","wb");
-    fwrite(htmp,4,NCHAN * p->NTIME,ftmp);
+    ftmp = fopen("/home/ubuntu/data/d2.tmp","w");
+    for (int i=0;i<NCHAN * p->NTIME;i++)
+      fprintf(ftmp,"%g\n",htmp[i]);
     fclose(ftmp);
 
     doDump = 0;
