@@ -2216,6 +2216,7 @@ int main(int argc, char *argv[]) {
 
     if ((gulp>0 && p.inp_format!=1) || (p.inp_format==1)) {
 
+      /*
       begin = clock();
       if (p.inp_format==0) {
 	for (int bmm=0;bmm<NBEAMS;bmm++) 
@@ -2224,7 +2225,7 @@ int main(int argc, char *argv[]) {
       }
       end = clock();
       readt += (float)(end - begin) / CLOCKS_PER_SEC;
-
+      */
       
       begin = clock();
       //printf("Flagging\n");
@@ -2243,14 +2244,14 @@ int main(int argc, char *argv[]) {
 
       
       // write to dada
-      /*begin = clock();
+      begin = clock();
       if (p.inp_format==0) {
 	for (int bmm=0;bmm<NBEAMS;bmm++) 
 	  cudaMemcpy(p.data + bmm*p.gulp*NCHAN, p.d_data + bmm*p.NTIME*NCHAN + NCHAN*(p.NTIME-p.gulp),p.gulp*NCHAN, cudaMemcpyDeviceToHost);      
 	written = ipcio_write (hdu_out->data_block, (char *)(p.data), block_out);
       }
       end = clock();
-      readt += (float)(end - begin) / CLOCKS_PER_SEC;*/
+      readt += (float)(end - begin) / CLOCKS_PER_SEC;
       
       // write out to disk
       /*cudaMemcpy(hodata,p.d_data,NCHAN*p.NTIME,cudaMemcpyDeviceToHost);
