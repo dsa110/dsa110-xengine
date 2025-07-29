@@ -573,7 +573,7 @@ float calculateStdDev(half * d_data, int width, int height, int stride) {
   float stdDev = qsum;//qsum-2.*sum*mn+mn*mn*new_width*height*1.;
   stdDev /= 1.*new_width*height;
   stdDev = sqrt(stdDev);
-  syslog(LOG_INFO,"TESTA %g %g\n",qsum/new_width/height,mn);
+  //syslog(LOG_INFO,"TESTA %g %g\n",qsum/new_width/height,mn);
   
   cudaFree(d_sums);
   cudaFree(d_qsums);
@@ -1466,7 +1466,7 @@ void fastflagger(pinfo * p) {
       tmp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, p->scrunches[scrnch].tscrunch,p->scrunches[scrnch].fscrunch, p->scrunches[scrnch].thresh,1,0,p->d_flagSpec,p->flag1,p->flag2);
       cudaDeviceSynchronize();
     }
-    //tmp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, 8, 8, 100., 0, 1, p->d_flagSpec,p->flag1,p->flag2);
+    tmp = apply_scrunch(p, p->batch, p->mask, p->d_smooth, p->d_ts, p->NTIME, p->batch_stride, 8, 8, 100., 0, 1, p->d_flagSpec,p->flag1,p->flag2);
     //    printf("\n");
 
     cudaDeviceSynchronize();
@@ -2263,9 +2263,10 @@ int main(int argc, char *argv[]) {
       // loop over beams to dedisperse and search
       // check time, out_npeaks
       //printf("Looping over beams...\n");
-      bm = 0;
+      bm = 32;
       tot_time = readt+flagt;
-      while ((bm<NBEAMS) && (tot_time<4.1) && (p.out_npeaks < MAX_GIANTS)) {
+      //while ((bm<NBEAMS) && (tot_time<4.1) && (p.out_npeaks < MAX_GIANTS)) {
+      while ((bm<33) && (tot_time<4.1) && (p.out_npeaks < MAX_GIANTS)) {
 	//while ((bm<NBEAMS) && (p.out_npeaks < MAX_GIANTS)) {
       
 	//printf("dedisperse\n");
