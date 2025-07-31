@@ -1735,10 +1735,10 @@ void find_peaks(pinfo *p, int bm) {
     if (sm==0) {
       myStd = calculateStdDevFloat(p->boxes+sm*(p->ndms-2)*p->boxes_step/sizeof(float),p->ntime_out,p->ndms-2,p->boxes_step/sizeof(float));
       if (bm==32) syslog(LOG_INFO,"STDDEV %g",myStd);
-      if (myStd<1.2) myStd = 1.;
+      //if (myStd<1.2) myStd = 1.;
       if (myStd<0.96) myStd = 2.;
     }
-    if (myStd<1.5 && myStd>0.92) {
+    if (myStd<1.5 && myStd>=0.92) {
     
       // copy to thrust vector
       //cudaMemcpy(dmt_ptr,p->boxes+sm*(p->ndms-2)*p->boxes_step/sizeof(float),(p->ndms-2)*p->boxes_step,cudaMemcpyDeviceToDevice);
@@ -2166,14 +2166,14 @@ int main(int argc, char *argv[]) {
 
     if ((gulp>0 && p.inp_format!=1) || (p.inp_format==1)) {
 
-      begin = clock();
+      /*begin = clock();
       if (p.inp_format==0) {
 	for (int bmm=0;bmm<NBEAMS;bmm++) 
 	  cudaMemcpy(p.data + bmm*p.gulp*NCHAN, p.d_data + bmm*p.NTIME*NCHAN + NCHAN*(p.NTIME-p.gulp),p.gulp*NCHAN, cudaMemcpyDeviceToHost);      
 	written = ipcio_write (hdu_out->data_block, (char *)(p.data), block_out);
       }
       end = clock();
-      readt += (float)(end - begin) / CLOCKS_PER_SEC;
+      readt += (float)(end - begin) / CLOCKS_PER_SEC;*/
 
       
       begin = clock();
@@ -2193,14 +2193,14 @@ int main(int argc, char *argv[]) {
 
       
       // write to dada
-      /*begin = clock();
+      begin = clock();
       if (p.inp_format==0) {
 	for (int bmm=0;bmm<NBEAMS;bmm++) 
 	  cudaMemcpy(p.data + bmm*p.gulp*NCHAN, p.d_data + bmm*p.NTIME*NCHAN + NCHAN*(p.NTIME-p.gulp),p.gulp*NCHAN, cudaMemcpyDeviceToHost);      
 	written = ipcio_write (hdu_out->data_block, (char *)(p.data), block_out);
       }
       end = clock();
-      readt += (float)(end - begin) / CLOCKS_PER_SEC;*/
+      readt += (float)(end - begin) / CLOCKS_PER_SEC;
       
       // write out to disk
       /*cudaMemcpy(hodata,p.d_data,NCHAN*p.NTIME,cudaMemcpyDeviceToHost);
