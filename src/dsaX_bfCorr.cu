@@ -793,7 +793,7 @@ __global__ void sum_beam_2(unsigned char * input, float * output) {
   int idx0 = bid*512*48 + tid*48;
   psum[tid] = 0.;
   for (int i=idx0;i<npartials+idx0;i++)
-    psum[tid] += ((float)(input[i])-70.)*((float)(input[i])-70.);
+    psum[tid] += ((float)(input[i])-output[bid])*((float)(input[i])-output[bid]);
 
   __syncthreads();
 
