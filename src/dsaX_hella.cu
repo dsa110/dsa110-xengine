@@ -61,12 +61,12 @@ const int MAXRECV = 500;
 
 #define NMEDFILT 13
 #define NTSMED 7
-#define NBATCH 16
+#define NBATCH 1
 #define NCHAN 768
-#define NBEAMS 64
+#define NBEAMS 1
 #define NCHAN_BOX 48
 #define NTIME_BOX 500
-#define MAX_DM 2000
+#define NITS_MEASURE_THRESHOLD 10
 #define TOL 1.3
 #define MAX_BOX 15
 #define MAX_GIANTS 20000
@@ -308,8 +308,11 @@ void initialize(FILE *fconf, pinfo * p) {
   p->rewind=0;
   int i=(int)(p->minWidth), j=0;
   while (i<(int)(p->maxWidth))  {
-    i *= 2;
-    j += 1;
+    if (i>0) {
+      i *= 2;
+      j += 1;
+    }
+    else i=1;
   }
   p->nboxcar=j;
   printf("Search parameters: DM range %g to %g, WIDTHS %d to %d (%d trials), SNR %g\n",p->minDM,p->maxDM,p->minWidth,p->maxWidth,p->nboxcar,p->snr);
@@ -368,14 +371,16 @@ void initialize(FILE *fconf, pinfo * p) {
   p->boxes = nppiMalloc_32f_C1(p->ntime_out,(p->ndms-2)*p->nboxcar,&(p->boxes_step));
   p->imbox = nppiMalloc_32f_C1(p->ntime_dd,p->ndms,&(p->imbox_step));
   p->stds = (float *)malloc(sizeof(float)*p->nboxcar);
-  p->mean = 0.21368;
-  p->stds[0] = 0.001309;
-  p->stds[1] = 0.00124735;
-  p->stds[2] = 0.00103835;
-  p->stds[3] = 0.00081225;
-  p->stds[4] = 0.00062605;
-  p->stds[5] = 0.00047785;
-  p->stds[6] = 0.00036005;
+     /*p->mean = 0.213673;
+  p->stds[0] = 0.00137446;
+  p->stds[1] = 0.0010755;
+  p->stds[2] = 0.000789162;
+  p->stds[3] = 0.000607;
+  p->stds[4] = 0.000462968;
+  p->stds[5] = 0.00034475;
+  p->stds[6] = 0.000251558;*/
+  p->mean = 0.;
+  for (int i=0;i<p->nboxcar;i++) p->stds[i] = 1.;
   
   // peak finding
   p->dmt.resize((p->ndms-2)*p->ntime_out);
@@ -408,6 +413,9 @@ void initialize(FILE *fconf, pinfo * p) {
   p->t7=0.;
   p->t8=0.;
   p->t9=0.;
+
+  printf("Finished allocating\n");
+
   
 }
 
@@ -1594,7 +1602,7 @@ void smooth(pinfo *p, int scale) {
     filtSum = 0.;
     for (int i=0;i<3;i++) {
       for (int j=0;j<2*sm+1;j++) {
-	v = 1.-0.5*((j-sm*2.)/(sm/2.355))*((j-sm*2.)/(sm/2.355))+0.25*((j-sm*2.)/(sm/2.355))*((j-sm*2.)/(sm/2.355))*0.25*((j-sm*2.)/(sm/2.355))*((j-sm*2.)/(sm/2.355))-0.083*((j-sm*2.)/(sm/2.355))*((j-sm*2.)/(sm/2.355))*0.083*((j-sm*2.)/(sm/2.355))*((j-sm*2.)/(sm/2.355))*0.083*((j-sm*2.)/(sm/2.355))*((j-sm*2.)/(sm/2.355));
+	v = 1.-0.5*((j-sm*1.)/(sm/2.355))*((j-sm*1.)/(sm/2.355))+0.25*((j-sm*1.)/(sm/2.355))*((j-sm*1.)/(sm/2.355))*0.25*((j-sm*1.)/(sm/2.355))*((j-sm*1.)/(sm/2.355))-0.083*((j-sm*1.)/(sm/2.355))*((j-sm*1.)/(sm/2.355))*0.083*((j-sm*1.)/(sm/2.355))*((j-sm*1.)/(sm/2.355))*0.083*((j-sm*1.)/(sm/2.355))*((j-sm*1.)/(sm/2.355));
 	h_kernel[i*(2*sm+1)+j] = w[i]*v*v;
 	filtSum += w[i]*v*v;	
       }
@@ -1637,7 +1645,7 @@ void smooth(pinfo *p, int scale) {
 }
 
 // code to empirically measure thresholds
-/*
+
 // curand stuff
 __global__ void setup_kernel(curandState* state, uint64_t seed)
 {
@@ -1652,10 +1660,26 @@ __global__ void generate_randoms(curandState* globalState, float* randoms)
     randoms[tid * 2 + 1] = curand_normal(&localState);
 }
 
+// kernel to scale float32 to uint8 with range [-4, 10] -> [0, 255]
+// like transpose_output but without the transpose
+// run with N/256 blocks of 256 threads
+__global__ void scale_float_to_uint8(float * input, unsigned char * output, int N) {
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    if (tid >= N) return;
+    
+    float v = input[tid];
+    float scf = 255.f / 14.f;
+    v = scf * (v + 4.f);
+    if (v < 0.f) v = 0.f;
+    if (v > 255.f) v = 255.f;
+    output[tid] = (unsigned char)(v);
+}
+
+
+
 void measure_thresholds(pinfo *p) {
 
-  // generate data
-  printf("THRESHOLD: Generating random values\n");
+  // setup for random generation
   int threads = 256;
   int blocks = (NCHAN/256)*p->NTIME / 2;
   int threadCount = blocks * threads;
@@ -1665,44 +1689,107 @@ void measure_thresholds(pinfo *p) {
   cudaMalloc(&dev_curand_states, threadCount * sizeof(curandState));
   cudaMalloc(&randomValues, N * sizeof(float));
   setup_kernel<<<blocks, threads>>>(dev_curand_states, time(NULL));
-  generate_randoms<<<blocks, threads>>>(dev_curand_states, randomValues);  
-  
-  // prepare for dedispersion
-  printf("THRESHOLD: dedisperse and smooth\n");
-  NppiSize preROI = {NCHAN,p->NTIME};
-  cudaMemcpy(p->dataFT,randomValues,4*N,cudaMemcpyDeviceToDevice);
-  nppiScale_32f8u_C1R(p->dataFT,p->dataFT_step,p->d_datapreT,p->d_datapreT_step,preROI,-4.,10.);
-  cudaMemcpy2D(p->data,NCHAN,p->d_datapreT,p->d_datapreT_step,NCHAN,p->NTIME,cudaMemcpyDeviceToHost);
+  cudaDeviceSynchronize();
 
-  // dedisperse
-  dedisperse(p);
-  
-  // smooth
-  smooth(p,0);
-  
-  // measure stats
-  printf("THRESHOLD: measure stats\n");
+  // setup for stats measurement
   Npp64f *pMean, *pStd;
-  NppiSize oSizeROI = {p->ntime_dd,p->ndms};
+  NppiSize oSizeROI = {p->ntime_out, p->ndms-2};
   int nBufferSize;
   Npp8u * pDeviceBuffer;
   nppiMeanStdDevGetBufferHostSize_32f_C1R(oSizeROI, &nBufferSize);
   cudaMalloc((void **)(&pDeviceBuffer), nBufferSize);
   cudaMalloc((void **)(&pMean), p->nboxcar*8);
   cudaMalloc((void **)(&pStd), p->nboxcar*8);
-  
-  for (int i=0;i<p->nboxcar;i++) 
-    nppiMean_StdDev_32f_C1R(p->boxes+i*p->ntime_dd*p->ndms,p->boxes_step,oSizeROI,pDeviceBuffer,pMean+i,pStd+i);
 
   double *hMean, *hStd;
   hMean = (double *)malloc(sizeof(double)*p->nboxcar);
   hStd = (double *)malloc(sizeof(double)*p->nboxcar);
-  cudaMemcpy(hMean,pMean,sizeof(double)*p->nboxcar,cudaMemcpyDeviceToHost);
-  cudaMemcpy(hStd,pStd,sizeof(double)*p->nboxcar,cudaMemcpyDeviceToHost);
 
+  // accumulators for averaging
+  double *accumMean, *accumStd;
+  accumMean = (double *)malloc(sizeof(double)*p->nboxcar);
+  accumStd = (double *)malloc(sizeof(double)*p->nboxcar);
+  for (int i = 0; i < p->nboxcar; i++) {
+    accumMean[i] = 0.0;
+    accumStd[i] = 0.0;
+  }
+
+  int scaleBlocks = (N + 255) / 256;
+
+  // loop over iterations
+  for (int it = 0; it < NITS_MEASURE_THRESHOLD; it++) {
+    printf("THRESHOLD: iteration %d/%d\n", it+1, NITS_MEASURE_THRESHOLD);
+
+    // generate random values
+    generate_randoms<<<blocks, threads>>>(dev_curand_states, randomValues);
+    cudaDeviceSynchronize();
+
+    // scale to uint8
+    scale_float_to_uint8<<<scaleBlocks, 256>>>(randomValues, p->d_data, N);
+    cudaDeviceSynchronize();
+
+    // debug: print first 20 values of p->d_data (only first iteration)
+    if (it == 0) {
+      unsigned char h_d_data[20];
+      cudaMemcpy(h_d_data, p->d_data, 20 * sizeof(unsigned char), cudaMemcpyDeviceToHost);
+      printf("p->d_data first 20 values: ");
+      for (int i = 0; i < 20; i++) printf("%u ", h_d_data[i]);
+      printf("\n");
+    }
+
+    // dedisperse
+    dedisperse(p,0);
+
+    // debug: print first 20 values of p->d_dedisp (only first iteration)
+    if (it == 0) {
+      float h_d_dedisp[20];
+      cudaMemcpy(h_d_dedisp, p->d_dedisp, 20 * sizeof(float), cudaMemcpyDeviceToHost);
+      printf("p->d_dedisp first 20 values: ");
+      for (int i = 0; i < 20; i++) printf("%f ", h_d_dedisp[i]);
+      printf("\n");
+    }
+
+    // smooth
+    smooth(p,1);
+
+    // debug: print first 20 values of p->boxes (only first iteration)
+    if (it == 0) {
+      float h_boxes[20];
+      cudaMemcpy(h_boxes, p->boxes, 20 * sizeof(float), cudaMemcpyDeviceToHost);
+      printf("p->boxes first 20 values: ");
+      for (int i = 0; i < 20; i++) printf("%f ", h_boxes[i]);
+      printf("\n");
+    }
+
+    // measure stats for this iteration
+    for (int i = 0; i < p->nboxcar; i++) 
+      nppiMean_StdDev_32f_C1R(p->boxes+i*(p->ndms-2)*p->boxes_step/sizeof(float),p->boxes_step,oSizeROI,pDeviceBuffer,pMean+i,pStd+i);
+
+    cudaMemcpy(hMean,pMean,sizeof(double)*p->nboxcar,cudaMemcpyDeviceToHost);
+    cudaMemcpy(hStd,pStd,sizeof(double)*p->nboxcar,cudaMemcpyDeviceToHost);
+
+    // accumulate
+    for (int i = 0; i < p->nboxcar; i++) {
+      accumMean[i] += hMean[i];
+      accumStd[i] += hStd[i];
+    }
+  }
+
+  // average the accumulated stats
+  for (int i = 0; i < p->nboxcar; i++) {
+    accumMean[i] /= NITS_MEASURE_THRESHOLD;
+    accumStd[i] /= NITS_MEASURE_THRESHOLD;
+  }
+
+  printf("THRESHOLD: Final averaged stats over %d iterations\n", NITS_MEASURE_THRESHOLD);
   printf("(Boxcar) Mean Std\n");
-  for (int i=0;i<p->nboxcar;i++)
-    printf("(%d) %g %g\n",i,hMean[i],hStd[i]);
+  for (int i = 0; i < p->nboxcar; i++)
+    printf("(%d) %g %g\n", i, accumMean[i], accumStd[i]);
+
+  // update p->mean and p->stds with measured values
+  p->mean = accumMean[0];
+  for (int i = 0; i < p->nboxcar; i++)
+    p->stds[i] = accumStd[i];
 
   // scale sigmas by 0.95 to accommodate reduction at increased DM due to more co-added data. 
   
@@ -1713,9 +1800,11 @@ void measure_thresholds(pinfo *p) {
   cudaFree(randomValues);
   free(hMean);
   free(hStd);
+  free(accumMean);
+  free(accumStd);
   
 }
-*/
+
 
 // peak finding
 
@@ -1811,22 +1900,21 @@ void clear_peaks(pinfo *p) {
 // output peaks
 void output_peaks(pinfo *p, int samp, int restart_socket) {
 
-  // text output
-  FILE *fout;
-  fout=fopen(p->out_path,"a");
-  
+  // text output - only open file if we need file output
   if (p->out_format != 1) {
-
-    for (int i=0;i<p->out_npeaks;i++) {
-      /*if (p->samp[i]>p->maxWidth/2 && p->samp[i]<=p->ntime_dd-p->maxWidth/2)
-      fprintf(fout,"A %g %d %g %d %d %g %d\n",p->peaks[i],p->samp[i]+samp,262.144e-6*(p->samp[i]+samp),p->width[i],p->dm_idx[i],p->DMs[p->dm_idx[i]],bm);
-    else
-    fprintf(fout,"B %g %d %g %d %d %g %d\n",p->peaks[i],p->samp[i]+samp,262.144e-6*(p->samp[i]+samp),p->width[i],p->dm_idx[i],p->DMs[p->dm_idx[i]],bm);*/
-      fprintf(fout,"%g %d %d %g %d %d %g %d\n",p->out_peaks[i],p->out_samp[i]+samp,p->out_samp[i]+samp,262.144e-6*(p->out_samp[i]+samp)/86400.,p->out_width[i],p->out_dm_idx[i],p->DMs[p->out_dm_idx[i]],p->out_beam[i]+p->BEAM0);
-
+    FILE *fout;
+    fout = fopen(p->out_path, "a");
+    
+    if (fout != NULL) {
+      for (int i=0;i<p->out_npeaks;i++) {
+        /*if (p->samp[i]>p->maxWidth/2 && p->samp[i]<=p->ntime_dd-p->maxWidth/2)
+        fprintf(fout,"A %g %d %g %d %d %g %d\n",p->peaks[i],p->samp[i]+samp,262.144e-6*(p->samp[i]+samp),p->width[i],p->dm_idx[i],p->DMs[p->dm_idx[i]],bm);
+      else
+      fprintf(fout,"B %g %d %g %d %d %g %d\n",p->peaks[i],p->samp[i]+samp,262.144e-6*(p->samp[i]+samp),p->width[i],p->dm_idx[i],p->DMs[p->dm_idx[i]],bm);*/
+        fprintf(fout,"%g %d %d %g %d %d %g %d\n",p->out_peaks[i],p->out_samp[i]+samp,p->out_samp[i]+samp,262.144e-6*(p->out_samp[i]+samp)/86400.,p->out_width[i],p->out_dm_idx[i],p->DMs[p->out_dm_idx[i]],p->out_beam[i]+p->BEAM0);
+      }
+      fclose(fout);
     }
-    fclose(fout);
-
   }
 
   // socket output
@@ -1964,61 +2052,9 @@ int main(int argc, char *argv[]) {
   initialize(fconf,&p);
   FILE *fin, *ftest;
 
-  // in CANDIDATE mode
-  if (p.inp_format==3) {
-
-    // read header
-    fin=fopen(p.inp_path,"rb");
-    int nbytes_header = read_header(fin);
-    fclose(fin);
-    char * heade = (char *)malloc(sizeof(char)*nbytes_header);
-    fin=fopen(p.inp_path,"rb");
-    fread(heade, sizeof(char), nbytes_header, fin);
-    free(heade);
-    syslog(LOG_INFO,"Finished with header (nbytes %d) of input filFile %s\n",nbytes_header,p.inp_path);
-
-    // read data
-    fread(p.data,sizeof(char),p.NTIME*NCHAN,fin);
-    if (NBEAMS>1) {
-      for (int i=1;i<NBEAMS;i++)
-	memcpy(p.data+i*p.NTIME*NCHAN,p.data,p.NTIME*NCHAN);
-    }
-    cudaMemcpy(p.d_data,p.data,NBEAMS*p.NTIME*NCHAN,cudaMemcpyHostToDevice);
-    fclose(fin);
-
-    // flag it
-    fastflagger(&p);
-
-    // output data
-    cudaMemcpy(hodata,p.d_data+2*NCHAN*p.NTIME,NCHAN*p.NTIME,cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_ts,p.d_ts,4*NBATCH*p.NTIME,cudaMemcpyDeviceToHost);
-    ftest = fopen("image.out","w");
-    for (int i=0;i<NCHAN*p.NTIME;i++) 
-      fprintf(ftest,"%f\n",(float)(hodata[i]));
-    fclose(ftest);
-    ftest = fopen("ts.out","w");
-    for (int i=0;i<NBATCH*p.NTIME;i++) 
-      fprintf(ftest,"%f\n",h_ts[i]);
-    fclose(ftest);
-    ftest = fopen("flags.out","w");
-    for (int i=0;i<NBATCH*NCHAN;i++) 
-      fprintf(ftest,"%f\n",p.h_flagSpec[i]);
-    fclose(ftest);
-    
-
-    for (int i=0;i<NCHAN*NBATCH;i++) {
-      tflags += (1.*p.NTIME*p.h_flagSpec[i]);
-    }
-
-    printf("TOT FLAGS %g\n",tflags);
-    
-    exit(1);
-    
-  }
 
 
-  
-
+ 
   
   // begin read of data
   float v;
@@ -2081,14 +2117,71 @@ int main(int argc, char *argv[]) {
     free(heade);
     syslog(LOG_INFO,"Finished with header (nbytes %d) of input filFile %s\n",nbytes_header,p.inp_path);
   }
+
+    // in CANDIDATE mode
+  if (p.inp_format==3) {
+
+    // read header
+    fin=fopen(p.inp_path,"rb");
+    int nbytes_header = read_header(fin);
+    fclose(fin);
+    char * heade = (char *)malloc(sizeof(char)*nbytes_header);
+    fin=fopen(p.inp_path,"rb");
+    fread(heade, sizeof(char), nbytes_header, fin);
+    free(heade);
+    syslog(LOG_INFO,"Finished with header (nbytes %d) of input filFile %s\n",nbytes_header,p.inp_path);
+
+    // read data
+    fread(p.data,sizeof(char),p.NTIME*NCHAN,fin);
+    if (NBEAMS>1) {
+      for (int i=1;i<NBEAMS;i++)
+	memcpy(p.data+i*p.NTIME*NCHAN,p.data,p.NTIME*NCHAN);
+    }
+    //cudaMemcpy(p.d_data,p.data,NBEAMS*p.NTIME*NCHAN,cudaMemcpyHostToDevice);
+    fclose(fin);
+
+    /*
+    // flag it
+    fastflagger(&p);
+
+    // output data
+    cudaMemcpy(hodata,p.d_data,NCHAN*p.NTIME,cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_ts,p.d_ts,4*NBATCH*p.NTIME,cudaMemcpyDeviceToHost);
+    ftest = fopen("image.out","w");
+    for (int i=0;i<NCHAN*p.NTIME;i++) 
+      fprintf(ftest,"%f\n",(float)(hodata[i]));
+    fclose(ftest);
+    ftest = fopen("ts.out","w");
+    for (int i=0;i<NBATCH*p.NTIME;i++) 
+      fprintf(ftest,"%f\n",h_ts[i]);
+    fclose(ftest);
+    ftest = fopen("flags.out","w");
+    for (int i=0;i<NBATCH*NCHAN;i++) 
+      fprintf(ftest,"%f\n",p.h_flagSpec[i]);
+    fclose(ftest);
+    
+
+    for (int i=0;i<NCHAN*NBATCH;i++) {
+      tflags += (1.*p.NTIME*p.h_flagSpec[i]);
+    }
+
+    printf("TOT FLAGS %g\n",tflags);
+    
+    exit(1);
+
+    */
+    
+  }
+
     
   syslog(LOG_INFO,"Starting...\n");
   int samp = 0;
-  if (p.inp_format!=1)
+  if (p.inp_format!=1 && p.inp_format!=3)
     samp = -(p.NTIME-p.gulp) + (int)(p.maxWidth)/2;
   int gulp = 0;
   
-  //measure_thresholds(&p);
+  measure_thresholds(&p);
+  
 
   // set up output
   FILE *fout, *fspec, *fbeam;
@@ -2164,7 +2257,7 @@ int main(int argc, char *argv[]) {
     }
 
 
-    if ((gulp>0 && p.inp_format!=1) || (p.inp_format==1)) {
+    if ((gulp>0 && p.inp_format!=1) || (p.inp_format==1 || p.inp_format==3)) {
 
       /*begin = clock();
       if (p.inp_format==0) {
@@ -2251,11 +2344,13 @@ int main(int argc, char *argv[]) {
 	output_peaks(&p,samp,0);
       // output flags
       //fbeam = fopen(p.beamflags,"a");
-      fspec = fopen(p.specflags,"a");
-      //for (int i=0;i<NBEAMS;i++) fprintf(fbeam,"%d\n",beamflags[i]);
-      for (int i=0;i<NCHAN;i++) fprintf(fspec,"%d\n",specflags[i]);
-      //fclose(fbeam);
-      fclose(fspec);
+      if (p.inp_format!=3) {
+	fspec = fopen(p.specflags,"a");
+	//for (int i=0;i<NBEAMS;i++) fprintf(fbeam,"%d\n",beamflags[i]);
+	for (int i=0;i<NCHAN;i++) fprintf(fspec,"%d\n",specflags[i]);
+	//fclose(fbeam);
+	fclose(fspec);
+      }
       end = clock();
       outputt += (float)(end - begin) / CLOCKS_PER_SEC;
 
@@ -2271,7 +2366,7 @@ int main(int argc, char *argv[]) {
     gulp += 1;
     
     // assume only one gulp for text file input
-    if (p.inp_format==1)
+    if (p.inp_format==1 || p.inp_format==3)
       finished = 1;
 
     // look for eof for fil input
