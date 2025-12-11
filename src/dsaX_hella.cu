@@ -69,7 +69,7 @@ const int MAXRECV = 500;
 #define NITS_MEASURE_THRESHOLD 10
 #define TOL 1.3
 #define MAX_BOX 15
-#define MAX_GIANTS 50000
+#define MAX_GIANTS 20000
 #define DADA_BLOCK_KEY 0x0000dada // for capture program.
 #define SOCKET_CADENCE 1
 
@@ -329,7 +329,7 @@ void initialize(FILE *fconf, pinfo * p) {
   p->DMs = dedisp_get_dm_list(p->dedispersion_plan);
   p->ndms = dedisp_get_dm_count(p->dedispersion_plan);    
   p->ntime_dd = p->NTIME - dedisp_get_max_delay(p->dedispersion_plan);
-  p->ntime_out = p->ntime_dd - p->maxWidth;
+  p->ntime_out = p->ntime_dd - 3*p->maxWidth;  // FIXED: increased edge trim to avoid false positives from boxcar edge artifacts
   p->ntime_dedisp = p->ntime_dd;
   // modify NTIME and ntime_dd in case of non-text input
   int oo;
@@ -1614,8 +1614,8 @@ void smooth(pinfo *p, int scale) {
     //nppiFilterBorder_32f_C1R(p->d_dedisp,p->d_dedisp_step,oSrcSize,oSrcOffset,p->boxes+smit*p->ndms*p->boxes_step/sizeof(float),p->boxes_step,oSizeROI,pKernel,pKernelSize,oAnchor,NPP_BORDER_REPLICATE);
     nppiFilterBorder_32f_C1R(p->d_dedisp,p->d_dedisp_step,oSrcSize,oSrcOffset,p->imbox,p->imbox_step,oSizeROI,pKernel,pKernelSize,oAnchor,NPP_BORDER_REPLICATE);
 
-    // get rid of first and last DM, and maxWidth/2 from each edge
-    cudaMemcpy2D(p->boxes+smit*(p->ndms-2)*p->boxes_step/sizeof(float),p->boxes_step,p->imbox+p->imbox_step/sizeof(float)+(int)(p->maxWidth)/2,p->imbox_step,sizeof(float)*p->ntime_out,p->ndms-2,cudaMemcpyDeviceToDevice);
+    // FIXED: get rid of first and last DM, and maxWidth*1.5 from each edge (was maxWidth/2)
+    cudaMemcpy2D(p->boxes+smit*(p->ndms-2)*p->boxes_step/sizeof(float),p->boxes_step,p->imbox+p->imbox_step/sizeof(float)+(int)(p->maxWidth*1.5),p->imbox_step,sizeof(float)*p->ntime_out,p->ndms-2,cudaMemcpyDeviceToDevice);
     
     smit++;
     cudaFree(pKernel);
@@ -2177,7 +2177,7 @@ int main(int argc, char *argv[]) {
   syslog(LOG_INFO,"Starting...\n");
   int samp = 0;
   if (p.inp_format!=1 && p.inp_format!=3)
-    samp = -(p.NTIME-p.gulp) + (int)(p.maxWidth)/2;
+    samp = -(p.NTIME-p.gulp) + (int)(p.maxWidth*1.5);  // FIXED: match increased edge trim
   int gulp = 0;
   
   measure_thresholds(&p);
