@@ -69,7 +69,7 @@ const int MAXRECV = 500;
 #define NITS_MEASURE_THRESHOLD 10
 #define TOL 1.3
 #define MAX_BOX 15
-#define MAX_GIANTS 20000
+#define MAX_GIANTS 50000
 #define DADA_BLOCK_KEY 0x0000dada // for capture program.
 #define SOCKET_CADENCE 1
 
