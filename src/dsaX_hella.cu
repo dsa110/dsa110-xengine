@@ -339,7 +339,7 @@ void initialize(FILE *fconf, pinfo * p) {
     p->NTIME = oo;
     p->ntime_dedisp = oo-dedisp_get_max_delay(p->dedispersion_plan);
     p->ntime_dd = p->gulp + p->maxWidth;
-    p->ntime_out = p->gulp;
+    p->ntime_out = p->gulp - 2*p->maxWidth;  // FIXED: account for increased edge trimming (was just gulp)
   }
 
   
