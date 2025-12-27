@@ -1879,6 +1879,16 @@ void find_peaks(pinfo *p, int bm) {
     p->out_width[i] = (int)(tmp / (p->ndms-2));
     p->out_dm_idx[i] = (int)(tmp % (p->ndms-2)) + 1;
 
+    // SAMPLE OFFSET CORRECTION:
+    // 1. Global offset from smooth() trimming: maxWidth*1.5
+    // 2. Width-specific offset: wider boxcars detect later than narrow ones.
+    //    The shift relative to width 0 is approximately (sm - 1) where sm = 2^width_idx.
+    //    We SUBTRACT this to align all widths with width 0.
+    int sm = p->minWidth << p->out_width[i];  // sm = minWidth * 2^width_idx
+    p->out_samp[i] += (int)(p->maxWidth * 1.5);  // global offset (+192 for maxWidth=128)
+    p->out_samp[i] -= (sm - 1);                   // align all widths with width 0
+
+
   }
   p->out_npeaks = imax;
 
