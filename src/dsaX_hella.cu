@@ -67,7 +67,7 @@ const int MAXRECV = 500;
 #define NCHAN_BOX 48
 #define NTIME_BOX 500
 #define NITS_MEASURE_THRESHOLD 10
-#define TOL 1.3
+#define TOL 1.5
 #define MAX_BOX 15
 #define MAX_GIANTS 20000
 #define DADA_BLOCK_KEY 0x0000dada // for capture program.
@@ -334,7 +334,7 @@ void initialize(FILE *fconf, pinfo * p) {
   // modify NTIME and ntime_dd in case of non-text input
   int oo;
   if (p->inp_format == 0 || p->inp_format == 2) {
-    p->NTIME = p->gulp + dedisp_get_max_delay(p->dedispersion_plan) + p->maxWidth;
+    p->NTIME = p->gulp + dedisp_get_max_delay(p->dedispersion_plan) + 2*p->maxWidth;
     oo = 32*((int)(p->NTIME/32)+1);
     p->NTIME = oo;
     p->ntime_dedisp = oo-dedisp_get_max_delay(p->dedispersion_plan);
@@ -2187,7 +2187,7 @@ int main(int argc, char *argv[]) {
   syslog(LOG_INFO,"Starting...\n");
   int samp = 0;
   if (p.inp_format!=1 && p.inp_format!=3)
-    samp = -(p.NTIME-p.gulp) + (int)(p.maxWidth*1.5);  // FIXED: match increased edge trim
+    samp = -(p.NTIME-p.gulp);// + (int)(p.maxWidth*1.5);  // FIXED: match increased edge trim
   int gulp = 0;
   
   measure_thresholds(&p);
