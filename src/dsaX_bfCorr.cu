@@ -46,7 +46,7 @@ using std::endl;
 
 // beam sep
 #define sep 1.0 // arcmin
-#define sep_ns 0.75 // arcmin
+#define sep_ns 1.0 // arcmin
 
 /* global variables */
 int DEBUG = 0;
